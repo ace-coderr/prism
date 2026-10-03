@@ -1,0 +1,112 @@
+import { useMemo, useState } from 'react';
+import { Crystal } from '../components/Crystal';
+import { Stage, useRowLayout } from '../components/Stage';
+import { Change, Panel, usd } from '../components/ui';
+import { CORRELATIONS, MY_CRYSTALS, TOKEN_BY_SYMBOL, toHoldings, type MockCrystal } from '../data/mock';
+
+function Row({ selected, onSelect }: { selected: number; onSelect: (i: number) => void }) {
+  const { positions, size } = useRowLayout(MY_CRYSTALS.length);
+  const holdings = useMemo(() => MY_CRYSTALS.map((c) => toHoldings(c.weights)), []);
+  return (
+    <>
+      {MY_CRYSTALS.map((c, i) => (
+        <Crystal
+          key={c.id}
+          holdings={holdings[i]!}
+          history={c.history}
+          correlation={CORRELATIONS}
+          position={positions[i]}
+          size={size}
+          spin={i === selected ? 0.35 : 0.1}
+          highlight={i === selected}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect(i);
+          }}
+          onPointerOver={() => (document.body.style.cursor = 'pointer')}
+          onPointerOut={() => (document.body.style.cursor = '')}
+        />
+      ))}
+    </>
+  );
+}
+
+function Details({ crystal }: { crystal: MockCrystal }) {
+  const rows = Object.entries(crystal.weights);
+  const change = rows.reduce((s, [sym, w]) => s + (w / 100) * TOKEN_BY_SYMBOL[sym]!.change24h, 0);
+  const seams = crystal.history?.drawdowns.filter((d) => d.recovered && d.depth > 15).length ?? 0;
+  const cracks = crystal.history?.drawdowns.filter((d) => !d.recovered && d.depth > 15).length ?? 0;
+  return (
+    <Panel className="p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-display text-xl font-semibold">{crystal.name}</h2>
+        <span className="text-sm text-mist">
+          {usd(crystal.value)} · 24h <Change value={change} />
+        </span>
+      </div>
+      <p className="mt-1 text-xs text-mist">
+        Forged {crystal.forged}
+        {seams > 0 && <span className="text-gold"> · {seams} gold seam{seams > 1 ? 's' : ''}</span>}
+        {cracks > 0 && <span> · {cracks} open crack{cracks > 1 ? 's' : ''}</span>}
+      </p>
+      <table className="mt-4 w-full text-sm">
+        <thead className="text-left text-xs text-mist">
+          <tr>
+            <th className="pb-2 font-normal">Token</th>
+            <th className="pb-2 text-right font-normal">Weight</th>
+            <th className="pb-2 text-right font-normal">24h</th>
+            <th className="pb-2 text-right font-normal">Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([sym, w]) => {
+            const t = TOKEN_BY_SYMBOL[sym]!;
+            return (
+              <tr key={sym} className="border-t border-line">
+                <td className="py-2">
+                  <span className="font-medium">{sym}</span> <span className="text-mist">{t.name}</span>
+                </td>
+                <td className="py-2 text-right tabular-nums">{w}%</td>
+                <td className="py-2 text-right">
+                  <Change value={t.change24h} />
+                </td>
+                <td className="py-2 text-right tabular-nums">{usd((crystal.value * w) / 100)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </Panel>
+  );
+}
+
+export default function MyCrystals() {
+  const [selected, setSelected] = useState(0);
+  return (
+    <div className="mx-auto flex h-full max-w-7xl flex-col gap-4 overflow-y-auto p-4">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <h1 className="font-display text-2xl font-semibold">My Crystals</h1>
+        <div className="flex gap-1.5">
+          {MY_CRYSTALS.map((c, i) => (
+            <button
+              key={c.id}
+              onClick={() => setSelected(i)}
+              className={`rounded-full border px-3 py-1 text-xs transition ${
+                i === selected ? 'border-white/40 bg-white/10' : 'border-line text-mist hover:text-white'
+              }`}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="relative h-[46vh] min-h-[300px] shrink-0 overflow-hidden rounded-2xl border border-line">
+        <Stage className="!absolute inset-0" camera={{ position: [0, 0, 8], fov: 40 }}>
+          <Row selected={selected} onSelect={setSelected} />
+        </Stage>
+        <p className="pointer-events-none absolute bottom-3 left-4 text-xs text-mist">Click a crystal to see its holdings</p>
+      </div>
+      <Details crystal={MY_CRYSTALS[selected]!} />
+    </div>
+  );
+}

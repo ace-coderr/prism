@@ -1,0 +1,23 @@
+# dependencies
+node_modules
+
+# build output
+dist
+build
+.vite
+coverage
+
+# hardhat
+artifacts
+cache
+typechain-types
+
+# env / secrets — never commit
+.env
+.env.*
+*.pem
+*.key
+
+# misc
+.DS_Store
+*.log

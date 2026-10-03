@@ -1,0 +1,12 @@
+{
+  "name": "prism",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "npm run dev -w @prism/web",
+    "build": "npm run build -w @prism/web",
+    "test": "npm run test -w @prism/core",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}

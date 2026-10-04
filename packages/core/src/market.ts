@@ -93,12 +93,15 @@ export interface HistoryContext {
   clock: (bn: bigint) => number;
 }
 
-/** One shared block window (24h + 25% lookback) and block→time clock for all pools. */
-export async function historyContext(client: PublicClient, windowSec = 86400): Promise<HistoryContext> {
+/** Scan window for live history: 48h, enough for 24h moves plus recent drops. */
+export const HISTORY_LOOKBACK_SEC = 2 * 86400;
+
+/** One shared block window (`lookbackSec` back from the head) and block→time clock for all pools. */
+export async function historyContext(client: PublicClient, lookbackSec = HISTORY_LOOKBACK_SEC): Promise<HistoryContext> {
   const head = await client.getBlock();
   const probe = await client.getBlock({ blockNumber: head.number - 50_000n });
   const spb = Number(head.timestamp - probe.timestamp) / 50_000 || 0.25;
-  const span = BigInt(Math.ceil((windowSec * 1.25) / spb));
+  const span = BigInt(Math.ceil(lookbackSec / spb));
   const from = head.number > span ? head.number - span : 0n;
   const clock = await blockClock(client, from, head.number);
   return { from, to: head.number, nowSec: Number(head.timestamp), clock };
@@ -175,6 +178,36 @@ export const USD_REFERENCE_ID = 'USDG';
 const isWeth = (t: TestnetToken) => t.kind === 'crypto' && t.symbol === 'WETH';
 
 /**
+ * Real price history behind a snapshot: ETH-per-token swap series per pooled token,
+ * the ETH/USD series (from the ETH/USDG pool), and the block→time clock.
+ */
+export interface MarketHistory {
+  fromBlock: bigint;
+  toBlock: bigint;
+  nowSec: number;
+  clock: (bn: bigint) => number;
+  /** ETH per token, step series from swaps (pooled tokens only). */
+  eth: Map<string, PricePoint[]>;
+  /** USD per ETH, step series. */
+  ethUsd: PricePoint[];
+}
+
+/** A token's USD price history (token/ETH × ETH/USD; WETH = ETH/USD). Empty when unknown. */
+export function usdHistory(history: MarketHistory, token: TestnetToken): PricePoint[] {
+  if (token.id === USD_REFERENCE_ID) return [];
+  if (isWeth(token)) return history.ethUsd;
+  const eth = history.eth.get(token.id);
+  if (!eth || eth.length === 0) return [];
+  return multiplySeries(eth, history.ethUsd);
+}
+
+export interface MarketView {
+  markets: Map<string, TokenMarket>;
+  /** null when history was skipped or could not be read. */
+  history: MarketHistory | null;
+}
+
+/**
  * Market snapshot, fully on-chain:
  * - token price in ETH = its ETH-paired V4 pool spot
  * - ETH in USD = 1 / (ETH per USDG) from the ETH/USDG pool
@@ -184,18 +217,18 @@ const isWeth = (t: TestnetToken) => t.kind === 'crypto' && t.symbol === 'WETH';
  *
  * `history: false` skips the swap logs (the slow part): prices only, 24h fields null.
  */
-export async function marketSnapshot(
+export async function readMarket(
   client: PublicClient,
   tokens: readonly TestnetToken[],
-  { history = true }: { history?: boolean } = {},
-): Promise<Map<string, TokenMarket>> {
+  { history = true, lookbackSec = HISTORY_LOOKBACK_SEC }: { history?: boolean; lookbackSec?: number } = {},
+): Promise<MarketView> {
   const usdRef = tokenById(USD_REFERENCE_ID)!;
   const pooled = [...new Map([...tokens, usdRef].filter((t) => t.pool).map((t) => [t.id, t])).values()];
 
   const [spots, histories] = await Promise.all([
     Promise.all(pooled.map((t) => readPoolSpot(client, t).catch(() => null))),
     history
-      ? historyContext(client)
+      ? historyContext(client, lookbackSec)
           .then((ctx) => readSwapHistories(client, pooled, ctx).then((h) => ({ ctx, h })))
           .catch(() => null)
       : null,
@@ -254,5 +287,55 @@ export async function marketSnapshot(
     }
     out.set(t.id, { id: t.id, usd, eth, priceSource, change24h, volatility, historySource, swaps24h });
   }
-  return out;
+  const marketHistory: MarketHistory | null =
+    histories && usdPerEth
+      ? {
+          fromBlock: histories.ctx.from,
+          toBlock: histories.ctx.to,
+          nowSec,
+          clock: histories.ctx.clock,
+          eth: new Map(pooled.filter((t) => t.id !== usdRef.id).map((t) => [t.id, histories.h.get(t.id) ?? []])),
+          ethUsd: ethUsdSeries,
+        }
+      : null;
+  return { markets: out, history: marketHistory };
+}
+
+/** Market snapshot without the history (see readMarket). */
+export async function marketSnapshot(
+  client: PublicClient,
+  tokens: readonly TestnetToken[],
+  options: { history?: boolean; lookbackSec?: number } = {},
+): Promise<Map<string, TokenMarket>> {
+  return (await readMarket(client, tokens, options)).markets;
+}
+
+/**
+ * Older history for the same pools: swap series between `fromBlock` and the start of
+ * `history`, merged in front of it (for crystals forged before the scanned window).
+ */
+export async function extendHistory(
+  client: PublicClient,
+  history: MarketHistory,
+  tokens: readonly TestnetToken[],
+  fromBlock: bigint,
+): Promise<MarketHistory> {
+  if (fromBlock >= history.fromBlock) return history;
+  const usdRef = tokenById(USD_REFERENCE_ID)!;
+  const pooled = [...new Map([...tokens, usdRef].filter((t) => t.pool).map((t) => [t.id, t])).values()];
+  const clock = await blockClock(client, fromBlock, history.toBlock, 32);
+  const older = await readSwapHistories(client, pooled, { from: fromBlock, to: history.fromBlock - 1n, nowSec: history.nowSec, clock });
+  const merge = (a: PricePoint[], b: PricePoint[]) => [...a, ...b].sort((x, y) => x.t - y.t);
+  const eth = new Map(history.eth);
+  for (const t of pooled) {
+    if (t.id === usdRef.id) continue;
+    eth.set(t.id, merge(older.get(t.id) ?? [], history.eth.get(t.id) ?? []));
+  }
+  return {
+    ...history,
+    fromBlock,
+    clock,
+    eth,
+    ethUsd: merge(invertSeries(older.get(usdRef.id) ?? []), history.ethUsd),
+  };
 }

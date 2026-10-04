@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { viberAt } from '@prism/core';
-import { ViberCredit, ViberImage } from './Viber';
+import { ViberImage } from './Viber';
 
 const KEY = 'prism.intro.seen.v1';
 
@@ -58,8 +58,7 @@ export function Intro() {
             </div>
           ))}
         </div>
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-          <ViberCredit />
+        <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
           <button className="btn btn-primary" onClick={close} autoFocus>
             Got it — show me
           </button>

@@ -1,28 +1,33 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { explorerAddressUrl, getDeployment } from '@prism/core';
 import { FittedCrystal, type CrystalFocus } from '../components/Crystal';
 import { Logo } from '../components/Nav';
 import { Stage } from '../components/Stage';
-import { DataBadge } from '../components/ui';
-import { ViberCredit, ViberGuide } from '../components/Viber';
+import { LiveBadge } from '../components/ui';
+import { ViberGuide } from '../components/Viber';
 import { WalletButton } from '../wallet/WalletButton';
 import { TARGET_CHAIN } from '../wallet/config';
-import { CORRELATIONS, MY_CRYSTALS, toHoldings } from '../data/mock';
+import { useTestnetTokens } from '../data/chain';
+import { liveBasket } from '../data/crystalHoldings';
 
-const hero = MY_CRYSTALS[0]!;
-const heroHoldings = toHoldings(hero.weights);
+/** The live basket (real 24h moves, jumpiness and drops), or null while it loads. */
+function useLiveBasket() {
+  const live = useTestnetTokens();
+  return useMemo(() => ({ basket: liveBasket(live), failed: live.status === 'error' }), [live]);
+}
 
 /** Breathing room between the crystal and the headline, as a fraction of the canvas height. */
 const HEADLINE_GAP = 0.04;
 
 function Hero({ textTop }: { textTop: number }) {
+  const { basket } = useLiveBasket();
+  if (!basket) return null;
   // camera fitted to the crystal's bounding sphere, inside the space above the headline
   return (
     <FittedCrystal
-      holdings={heroHoldings}
-      history={hero.history}
-      correlation={CORRELATIONS}
+      holdings={basket.holdings}
+      history={basket.history}
       size={1.75}
       spin={0.22}
       top={0.06}
@@ -72,7 +77,7 @@ export default function Home() {
               <WalletButton variant="hero" />
             </div>
             <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
-              <DataBadge live={false} />
+              <HeroStatus />
               <a href="#how" className="label text-[10px] text-mist/80 hover:text-white">
                 How it works ↓
               </a>
@@ -85,10 +90,15 @@ export default function Home() {
         <HowItWorks />
         <ReadYourCrystal />
         <WhatsReal />
-        <ViberCredit className="text-center" />
       </div>
     </div>
   );
+}
+
+function HeroStatus() {
+  const { basket, failed } = useLiveBasket();
+  if (basket) return <LiveBadge>Built from live testnet prices</LiveBadge>;
+  return <span className="label text-[10px] text-mist">{failed ? 'Couldn’t reach the chain right now' : 'Reading live prices from the chain…'}</span>;
 }
 
 // ---------------------------------------------------------------- how it works
@@ -161,15 +171,16 @@ function HowItWorks() {
 // ---------------------------------------------------------------- read your crystal
 
 const LEGEND: Array<{ focus: CrystalFocus; label: string; text: string }> = [
-  { focus: 'size', label: 'Size', text: 'how much of it you hold. NVDA is the biggest part of this crystal.' },
+  { focus: 'size', label: 'Size', text: 'how much of each asset is inside. This live basket holds six in equal parts.' },
   { focus: 'color', label: 'Green / red', text: 'today’s price move. Deeper colour = a bigger move.' },
   { focus: 'spikes', label: 'Spikes', text: 'how jumpy the price is. Calm stocks stay smooth.' },
-  { focus: 'gold', label: 'Gold seams', text: 'a big drop your basket later recovered from.' },
+  { focus: 'gold', label: 'Gold seams', text: 'a drop of 5% or more that the price later climbed back from.' },
   { focus: 'frost', label: 'Frost', text: 'a sealed gift. Nobody can take anything out until the date it opens.' },
 ];
 
 function ReadYourCrystal() {
   const [focus, setFocus] = useState<CrystalFocus | null>(null);
+  const { basket } = useLiveBasket();
   const active = LEGEND.find((l) => l.focus === focus);
   const guide = (
     <ViberGuide index={4} size={64} className="mt-2">
@@ -186,19 +197,20 @@ function ReadYourCrystal() {
       <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
         <div className="relative h-[300px] overflow-hidden rounded-3xl border border-white/10 sm:h-[440px]">
           <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
+            {basket && (
             <FittedCrystal
-              holdings={heroHoldings}
-              history={hero.history}
-              correlation={CORRELATIONS}
+              holdings={basket.holdings}
+              history={basket.history}
               size={1.6}
               spin={0.25}
               top={0.08}
               bottom={0.92}
               focus={focus}
             />
+            )}
           </Stage>
           <span className="absolute left-4 top-4">
-            <DataBadge live={false} />
+            <LiveBadge>{basket ? `Live basket · last ${basket.hours}h` : 'Reading the chain…'}</LiveBadge>
           </span>
         </div>
         {/* phones: short chips right under the crystal, so the lit part stays in view */}

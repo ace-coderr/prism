@@ -8,17 +8,16 @@ import { getDeployment, type CrystalHistory, type Holding, type OwnedViber } fro
 import { Crystal } from '../components/Crystal';
 import { PageHeader, PageScroll } from '../components/PageHeader';
 import { SceneLabel, Stage } from '../components/Stage';
-import { DataBadge, EthPrice, Panel } from '../components/ui';
-import { ViberBillboard, ViberCredit, ViberGuide, useOwnersVibers } from '../components/Viber';
-import { holdingsFromAssets, marketLookup } from '../data/crystalHoldings';
+import { EthPrice, LiveBadge, Panel } from '../components/ui';
+import { ViberBillboard, ViberGuide, useOwnersVibers } from '../components/Viber';
+import { holdingsFromAssets, marketLookup, realCrystalHistory } from '../data/crystalHoldings';
 import { useTestnetTokens } from '../data/chain';
-import { useAllCrystals, type PublicCrystal } from '../data/crystals';
-import { CORRELATIONS, EXAMPLES, toHoldings } from '../data/mock';
+import { earliestForge, useAllCrystals, type PublicCrystal } from '../data/crystals';
 import { TARGET_CHAIN } from '../wallet/config';
 import { shortAddress } from '../wallet/WalletButton';
 
-/** Below this many real crystals, an "Examples" row (sample data) is shown too. */
-const MIN_REAL = 6;
+/** Below this many crystals, a viber invites people to forge one. */
+const FEW = 6;
 const SPACING = 3.3;
 const ROW_SPACING = 3.2;
 /** Up to this many crystals stand in a grid; more stand in a ring you can orbit. */
@@ -121,7 +120,6 @@ function CrystalScene({ items, interactive }: { items: SceneItem[]; interactive:
             <Crystal
               holdings={it.holdings}
               history={it.history}
-              correlation={CORRELATIONS}
               sealed={it.sealed}
               position={it.companion ? [p[0] - 0.5, p[1], p[2]] : p}
               size={1.05}
@@ -173,32 +171,33 @@ function RealCrystalCard({ c, totalEth }: { c: PublicCrystal; totalEth: number }
 export default function Gallery() {
   const deployment = getDeployment(TARGET_CHAIN.id);
   const all = useAllCrystals();
-  const live = useTestnetTokens();
-  const marketOf = marketLookup(live.status === 'live' ? live.tokens : undefined);
-  const real = all.data ?? [];
+  // price history must reach back to the oldest crystal's forge block
+  const live = useTestnetTokens(earliestForge(all.data));
+  const marketOf = useMemo(() => marketLookup(live.status === 'live' ? live.tokens : undefined), [live]);
+  const real = useMemo(() => all.data ?? [], [all.data]);
   const vibers = useOwnersVibers(real.map((c) => c.owner));
+  // stable per crystal, so each 3D crystal is only rebuilt when its data changes
+  const shapes = useMemo(
+    () =>
+      new Map(
+        real.map((c) => [c.id, { holdings: holdingsFromAssets(c.assets, marketOf).holdings, history: realCrystalHistory(live, c, marketOf) }]),
+      ),
+    [real, live, marketOf],
+  );
 
   const realItems: SceneItem[] = real.map((c) => ({
     key: `r${c.id}`,
-    holdings: holdingsFromAssets(c.assets, marketOf).holdings,
+    holdings: shapes.get(c.id)!.holdings,
+    history: shapes.get(c.id)!.history,
     label: `#${c.id}`,
     sublabel: shortAddress(c.owner),
     sealed: c.sealedUntil * 1000 > Date.now(),
     companion: vibers.get(c.owner.toLowerCase()) ?? null,
   }));
-  const exampleItems: SceneItem[] = EXAMPLES.map((e) => ({
-    key: e.id,
-    holdings: toHoldings(e.weights),
-    history: e.history,
-    label: e.name,
-    sublabel: 'sample',
-  }));
-  const showExamples = !all.isLoading && real.length < MIN_REAL;
-
   return (
     <PageScroll className="max-w-7xl gap-8">
       <PageHeader title="Gallery" subtitle="Every crystal forged on PRISM — who owns it and what is inside. Drag to look around.">
-        <DataBadge live={!!deployment && all.isSuccess} />
+        {!!deployment && all.isSuccess && <LiveBadge />}
       </PageHeader>
 
       {/* ------------------------------------------------------------ real crystals */}
@@ -210,11 +209,11 @@ export default function Gallery() {
           </p>
         </div>
         {all.isError && <p className="text-sm text-down">Couldn’t read crystals from the chain right now. Try again in a moment.</p>}
-        {all.isSuccess && real.length === 0 && (
+        {all.isSuccess && real.length < FEW && (
           <Panel className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
-            <ViberGuide index={8}>No crystals have been forged yet. Yours could be the first one here.</ViberGuide>
+            <ViberGuide index={8}>Be one of the first. Forge a crystal.</ViberGuide>
             <Link to="/forge" className="btn btn-primary">
-              Forge the first one
+              Forge a crystal
             </Link>
           </Panel>
         )}
@@ -234,26 +233,6 @@ export default function Gallery() {
         )}
       </section>
 
-      {/* ------------------------------------------------------------ examples (sample) */}
-      {showExamples && (
-        <section className="space-y-4 border-t border-white/10 pt-8">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-3">
-                <h2 className="headline text-2xl">Examples</h2>
-                <DataBadge live={false} />
-              </div>
-              <p className="mt-1 text-sm text-mist">Made-up crystals that show what PRISM crystals can look like. Not real, not owned by anyone.</p>
-            </div>
-          </div>
-          <div className="relative h-[360px] overflow-hidden rounded-3xl border border-white/10 sm:h-[420px]">
-            <Stage className="!absolute inset-0" camera={{ position: [0, 3, 12], fov: 45 }}>
-              <CrystalScene items={exampleItems} interactive />
-            </Stage>
-          </div>
-        </section>
-      )}
-      <ViberCredit />
     </PageScroll>
   );
 }

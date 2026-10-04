@@ -63,8 +63,9 @@ npm run build && npm run serve:dist -w @prism/web   # http://localhost:4173
 vibe/vibe's "vibe vibers" characters appear in PRISM **with permission** from the vibe/vibe
 team (Telegram, 2026-10-04). Only official images are used, shown as-is, loaded from vibe/vibe's
 own site (`https://testnet.vibevibe.fun/vibers/collection/<file>-480.webp`, the collection listed
-on https://testnet.vibevibe.fun/vibe-vibers). Nothing is redrawn, recoloured, cropped or generated,
-and every place they appear carries: *vibe vibers © vibe/vibe, featured with permission.*
+on https://testnet.vibevibe.fun/vibe-vibers). Nothing is redrawn, recoloured, cropped or generated.
+
+vibe vibers images are © vibe/vibe and featured with the team's permission (Telegram, 2026-10-04).
 
 Holders' own vibers: `packages/core/src/vibers.ts` reads the wallet's viber (read-only) from the
 official NFT once `VIBERS_NFT` is set. As of 2026-10-04 no vibers NFT contract is published (none
@@ -87,7 +88,16 @@ upcoming), so that slot is empty and no address is guessed.
 - The vibe/vibe API blocks third-party origins, so PRISM does not call it. Ask vibe/vibe to
   allowlist PRISM's domain before using it.
 - Robinhood's official Stock Tokens are deployed on **mainnet (4663) only** for now.
-- **Sample tokens**, My Crystals, Gallery and Agent use mock data and say so with a
-  "Sample data" badge.
+- **No mock data anywhere.** The Home crystal is a live equal-weight basket (AAPL, NVDA, SPCX,
+  ANTHROPIC, OPENAI, WETH): colours from real 24h moves, spikes from real price swings, and
+  cracks / gold seams from real drops in the pools' swap history (last 48h). Gallery, My
+  Crystals and Agent show only real crystals; each real crystal's cracks and seams come from
+  its holdings' price history since its own forge block (the `Forged` event). The Agent
+  compares weights at forge-time prices with weights at live prices. A test
+  (`apps/web/test/no-mock-imports.test.ts`) fails if app code imports a mock/sample module.
+- **Cracks and gold seams:** a drop of 5% or more (peak to trough) cracks the crystal; once
+  the price climbs back to that peak, the crack is filled with gold. Testnet history is days,
+  not years, so this threshold is lower than the 15% long-run default in `buildCrystal`.
+  Without an indexer, history older than ~14 days isn't scanned.
 
 Testnet only, no real funds.

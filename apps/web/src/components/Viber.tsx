@@ -4,9 +4,7 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import * as THREE from 'three';
 import { createPublicClient, http, type Address, type PublicClient } from 'viem';
 import {
-  VIBERS_CREDIT,
   VIBERS_NFT,
-  VIBERS_PAGE,
   readOwnedViber,
   robinhoodChainMainnet,
   viberAt,
@@ -19,9 +17,9 @@ import { SceneLabel } from './Stage';
 import { glowTexture } from './textures';
 
 /*
- * vibe vibers are featured with vibe/vibe's permission: official images only, shown
- * as-is, always with the credit line. Their server sends CORP same-origin, so every
- * image is requested in CORS mode (crossOrigin="anonymous"), which it allows.
+ * vibe vibers are featured with vibe/vibe's permission (credit in README.md): official
+ * images only, shown as-is. Their server sends CORP same-origin, so every image is
+ * requested in CORS mode (crossOrigin="anonymous"), which it allows.
  */
 
 /** An official viber image, displayed as-is. */
@@ -42,17 +40,6 @@ export function ViberImage({ viber, size = 96, className = '' }: { viber: Offici
       style={{ width: size, height: size }}
       draggable={false}
     />
-  );
-}
-
-/** "vibe vibers © vibe/vibe, featured with permission." — shown wherever vibers appear. */
-export function ViberCredit({ className = '' }: { className?: string }) {
-  return (
-    <p className={`font-mono text-[10px] tracking-wide text-mist/60 ${className}`}>
-      <a href={VIBERS_PAGE} target="_blank" rel="noreferrer" className="hover:text-mist">
-        {VIBERS_CREDIT}
-      </a>
-    </p>
   );
 }
 

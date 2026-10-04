@@ -55,6 +55,8 @@ export interface BuildCrystalOptions {
   maxShards?: number;
   /** Crystal radius in voxels. Higher = finer and more cubes. Default 8. */
   resolution?: number;
+  /** Drops at least this deep (percent) crack the crystal. Default CRACK_THRESHOLD. */
+  crackThreshold?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -459,7 +461,9 @@ export function buildCrystal(
   // 5. Living crystal: deep drawdowns crack the surface along meandering paths; recovered
   //    ones are traced in gold (kintsugi), open ones are cut away as dark grooves.
   const cracks: Crack[] = (history?.drawdowns ?? [])
-    .filter((d) => Math.abs(d.depth) > CRACK_THRESHOLD)
+    .filter((d) =>
+      options.crackThreshold === undefined ? Math.abs(d.depth) > CRACK_THRESHOLD : Math.abs(d.depth) >= options.crackThreshold,
+    )
     .map((d, k) => {
       const crack = crackAlongSurface(d, k, clusters, shape, cells);
       for (const c of crack.cells) {

@@ -4,6 +4,7 @@ import { Float } from '@react-three/drei';
 import * as THREE from 'three';
 import {
   type OwnedViber,
+  LIVE_CRACK_THRESHOLD,
   buildCrystal,
   exposedVoxels,
   type CorrelationInput,
@@ -86,7 +87,12 @@ export function Crystal({
   onPointerOut,
 }: CrystalProps) {
   const { voxels, radius, biggest } = useMemo(() => {
-    const geo = buildCrystal(holdings, history, { correlation, maxShards: 48, resolution: isCoarse ? 7 : 8 });
+    const geo = buildCrystal(holdings, history, {
+      correlation,
+      maxShards: 48,
+      resolution: isCoarse ? 7 : 8,
+      crackThreshold: LIVE_CRACK_THRESHOLD,
+    });
     const biggest = geo.clusters.reduce((b, c, i) => (c.weight > (geo.clusters[b]?.weight ?? -1) ? i : b), 0);
     // interior cubes are never visible — skip them
     return { voxels: exposedVoxels(geo.voxels), radius: geo.radius, biggest };

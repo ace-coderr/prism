@@ -16,8 +16,8 @@ import {
 import { FittedCrystal } from '../components/Crystal';
 import { PageHeader, PageScroll } from '../components/PageHeader';
 import { Stage } from '../components/Stage';
-import { Change, DataBadge, EthPrice, Panel } from '../components/ui';
-import { ViberCredit, ViberGuide } from '../components/Viber';
+import { Change, EthPrice, LiveBadge, Panel } from '../components/ui';
+import { ViberGuide } from '../components/Viber';
 import { DEFAULT_VOLATILITY } from '../data/crystalHoldings';
 import { useTestnetTokens, type LiveToken } from '../data/chain';
 import { TARGET_CHAIN } from '../wallet/config';
@@ -26,7 +26,20 @@ import { StepList, useTxSteps } from '../wallet/steps';
 import { SwitchNetworkButton, WalletButton, useWallet } from '../wallet/WalletButton';
 
 const MAX_ASSETS = 8;
+
+/** Token groups on the Pick step, in this order. */
+const GROUPS: Array<{ label: string; ids: string[] }> = [
+  { label: 'Stocks', ids: ['AAPL', 'NVDA', 'SPCX'] },
+  { label: 'Pre-IPO', ids: ['ANTHROPIC', 'OPENAI'] },
+  { label: 'Crypto', ids: ['WETH'] },
+];
 const STEPS = ['Pick', 'Amounts', 'Review'] as const;
+
+/** Every basket token in Pick-step order (grouped first, anything else after). */
+const ORDERED = [
+  ...GROUPS.flatMap((g) => g.ids.map((id) => BASKET_TOKENS.find((t) => t.id === id)).filter((t): t is TestnetToken => !!t)),
+  ...BASKET_TOKENS.filter((t) => !GROUPS.some((g) => g.ids.includes(t.id))),
+];
 
 /** Card subtitle: the token's on-chain name, spelled out where that name is just the symbol. */
 const describe = (t: TestnetToken) => (t.id === 'WETH' ? 'Wrapped ETH (testnet, no value)' : t.name);
@@ -69,7 +82,7 @@ export default function Forge() {
   const balancesKnown = isConnected && reads.isSuccess;
   const ownsAnyStock = balancesKnown && BASKET_TOKENS.some((t) => t.kind !== 'crypto' && (balanceOf(t) ?? 0n) > 0n);
 
-  const picked = BASKET_TOKENS.filter((t) => picks.includes(t.id));
+  const picked = ORDERED.filter((t) => picks.includes(t.id));
   const rows = picked.map((t) => {
     const raw = amounts[t.id] ?? '';
     const amount = raw === '' ? 0n : parseTokenAmount(raw, t.decimals);
@@ -152,7 +165,7 @@ export default function Forge() {
   return (
     <PageScroll className="max-w-7xl gap-5">
       <PageHeader title="Forge a crystal" subtitle="Put test stocks and ETH into one crystal that lives in your wallet. Three steps, about a minute.">
-        <DataBadge live={live.status === 'live'} />
+        {live.status === 'live' && <LiveBadge />}
       </PageHeader>
 
       {/* progress */}
@@ -207,8 +220,14 @@ export default function Forge() {
                   </div>
                 </Panel>
               )}
-              <div className="grid gap-3 sm:grid-cols-2">
-                {BASKET_TOKENS.map((t) => {
+              {GROUPS.map((g) => {
+                const tokens = g.ids.map((id) => BASKET_TOKENS.find((t) => t.id === id)).filter((t): t is TestnetToken => !!t);
+                if (tokens.length === 0) return null;
+                return (
+                  <section key={g.label} className="space-y-2">
+                    <h3 className="label text-mist">{g.label}</h3>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {tokens.map((t) => {
                   const m = marketById.get(t.id)?.market;
                   const on = picks.includes(t.id);
                   const bal = balanceOf(t);
@@ -245,7 +264,10 @@ export default function Forge() {
                     </button>
                   );
                 })}
-              </div>
+                    </div>
+                  </section>
+                );
+              })}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-xs text-mist">{picks.length === 0 ? 'Nothing picked yet — you can also go on with ETH only.' : `${picks.length} picked.`}</p>
                 <button className="btn btn-primary" onClick={() => setStep(1)}>
@@ -413,7 +435,6 @@ export default function Forge() {
           </div>
         </div>
       </div>
-      <ViberCredit />
     </PageScroll>
   );
 }

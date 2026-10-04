@@ -1,99 +1,153 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import type { Holding } from '@prism/core';
 import { Crystal } from '../components/Crystal';
 import { PageHeader, PageScroll } from '../components/PageHeader';
 import { Stage, useRowLayout } from '../components/Stage';
-import { DataBadge, Panel } from '../components/ui';
-import { ViberCredit, ViberGuide } from '../components/Viber';
-import { AGENT_PROPOSAL, CORRELATIONS, toHoldings } from '../data/mock';
+import { LiveBadge, Panel } from '../components/ui';
+import { ViberGuide } from '../components/Viber';
+import { analyzeCrystal, type Analysis } from '../data/agent';
+import { useTestnetTokens, type LiveTokens } from '../data/chain';
+import { forgeWeights, holdingsFromAssets, marketLookup } from '../data/crystalHoldings';
+import { earliestForge, useMyCrystals, type OnchainCrystal } from '../data/crystals';
+import { WalletButton, useWallet } from '../wallet/WalletButton';
 
-function BeforeAfter() {
-  const { positions, size } = useRowLayout(2, 1.15);
-  const before = useMemo(() => toHoldings(AGENT_PROPOSAL.before), []);
-  const after = useMemo(() => toHoldings(AGENT_PROPOSAL.after), []);
+export default function Agent() {
+  const { address, isConnected } = useWallet();
+  const crystals = useMyCrystals(address);
+  const live = useTestnetTokens(earliestForge(crystals.data));
+  const list = crystals.data ?? [];
+  const [selectedId, setSelectedId] = useState<bigint | null>(null);
+  const selected = list.find((c) => c.id === selectedId) ?? list[0];
+
+  return (
+    <PageScroll className="max-w-6xl gap-6">
+      <PageHeader title="Agent" subtitle="A read-only look at your real crystals: how each one has drifted since you forged it, and what to do about it.">
+        <span className="rounded-full bg-amber-400/15 px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-amber-300">
+          Rebalancing: soon
+        </span>
+      </PageHeader>
+
+      {!isConnected && (
+        <Panel className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
+          <ViberGuide index={9} size={80}>
+            I watch your crystals and suggest changes, like trimming a stock that grew too big. Connect your wallet and
+            I’ll look at yours. I can never move your tokens on my own.
+          </ViberGuide>
+          <div className="flex flex-wrap gap-2">
+            <WalletButton variant="hero" />
+            <Link to="/forge" className="btn btn-secondary">
+              Forge a crystal
+            </Link>
+          </div>
+        </Panel>
+      )}
+
+      {isConnected && crystals.isLoading && <p className="label text-mist">Reading your crystals from the chain…</p>}
+      {isConnected && crystals.isError && <p className="text-sm text-down">Couldn’t read your crystals right now. Try again in a moment.</p>}
+      {isConnected && crystals.isSuccess && list.length === 0 && (
+        <Panel className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
+          <ViberGuide index={10} size={80}>
+            You don’t have a crystal yet, so there’s nothing for me to look at. Forge one and come back.
+          </ViberGuide>
+          <Link to="/forge" className="btn btn-primary">
+            Forge a crystal
+          </Link>
+        </Panel>
+      )}
+
+      {list.length > 1 && (
+        <div className="flex flex-wrap gap-1.5">
+          {list.map((c) => (
+            <button key={c.id.toString()} onClick={() => setSelectedId(c.id)} className={`chip ${selected?.id === c.id ? 'chip-on' : ''}`}>
+              #{c.id.toString()}
+            </button>
+          ))}
+        </div>
+      )}
+      {selected && <CrystalAnalysis key={selected.id.toString()} crystal={selected} live={live} />}
+    </PageScroll>
+  );
+}
+
+function CrystalAnalysis({ crystal, live }: { crystal: OnchainCrystal; live: LiveTokens }) {
+  const marketOf = useMemo(() => marketLookup(live.status === 'live' ? live.tokens : undefined), [live]);
+  const holdings = useMemo(() => holdingsFromAssets(crystal.assets, marketOf).holdings, [crystal, marketOf]);
+  const analysis = useMemo(() => {
+    if (live.status !== 'live') return null;
+    const now = new Map(holdings.map((h) => [h.symbol, h.weight]));
+    return analyzeCrystal(crystal.id, now, forgeWeights(live, crystal, marketOf));
+  }, [live, holdings, crystal, marketOf]);
+  const after = useMemo(
+    () => (analysis ? holdings.map((h) => ({ ...h, weight: analysis.target.get(h.symbol) ?? 0 })) : holdings),
+    [analysis, holdings],
+  );
+
+  if (!analysis) return <p className="label text-mist">Reading live prices…</p>;
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 className="headline text-2xl">Crystal #{crystal.id.toString()}</h2>
+        <LiveBadge />
+      </div>
+      <ViberGuide index={10} size={72}>
+        {analysis.suggestion}
+      </ViberGuide>
+      <div className="relative h-[42vh] min-h-[300px] overflow-hidden rounded-3xl border border-white/10">
+        <Stage className="!absolute inset-0" camera={{ position: [0, 0, 8], fov: 40 }}>
+          <BeforeAfter before={holdings} after={after} same={!analysis.actionable} />
+        </Stage>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-between p-3 sm:flex-row sm:items-start">
+          <span className="label rounded-full bg-ink/80 px-3 py-1 text-lime">Now</span>
+          {analysis.actionable && <span className="label rounded-full bg-ink/80 px-3 py-1 text-lime">After trimming</span>}
+        </div>
+      </div>
+      <Panel className="grid gap-5 p-5 md:grid-cols-[1fr_auto] md:items-start">
+        <WeightsTable analysis={analysis} crystal={crystal} />
+        <div className="flex flex-col items-start gap-2">
+          <button disabled className="btn btn-primary" title="Rebalancing inside PRISM is coming soon">
+            Approve
+          </button>
+          <p className="label text-[10px] text-mist">Rebalancing: soon</p>
+        </div>
+      </Panel>
+    </section>
+  );
+}
+
+function BeforeAfter({ before, after, same }: { before: Holding[]; after: Holding[]; same: boolean }) {
+  const { positions, size } = useRowLayout(same ? 1 : 2, 1.15);
   return (
     <>
-      <Crystal holdings={before} correlation={CORRELATIONS} position={positions[0]} size={size} spin={0.15} />
-      <Crystal holdings={after} correlation={CORRELATIONS} position={positions[1]} size={size} spin={0.15} />
+      <Crystal holdings={before} position={positions[0]} size={size} spin={0.15} />
+      {!same && <Crystal holdings={after} position={positions[1]} size={size} spin={0.15} />}
     </>
   );
 }
 
-function Weights({ title, w }: { title: string; w: Record<string, number> }) {
+const share = (w: number | undefined) => (w === undefined ? '—' : `${Math.round(w * 100)}%`);
+
+function WeightsTable({ analysis, crystal }: { analysis: Analysis; crystal: OnchainCrystal }) {
   return (
-    <div>
-      <div className="label mb-1.5 text-mist">{title}</div>
-      <div className="flex flex-wrap gap-1.5">
-        {Object.entries(w).map(([s, v]) => (
-          <span key={s} className="chip tabular-nums">
-            {s} {v}%
-          </span>
+    <table className="w-full text-sm">
+      <thead className="label text-left text-mist">
+        <tr>
+          <th className="pb-2 font-normal">Asset</th>
+          <th className="pb-2 text-right font-normal">When forged</th>
+          <th className="pb-2 text-right font-normal">Now</th>
+        </tr>
+      </thead>
+      <tbody>
+        {crystal.assets.map((a) => (
+          <tr key={a.token ?? 'eth'} className="border-t border-line">
+            <td className="py-2 font-medium">{a.symbol}</td>
+            <td className="py-2 text-right font-mono tabular-nums text-mist">{analysis.forged ? share(analysis.forged.get(a.symbol)) : '…'}</td>
+            <td className={`py-2 text-right font-mono tabular-nums ${analysis.grew?.symbol === a.symbol && analysis.actionable ? 'text-lime' : ''}`}>
+              {share(analysis.now.get(a.symbol))}
+            </td>
+          </tr>
         ))}
-      </div>
-    </div>
-  );
-}
-
-export default function Agent() {
-  return (
-    <PageScroll className="max-w-6xl gap-6">
-      <PageHeader title="Agent" subtitle="Coming soon: a helper that suggests changes to your crystal. Nothing happens unless you approve it.">
-        <span className="rounded-full bg-amber-400/15 px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-amber-300">
-          Coming soon
-        </span>
-      </PageHeader>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <ViberGuide index={9} size={88}>
-          vibe/vibe calls us vibers “quant agents”. In PRISM, an agent will watch your crystal and suggest a change — for
-          example, trimming a stock that grew too big.
-        </ViberGuide>
-        <ViberGuide index={10} size={88}>
-          You see the suggestion, the before and the after. If you like it, you approve it in your wallet. If not, nothing
-          happens. The agent can never move your tokens on its own.
-        </ViberGuide>
-      </div>
-
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="headline text-2xl">What a suggestion will look like</h2>
-          <DataBadge live={false} />
-        </div>
-        <div className="relative h-[42vh] min-h-[300px] overflow-hidden rounded-3xl border border-white/10">
-          <Stage className="!absolute inset-0" camera={{ position: [0, 0, 8], fov: 40 }}>
-            <BeforeAfter />
-          </Stage>
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-between p-3 sm:flex-row sm:items-start">
-            <span className="label rounded-full bg-ink/80 px-3 py-1 text-lime">Before</span>
-            <span className="label rounded-full bg-ink/80 px-3 py-1 text-lime">After</span>
-          </div>
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-3xl text-lime/60">
-            <span className="rotate-90 sm:rotate-0">→</span>
-          </div>
-        </div>
-        <Panel className="grid gap-5 p-5 md:grid-cols-[1fr_1fr_auto] md:items-start">
-          <div className="space-y-3">
-            <Weights title="Before" w={AGENT_PROPOSAL.before} />
-            <Weights title="After" w={AGENT_PROPOSAL.after} />
-          </div>
-          <div>
-            <p className="label mb-1.5 text-mist">Why</p>
-            <ul className="space-y-1.5 text-sm text-white/85">
-              {AGENT_PROPOSAL.reasons.map((r) => (
-                <li key={r}>· {r}</li>
-              ))}
-            </ul>
-          </div>
-          <div className="flex gap-2">
-            <button disabled className="btn btn-primary" title="Coming soon">
-              Approve
-            </button>
-            <button disabled className="btn btn-secondary" title="Coming soon">
-              Reject
-            </button>
-          </div>
-        </Panel>
-      </section>
-      <ViberCredit />
-    </PageScroll>
+      </tbody>
+    </table>
   );
 }

@@ -14,12 +14,13 @@ import {
   type OwnedViber,
 } from '@prism/core';
 import { FittedCrystal } from '../components/Crystal';
-import { ViberCredit, ViberGuide, useOwnedViber } from '../components/Viber';
+import { ViberGuide, useOwnedViber } from '../components/Viber';
 import { PageHeader, PageScroll } from '../components/PageHeader';
 import { Stage } from '../components/Stage';
-import { Change, DataBadge, EthPrice, Panel } from '../components/ui';
-import { useTestnetTokens, type LiveToken } from '../data/chain';
-import { useMyCrystals, type OnchainCrystal } from '../data/crystals';
+import { Change, EthPrice, LiveBadge, Panel } from '../components/ui';
+import { useTestnetTokens, type LiveToken, type LiveTokens } from '../data/chain';
+import { realCrystalHistory } from '../data/crystalHoldings';
+import { earliestForge, useMyCrystals, type OnchainCrystal } from '../data/crystals';
 import { TARGET_CHAIN, wagmiConfig } from '../wallet/config';
 import { DepositForm } from '../wallet/DepositForm';
 import { StepList, useTxSteps } from '../wallet/steps';
@@ -38,7 +39,8 @@ export default function OnchainCrystals() {
   const deployment = getDeployment(TARGET_CHAIN.id);
   const crystals = useMyCrystals(address);
   const ownedViber = useOwnedViber(address);
-  const live = useTestnetTokens();
+  // price history must reach back to the oldest crystal's forge block
+  const live = useTestnetTokens(earliestForge(crystals.data));
   const [selectedId, setSelectedId] = useState<bigint | null>(null);
 
   const market = useMemo(() => {
@@ -47,14 +49,14 @@ export default function OnchainCrystals() {
     return m;
   }, [live]);
   const weth = live.status === 'live' ? live.tokens.find((t) => t.id === 'WETH') : undefined;
-  const marketOf = (token: Address | null) => (token ? market.get(token.toLowerCase()) : weth);
+  const marketOf = useMemo(() => (token: Address | null) => (token ? market.get(token.toLowerCase()) : weth), [market, weth]);
 
   const list = crystals.data ?? [];
   const selected = list.find((c) => c.id === selectedId) ?? list[0];
 
   const header = (
     <PageHeader title="My Crystals" subtitle="The crystals in your wallet and what is inside each one. Take things out, add more, or seal one as a gift.">
-      <DataBadge live />
+      <LiveBadge />
       {deployment && (
         <a className="font-mono text-[10px] text-mist hover:text-lime" href={explorerAddressUrl(deployment.prismCrystal)} target="_blank" rel="noreferrer">
           contract {deployment.prismCrystal.slice(0, 6)}…{deployment.prismCrystal.slice(-4)} ↗
@@ -68,8 +70,7 @@ export default function OnchainCrystals() {
       <PageScroll className="max-w-3xl gap-4">
         {header}
         <Panel className="p-6 text-sm text-mist">
-          The PrismCrystal contract isn’t deployed on Robinhood Chain Testnet yet, so there are no real crystals to show.
-          Disconnect your wallet to browse the sample crystals.
+          The PrismCrystal contract isn’t deployed on Robinhood Chain Testnet yet, so there are no crystals to show.
         </Panel>
       </PageScroll>
     );
@@ -105,6 +106,7 @@ export default function OnchainCrystals() {
         <CrystalView
           key={selected.id.toString()}
           viber={ownedViber.data}
+          live={live}
           crystal={selected}
           marketOf={marketOf}
           owner={address!}
@@ -112,20 +114,21 @@ export default function OnchainCrystals() {
           onChanged={() => crystals.refetch()}
         />
       )}
-      <ViberCredit />
     </PageScroll>
   );
 }
 
 function CrystalView(props: {
   viber?: OwnedViber | null;
+  live: LiveTokens;
   crystal: OnchainCrystal;
   marketOf: (token: Address | null) => LiveToken | undefined;
   owner: Address;
   contract: Address;
   onChanged: () => void;
 }) {
-  const { crystal, marketOf, viber } = props;
+  const { crystal, marketOf, viber, live } = props;
+  const history = useMemo(() => realCrystalHistory(live, crystal, marketOf), [live, crystal, marketOf]);
   const sealed = crystal.sealedUntil * 1000 > Date.now();
   const [tab, setTab] = useState<Tab>('withdraw');
 
@@ -151,7 +154,7 @@ function CrystalView(props: {
       <div className="relative h-[46vh] min-h-[300px] overflow-hidden rounded-lg border border-line">
         <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
           {holdings.length > 0 && (
-            <FittedCrystal holdings={holdings} size={1.6} spin={0.2} top={0.14} bottom={0.94} companion={viber} />
+            <FittedCrystal holdings={holdings} history={history} sealed={sealed} size={1.6} spin={0.2} top={0.14} bottom={0.94} companion={viber} />
           )}
         </Stage>
         <div className="pointer-events-none absolute left-4 top-4 space-y-1">
@@ -159,7 +162,6 @@ function CrystalView(props: {
           {totalEth > 0 && <EthPrice eth={totalEth} usd={totalUsd || null} />}
           {sealed && <p className="label text-[#bfe6ff]">❄ Sealed until {fmtDate(crystal.sealedUntil)}</p>}
         </div>
-        {viber && <ViberCredit className="pointer-events-auto absolute bottom-3 right-4" />}
       </div>
 
       <div className="space-y-4">

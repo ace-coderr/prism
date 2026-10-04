@@ -91,13 +91,14 @@ export default function Forge() {
 
   // On-chain mode: real amounts drive the crystal (value-weighted in ETH) instead of sliders.
   const deployment = getDeployment(TARGET_CHAIN.id);
-  const onchain = source === 'testnet' && live.status === 'live' && !!deployment;
+  // the form is usable before prices arrive: ETH needs no price, tokens join once loaded
+  const onchain = source === 'testnet' && live.status !== 'error' && !!deployment;
   const [amountValues, setAmountValues] = useState<{ values: Array<number | null>; eth: number }>({ values: [], eth: 0 });
-  const hasAmounts = onchain && (amountValues.values.some((v) => v !== null) || amountValues.eth > 0);
+  const hasAmounts = onchain && (amountValues.values.some((v) => v === null || v > 0) || amountValues.eth > 0);
   const effWeights = useMemo(() => {
     if (!hasAmounts) return weights;
-    const vals = picks.map((_, i) => amountValues.values[i] ?? null);
-    return normalizeTo100(valueWeights([...vals, amountValues.eth > 0 ? amountValues.eth : null]).map((w) => w * 100));
+    const vals = picks.map((_, i) => (i < amountValues.values.length ? (amountValues.values[i] as number | null) : 0));
+    return normalizeTo100(valueWeights([...vals, amountValues.eth]).map((w) => w * 100));
   }, [hasAmounts, weights, picks, amountValues]);
   const wethOption = bySymbol['WETH'];
   const pickedLiveTokens = useMemo(
@@ -252,8 +253,10 @@ export default function Forge() {
           {onchain && deployment ? (
             <>
               <p className="label mb-3 text-mist">Amounts (token units) · weights follow value in ETH</p>
+              {live.status === 'loading' && (
+                <p className="mb-3 text-xs text-mist">Loading token prices… you can already forge with ETH only.</p>
+              )}
               <DepositForm
-                key={picks.join(',')}
                 crystal={deployment.prismCrystal}
                 tokens={pickedLiveTokens}
                 target={{ kind: 'forge' }}
@@ -267,8 +270,14 @@ export default function Forge() {
                 <span className="label text-mist">Total</span>
                 <span className={`font-mono font-bold tabular-nums ${total === 100 ? 'text-up' : 'text-down'}`}>{total}%</span>
               </div>
-              <button disabled title={source === 'sample' ? 'Sample tokens can’t be forged' : 'Waiting for the PrismCrystal contract to be deployed'} className="btn btn-primary w-full">
-                {source === 'sample' ? 'Sample tokens · preview only' : 'Forge on-chain · contract not deployed yet'}
+              <button disabled title={source === 'sample' ? 'Sample tokens can’t be forged' : 'Waiting for live testnet data'} className="btn btn-primary w-full">
+                {source === 'sample'
+                  ? 'Sample tokens · preview only'
+                  : !deployment
+                    ? 'Forge on-chain · contract not deployed yet'
+                    : live.status === 'error'
+                      ? 'Forge on-chain · can’t reach the testnet RPC'
+                      : 'Forge on-chain · reading chain…'}
               </button>
             </>
           )}

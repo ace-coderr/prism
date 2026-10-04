@@ -133,11 +133,23 @@ describe('valueWeights', () => {
     expect(w[1]).toBeCloseTo(1 / 3, 12);
     expect(valueWeights([null, null])).toEqual([0.5, 0.5]);
   });
+
+  it('treats a zero value as "none", not as unpriced (ETH-only forge preview)', () => {
+    // three tokens picked but left empty, 0.5 ETH entered → ETH is the whole crystal
+    expect(valueWeights([0, 0, 0, 0.5])).toEqual([0, 0, 0, 1]);
+    // an unpriced holding next to a priced one still gets the average priced share
+    expect(valueWeights([0, null, 2])).toEqual([0, 0.5, 0.5]);
+    expect(valueWeights([0, 0])).toEqual([0.5, 0.5]);
+  });
 });
 
 describe('deployments + exported contract', () => {
-  it('has no deployment until the owner deploys from their wallet', () => {
-    expect(getDeployment(46630)).toBe(DEPLOYMENTS[46630] ?? null);
+  it('records the testnet deployment (and nothing for other chains)', () => {
+    const d = getDeployment(46630)!;
+    expect(d).toBe(DEPLOYMENTS[46630]);
+    expect(d.prismCrystal).toBe('0x59ce49dE3782FA87E94850b23FEB1457009f9f40');
+    expect(d.fromBlock).toBe(128575215n);
+    expect(d.txHash).toMatch(/^0x[0-9a-f]{64}$/);
     expect(getDeployment(1)).toBeNull();
   });
 

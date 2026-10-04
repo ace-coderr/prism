@@ -160,17 +160,22 @@ export function blockRanges(from: bigint, to: bigint, size: bigint): Array<[bigi
 // ------------------------------------------------------------------ crystal weights
 
 /**
- * Weights (0..1) of a crystal's holdings by value in ETH. Assets without a price
- * get an equal share of whatever weight is unpriced (never a guessed price).
+ * Weights (0..1) of a crystal's holdings by value in ETH. A value of 0 means "none"
+ * (weight 0). Assets with an unknown price (null / NaN) get the average priced share
+ * rather than a guessed price.
  */
 export function valueWeights(values: Array<number | null>): number[] {
-  const priced = values.map((v) => (v !== null && Number.isFinite(v) && v > 0 ? v : null));
-  const total = priced.reduce<number>((s, v) => s + (v ?? 0), 0);
-  const unpriced = priced.filter((v) => v === null).length;
-  if (total === 0) return values.map(() => (values.length ? 1 / values.length : 0));
-  // unpriced assets each get the average priced share, then everything is normalized
-  const avg = total / (priced.length - unpriced || 1);
-  const raw = priced.map((v) => v ?? avg);
+  const known = values.map((v) => (v !== null && Number.isFinite(v) ? Math.max(0, v) : null));
+  const priced = known.filter((v): v is number => v !== null);
+  const total = priced.reduce((s, v) => s + v, 0);
+  const unpriced = known.length - priced.length;
+  if (total === 0) {
+    // nothing priced has value: split evenly across the unpriced ones (or everything)
+    return unpriced > 0 ? known.map((v) => (v === null ? 1 / unpriced : 0)) : values.map(() => (values.length ? 1 / values.length : 0));
+  }
+  const pricedNonZero = priced.filter((v) => v > 0).length;
+  const avg = total / pricedNonZero;
+  const raw = known.map((v) => (v === null ? avg : v));
   const sum = raw.reduce((s, v) => s + v, 0);
   return raw.map((v) => v / sum);
 }

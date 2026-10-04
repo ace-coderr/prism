@@ -1,4 +1,6 @@
 import { NavLink } from 'react-router-dom';
+import { explorerAddressUrl, getDeployment } from '@prism/core';
+import { TARGET_CHAIN } from '../wallet/config';
 import { WalletButton } from '../wallet/WalletButton';
 
 const LINKS = [
@@ -70,9 +72,19 @@ export function Nav() {
 }
 
 export function Footer() {
+  const d = getDeployment(TARGET_CHAIN.id);
   return (
     <footer className="label z-20 border-t border-line bg-ink px-4 py-2.5 text-center text-[10px] text-mist">
       Built for vibe/vibe on Robinhood Chain Testnet · Testnet only, no real funds.
+      {d && (
+        <>
+          {' '}
+          · Contract{' '}
+          <a className="text-lime/80 hover:text-lime" href={`${explorerAddressUrl(d.prismCrystal)}#code`} target="_blank" rel="noreferrer">
+            {d.prismCrystal.slice(0, 6)}…{d.prismCrystal.slice(-4)} ↗
+          </a>
+        </>
+      )}
     </footer>
   );
 }

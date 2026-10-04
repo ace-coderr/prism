@@ -57,9 +57,11 @@ export function DepositForm(props: {
   const valuesKey = rows.map((r) => `${r.t.id}:${r.amount}`).join('|') + `|${ethWei}`;
   useEffect(() => {
     onValues?.(
+      // 0 = no amount entered; null = amount entered but no price for it
       rows.map((r) => {
+        if (!r.amount || r.amount <= 0n) return 0;
         const p = ethPrice?.(r.t) ?? null;
-        return r.amount && r.amount > 0n && p !== null ? Number(formatUnits(r.amount, r.t.decimals)) * p : null;
+        return p !== null ? Number(formatUnits(r.amount, r.t.decimals)) * p : null;
       }),
       ethWei > 0n ? Number(formatUnits(ethWei, 18)) : 0,
     );

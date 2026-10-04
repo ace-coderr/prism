@@ -28,6 +28,15 @@ npm run dev              # http://localhost:5173
 npm run test:contracts   # Hardhat tests for the PrismCrystal contract
 ```
 
+## Deployed contract
+
+**PrismCrystal on Robinhood Chain Testnet (46630):**
+[`0x59ce49dE3782FA87E94850b23FEB1457009f9f40`](https://explorer.testnet.chain.robinhood.com/address/0x59ce49dE3782FA87E94850b23FEB1457009f9f40#code)
+— source verified on Blockscout; deployed at block 128575215 in tx
+[`0xd2a73a56…`](https://explorer.testnet.chain.robinhood.com/tx/0xd2a73a5619ff9e3ac90ecb3ed9e02963af34ec360b41614a4b0fe0f480c86b57).
+`npx tsx packages/core/scripts/check-deployment.ts` re-checks that the on-chain code matches
+this repo's compiled contract byte for byte.
+
 ## Wallet + contract
 
 - Injected wallets (MetaMask, Rabby, …) via wagmi. PRISM never asks for or stores keys.

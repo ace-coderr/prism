@@ -1,0 +1,3 @@
+# PrismCrystal.sol was compiled, deployed and verified with CRLF line endings. Solidity
+# metadata hashes the exact source bytes, so pin them for byte-identical rebuilds on any OS.
+contracts/contracts/PrismCrystal.sol text eol=crlf

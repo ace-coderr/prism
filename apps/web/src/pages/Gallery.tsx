@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Html, OrbitControls } from '@react-three/drei';
 import { Crystal } from '../components/Crystal';
 import { Stage } from '../components/Stage';
-import { DataBadge, usd } from '../components/ui';
+import { DataBadge, formatEth } from '../components/ui';
 import { CORRELATIONS, GALLERY, toHoldings } from '../data/mock';
 
 // two staggered rings so every crystal is visible from the default angle
@@ -42,7 +42,7 @@ function Field() {
                 <div className="pointer-events-none whitespace-nowrap rounded border border-lime/40 bg-ink/95 px-3 py-1.5 text-center text-xs">
                   <div className="headline text-base text-white">{c.name}</div>
                   <div className="font-mono text-[10px] text-mist">
-                    {Object.keys(c.weights).join(' · ')} · {usd(c.value)}
+                    {Object.keys(c.weights).join(' · ')} · {formatEth(c.valueEth)}
                   </div>
                 </div>
               </Html>

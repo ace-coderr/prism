@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { evenWeights, normalizeTo100, rebalance, totalOf, type Holding } from '@prism/core';
 import { Crystal } from '../components/Crystal';
 import { Stage } from '../components/Stage';
-import { Change, DataBadge, Panel } from '../components/ui';
+import { Change, DataBadge, EthPrice, Panel } from '../components/ui';
 import { explorerAddress, useTestnetTokens } from '../data/chain';
 import { CORRELATIONS, TOKENS } from '../data/mock';
 
@@ -17,7 +17,7 @@ interface Option {
   change24h: number;
   volatility: number;
   price: number | null;
-  /** ETH per token, used when there is no USD rate */
+  /** ETH per token — the main displayed price */
   eth?: number | null;
   live: boolean;
   address?: string;
@@ -115,7 +115,7 @@ export default function Forge() {
         </div>
         {source === 'testnet' && (
           <p className="pointer-events-none absolute bottom-3 left-4 right-4 font-mono text-[10px] leading-relaxed text-mist/80">
-            Green/red = real 24h USD move from on-chain Uniswap V4 swaps (USD via the ETH/USDG pool). Spikes = realized volatility. Grey = no history.
+            Prices in ETH from on-chain Uniswap V4 pools. Green/red = real 24h move from on-chain swaps. Spikes = realized volatility. Grey = no history.
           </p>
         )}
       </div>
@@ -167,10 +167,8 @@ export default function Forge() {
                   <span className="flex shrink-0 items-baseline gap-3">
                     {t.live ? (
                       <>
-                        {t.price !== null ? (
-                          <span className="font-mono text-xs">${t.price.toFixed(2)}</span>
-                        ) : t.eth ? (
-                          <span className="font-mono text-xs">Ξ{t.eth.toPrecision(4)}</span>
+                        {t.eth ? (
+                          <EthPrice eth={t.eth} usd={t.price} />
                         ) : (
                           <span className="label rounded-sm border border-line px-1.5 py-0.5 text-[9px] text-mist">no price feed</span>
                         )}

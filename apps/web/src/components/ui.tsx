@@ -37,5 +37,25 @@ export function DataBadge({ live }: { live: boolean }) {
   );
 }
 
-export const usd = (v: number) =>
-  v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+/** ETH amount, e.g. "0.1187 ETH" / "4.62 ETH". */
+export const formatEth = (v: number) =>
+  `${v >= 100 ? v.toFixed(1) : v >= 1 ? v.toFixed(3) : v.toPrecision(4)} ETH`;
+
+export const TESTNET_USD_NOTE = 'Testnet USD from the ETH/USDG test pool, not a market price.';
+
+/**
+ * ETH-first price: ETH is the main figure. Testnet USD (from the unpegged ETH/USDG
+ * test pool) is only a small grey secondary label with an explanatory tooltip.
+ */
+export function EthPrice({ eth, usd, className = '' }: { eth: number; usd?: number | null; className?: string }) {
+  return (
+    <span className={`inline-flex items-baseline gap-1.5 ${className}`}>
+      <span className="font-mono text-xs text-white">{formatEth(eth)}</span>
+      {usd != null && (
+        <span className="cursor-help font-mono text-[10px] text-mist/60" title={TESTNET_USD_NOTE} aria-label={`about ${usd.toFixed(2)} testnet US dollars. ${TESTNET_USD_NOTE}`}>
+          ≈${usd >= 100 ? usd.toFixed(0) : usd.toFixed(2)} testnet
+        </span>
+      )}
+    </span>
+  );
+}

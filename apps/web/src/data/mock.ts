@@ -50,7 +50,8 @@ export interface MockCrystal {
   owner: string;
   weights: Record<string, number>;
   history?: CrystalHistory;
-  value: number;
+  /** sample basket value, in ETH */
+  valueEth: number;
   forged: string;
 }
 
@@ -66,7 +67,7 @@ export const MY_CRYSTALS: MockCrystal[] = [
         { depth: 18, recovered: true },
       ],
     },
-    value: 12480,
+    valueEth: 4.62,
     forged: '2026-04-12',
   },
   {
@@ -75,7 +76,7 @@ export const MY_CRYSTALS: MockCrystal[] = [
     owner: 'you',
     weights: { TSLA: 40, PLTR: 30, AMD: 30 },
     history: { drawdowns: [{ depth: 27, recovered: false, symbol: 'TSLA' }] },
-    value: 3920,
+    valueEth: 1.45,
     forged: '2026-07-01',
   },
   {
@@ -83,7 +84,7 @@ export const MY_CRYSTALS: MockCrystal[] = [
     name: 'Quiet Giant',
     owner: 'you',
     weights: { MSFT: 30, GOOGL: 25, AMZN: 25, NFLX: 20 },
-    value: 8150,
+    valueEth: 3.02,
     forged: '2026-09-18',
   },
 ];
@@ -117,7 +118,7 @@ export const GALLERY: MockCrystal[] = GALLERY_NAMES.map((name, i) => {
     owner: `collector_${(i * 7 + 3).toString(36)}`,
     weights,
     history: { drawdowns },
-    value: Math.round(1500 + r() * 30000),
+    valueEth: Math.round((0.5 + r() * 11) * 100) / 100,
     forged: '2026-09-01',
   };
 });

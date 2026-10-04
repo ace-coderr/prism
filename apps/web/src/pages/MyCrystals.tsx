@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Crystal } from '../components/Crystal';
 import { Stage, useRowLayout } from '../components/Stage';
-import { Change, DataBadge, Panel, usd } from '../components/ui';
+import { Change, DataBadge, Panel, formatEth } from '../components/ui';
 import { CORRELATIONS, MY_CRYSTALS, TOKEN_BY_SYMBOL, toHoldings, type MockCrystal } from '../data/mock';
 
 function Row({ selected, onSelect }: { selected: number; onSelect: (i: number) => void }) {
@@ -41,7 +41,7 @@ function Details({ crystal }: { crystal: MockCrystal }) {
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="headline text-2xl">{crystal.name}</h2>
         <span className="text-sm text-mist">
-          {usd(crystal.value)} · 24h <Change value={change} />
+          {formatEth(crystal.valueEth)} · 24h <Change value={change} />
         </span>
       </div>
       <p className="mt-1 text-xs text-mist">
@@ -70,7 +70,7 @@ function Details({ crystal }: { crystal: MockCrystal }) {
                 <td className="py-2 text-right">
                   <Change value={t.change24h} />
                 </td>
-                <td className="py-2 text-right font-mono tabular-nums">{usd((crystal.value * w) / 100)}</td>
+                <td className="py-2 text-right font-mono tabular-nums">{formatEth((crystal.valueEth * w) / 100)}</td>
               </tr>
             );
           })}

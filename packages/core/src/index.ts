@@ -1,4 +1,5 @@
 export * from './crystal';
 export * from './weights';
 export * from './chain';
+export * from './tokens';
 export type { Vec3, Quat } from './math';

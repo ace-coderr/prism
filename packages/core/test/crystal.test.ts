@@ -5,6 +5,7 @@ import {
   exposedVoxels,
   groupByCorrelation,
   KINTSUGI_GOLD,
+  NO_DATA_COLOR,
   normalizeHoldings,
   type CrystalGeometry,
   type Holding,
@@ -87,6 +88,10 @@ describe('buildCrystal (voxels)', () => {
     };
     expect(sat(big.color)).toBeGreaterThan(sat(small.color));
     expect(changeColor(-50).intensity).toBe(1);
+  });
+
+  it('renders unknown change (no price feed) as neutral grey, not a guessed color', () => {
+    expect(changeColor(Number.NaN)).toEqual({ color: NO_DATA_COLOR, intensity: 0 });
   });
 
   it('volatility makes taller, spikier columns', () => {

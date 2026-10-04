@@ -15,10 +15,4 @@ export const robinhoodChainTestnet = {
   testnet: true,
 } as const;
 
-/**
- * Stock token contract addresses, keyed by ticker.
- *
- * TODO(step 2): fill from the official list at https://docs.robinhood.com/chain/contracts
- * Do not guess addresses — leave entries out until verified against the docs.
- */
-export const STOCK_TOKEN_ADDRESSES: Partial<Record<string, `0x${string}`>> = {};
+// Verified testnet token addresses (with sources) live in ./tokens.ts.

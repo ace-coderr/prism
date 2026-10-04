@@ -1,10 +1,11 @@
 # PRISM
 
 A stock basket you can hold. PRISM turns a basket of tokenized stocks + ETH on
-Robinhood Chain Testnet into a 3D crystal: each holding is a facet cluster sized
-by weight, tinted by its 24h move, and spiked by its volatility. Deep drawdowns
-crack the crystal; recovered ones heal as gold kintsugi seams. Later, each
-crystal becomes an NFT that owns its basket.
+Robinhood Chain Testnet into a 3D voxel crystal: each holding is a cluster of
+cubes sized by weight, tinted by its 24h move, and spiked by its volatility.
+Deep drawdowns crack the crystal; recovered ones are filled with glowing gold
+cubes (kintsugi). Later, each crystal becomes an NFT that owns its basket.
+Built for the vibe/vibe launchpad.
 
 ## Layout
 
@@ -19,8 +20,22 @@ crystal becomes an NFT that owns its basket.
 
 ```bash
 npm install
-npm test        # core unit tests
-npm run dev     # http://localhost:5173
+npm test                 # core unit tests (offline)
+npm run test:rpc         # + live read-only checks against the testnet RPC
+npm run verify:tokens    # re-verify token candidates on chain 46630
+npm run check:liquidity  # probe Uniswap V4 pools for the verified tokens
+npm run dev              # http://localhost:5173
 ```
 
-All market data is mock for now. No wallet or contract code yet.
+## Data: what is real
+
+- **Forge → Testnet tokens** reads `packages/core/src/tokens.ts` live from the
+  Robinhood Chain Testnet RPC (read-only, no wallet, no keys). Every address there cites
+  its source and passed on-chain `name/symbol/decimals/totalSupply` checks.
+- Robinhood's official Stock Tokens are currently deployed on **mainnet (4663) only**, and
+  Chainlink publishes Robinhood feeds for mainnet only, so on testnet every token shows
+  **"no price feed"** and renders in neutral grey. Prices are never invented.
+- **Sample tokens**, My Crystals, Gallery and Agent use mock data and say so with a
+  "Sample data" badge.
+
+Testnet only, no real funds.

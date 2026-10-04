@@ -2,11 +2,17 @@
   "name": "prism",
   "private": true,
   "version": "0.1.0",
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "npm run dev -w @prism/web",
     "build": "npm run build -w @prism/web",
     "test": "npm run test -w @prism/core",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test:rpc": "npm run test:rpc -w @prism/core",
+    "verify:tokens": "npx tsx packages/core/scripts/verify-tokens.ts",
+    "check:liquidity": "npx tsx packages/core/scripts/check-liquidity.ts"
   }
 }

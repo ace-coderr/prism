@@ -23,7 +23,7 @@ export interface Holding {
   symbol: string;
   /** Portfolio weight in [0, 1]. Weights are re-normalized to sum to 1. */
   weight: number;
-  /** 24h price change in percent, e.g. 3.2 or -7.5. */
+  /** 24h price change in percent, e.g. 3.2 or -7.5. NaN = unknown (no price feed). */
   change24h: number;
   /** Volatility in [0, 1]. Drives spikiness. */
   volatility: number;
@@ -136,8 +136,14 @@ export function normalizeHoldings(holdings: Holding[]): Holding[] {
   return valid.map((h) => ({ ...h, weight: h.weight / total }));
 }
 
-/** Flat, saturated green for gains and red for losses; a bigger move is deeper and stronger. */
+export const NO_DATA_COLOR = '#8a9299';
+
+/**
+ * Flat, saturated green for gains and red for losses; a bigger move is deeper and stronger.
+ * A non-finite change (NaN = no price data) renders neutral grey instead of a guessed color.
+ */
 export function changeColor(change24h: number): { color: string; intensity: number } {
+  if (!Number.isFinite(change24h)) return { color: NO_DATA_COLOR, intensity: 0 };
   const intensity = clamp(Math.abs(change24h) / COLOR_FULL_MOVE, 0, 1);
   const hue = change24h >= 0 ? 138 : 2;
   const sat = 0.35 + 0.35 * intensity;

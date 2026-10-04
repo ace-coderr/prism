@@ -115,7 +115,7 @@ export default function Forge() {
         </div>
         {source === 'testnet' && (
           <p className="pointer-events-none absolute bottom-3 left-4 right-4 font-mono text-[10px] leading-relaxed text-mist/80">
-            Green/red = real 24h move vs ETH from Uniswap V4 swaps. Spikes = realized volatility. Grey = no history.
+            Green/red = real 24h USD move from on-chain Uniswap V4 swaps (USD via the ETH/USDG pool). Spikes = realized volatility. Grey = no history.
           </p>
         )}
       </div>
@@ -138,7 +138,7 @@ export default function Forge() {
           </div>
           <p className="mt-3 text-sm text-mist">
             {source === 'testnet'
-              ? 'vibe/vibe test stocks + WETH on Robinhood Chain Testnet (46630), priced live. Test assets, no value.'
+              ? 'vibe/vibe test stocks + WETH on Robinhood Chain Testnet (46630), priced live from on-chain pools. Test assets, no value.'
               : `Sample stock list with made-up prices, for trying bigger baskets. Up to ${MAX_PICKS} tokens.`}
           </p>
           {source === 'testnet' && live.status === 'loading' && <p className="label mt-3 text-mist">Reading chain…</p>}
@@ -203,7 +203,7 @@ export default function Forge() {
                     {t.priceSource && (
                       <span title="Price source · 24h/volatility source">
                         <span className="text-lime/80">{t.priceSource}</span>
-                        {t.historySource !== 'none' ? ` · 24h vs ETH: V4 pool, ${t.swaps24h} swaps` : ' · 24h: no history'}
+                        {t.historySource !== 'none' ? ` · 24h: on-chain swaps (${t.swaps24h})` : ' · 24h: no history'}
                         {t.volKnown ? '' : ' · vol: default'}
                       </span>
                     )}

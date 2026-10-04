@@ -84,6 +84,37 @@ export interface PricePoint {
   price: number;
 }
 
+/** Reciprocal series, e.g. ETH-per-USDG → USD-per-ETH. */
+export function invertSeries(points: PricePoint[]): PricePoint[] {
+  return points.filter((p) => p.price > 0).map((p) => ({ t: p.t, price: 1 / p.price }));
+}
+
+/**
+ * Product of two step series (each value holds until the next point), sampled at
+ * every timestamp of either. Before a series' first point its first value is used,
+ * since a V4 price can only have changed through a (logged) swap.
+ * Example: token/ETH × ETH/USD → token/USD.
+ */
+export function multiplySeries(a: PricePoint[], b: PricePoint[]): PricePoint[] {
+  const A = [...a].sort((x, y) => x.t - y.t);
+  const B = [...b].sort((x, y) => x.t - y.t);
+  if (A.length === 0 && B.length === 0) return [];
+  // linear merge over both sorted series
+  const out: PricePoint[] = [];
+  let i = 0;
+  let j = 0;
+  // a series with no points contributes a constant factor of 1
+  let va = A.length ? A[0]!.price : 1;
+  let vb = B.length ? B[0]!.price : 1;
+  while (i < A.length || j < B.length) {
+    const t = Math.min(i < A.length ? A[i]!.t : Infinity, j < B.length ? B[j]!.t : Infinity);
+    while (i < A.length && A[i]!.t === t) va = A[i++]!.price;
+    while (j < B.length && B[j]!.t === t) vb = B[j++]!.price;
+    out.push({ t, price: va * vb });
+  }
+  return out;
+}
+
 /** Daily stdev of log returns at which volatility saturates to 1 for the crystal. */
 export const VOLATILITY_FULL_DAILY = 0.1;
 

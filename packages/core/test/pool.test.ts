@@ -6,7 +6,8 @@ import {
   ethPerToken,
   ethPoolId,
   ethToMovePrice,
-  fetchVibePrices,
+  invertSeries,
+  multiplySeries,
   marketSnapshot,
   poolIdOf,
   priceStats,
@@ -114,45 +115,63 @@ describe('priceStats (24h change + volatility from history)', () => {
   });
 });
 
-describe('fetchVibePrices', () => {
-  it('parses ETH/USD, pair prices and quote rates', async () => {
-    const responses: Record<string, unknown> = {
-      'market/eth-usd': { data: { usdPerEthCents: '269189' } },
-      'v6/pair-prices': {
-        data: { items: [{ pairAddress: '0xABC', priceEthWad: '118587466946333075' }, { pairAddress: '0xdef', priceEthWad: null }] },
-      },
-      'market/quote-usd-rates': { data: { items: [{ quoteAddress: '0x5A5', usdPerQuoteCents: '16282' }] } },
-    };
-    const fake = (async (url: string) => {
-      const key = Object.keys(responses).find((k) => url.endsWith(k))!;
-      return { ok: true, json: async () => responses[key] };
-    }) as unknown as typeof fetch;
-    const p = await fetchVibePrices(fake, 'https://x');
-    expect(p.usdPerEth).toBeCloseTo(2691.89);
-    expect(p.ethPerTokenByAddress['0xabc']).toBeCloseTo(0.118587, 6);
-    expect(p.ethPerTokenByAddress['0xdef']).toBeUndefined();
-    expect(p.usdByQuoteAddress['0x5a5']).toBeCloseTo(162.82);
+describe('USD series (token/ETH × ETH/USD)', () => {
+  it('inverts ETH-per-USDG into USD-per-ETH', () => {
+    expect(invertSeries([{ t: 1, price: 0.0005 }, { t: 2, price: 0 }])).toEqual([{ t: 1, price: 2000 }]);
   });
 
-  it('throws on HTTP errors (caller falls back to pool spot)', async () => {
-    const fake = (async () => ({ ok: false, status: 403, json: async () => ({}) })) as unknown as typeof fetch;
-    await expect(fetchVibePrices(fake, 'https://x')).rejects.toThrow(/403/);
+  it('multiplies two step series at every timestamp, forward-filling', () => {
+    const tokenEth = [
+      { t: 10, price: 0.1 },
+      { t: 30, price: 0.2 },
+    ];
+    const ethUsd = [
+      { t: 20, price: 2000 },
+      { t: 40, price: 3000 },
+    ];
+    expect(multiplySeries(tokenEth, ethUsd)).toEqual([
+      { t: 10, price: 0.1 * 2000 }, // ETH/USD before its first swap = its first value
+      { t: 20, price: 0.1 * 2000 },
+      { t: 30, price: 0.2 * 2000 },
+      { t: 40, price: 0.2 * 3000 },
+    ]);
+  });
+
+  it('a series without swaps acts as a constant factor', () => {
+    expect(multiplySeries([{ t: 5, price: 2 }], [])).toEqual([{ t: 5, price: 2 }]);
+    expect(multiplySeries([], [])).toEqual([]);
+  });
+
+  it('USD 24h change combines both legs', () => {
+    const now = 100_000;
+    const tokenEth = [
+      { t: now - 90_000, price: 1 },
+      { t: now - 100, price: 1.1 }, // +10% vs ETH
+    ];
+    const ethUsd = [
+      { t: now - 90_000, price: 2000 },
+      { t: now - 50, price: 2200 }, // ETH +10% vs USD
+    ];
+    expect(priceStats(multiplySeries(tokenEth, ethUsd), now).change24h).toBeCloseTo(21, 9);
   });
 });
 
 describe.runIf(process.env.RUN_RPC_TESTS === '1')('on-chain market snapshot (testnet RPC)', () => {
-  const client = createPublicClient({ chain: robinhoodChainTestnet, transport: http(undefined, { batch: true }) }) as PublicClient;
+  const client = createPublicClient({ chain: robinhoodChainTestnet, transport: http(undefined, { batch: { batchSize: 20 } }) }) as PublicClient;
 
-  it('prices every basket token from its pool (no API) and never invents a price', async () => {
-    const snap = await marketSnapshot(client, TESTNET_TOKENS, null);
+  it('prices every token on-chain (token/ETH pool × ETH/USDG pool)', async () => {
+    const snap = await marketSnapshot(client, TESTNET_TOKENS);
+    const usdPerEth = snap.get('WETH')!.usd!;
+    expect(usdPerEth).toBeGreaterThan(0);
     for (const t of TESTNET_TOKENS) {
       const m = snap.get(t.id)!;
-      if (t.pool) {
-        expect(m.priceSource).toBe('V4 pool spot');
-        expect(m.eth).toBeGreaterThan(0);
-        expect(m.usd).toBeNull(); // no ETH/USD without the API
-      }
+      expect(m.priceSource).toBe('On-chain pool price');
+      expect(m.usd).toBeGreaterThan(0);
+      if (t.pool && t.id !== 'USDG') expect(m.usd! / m.eth!).toBeCloseTo(usdPerEth, 6);
     }
-    expect(snap.get('WETH')!.eth).toBe(1);
+    expect(snap.get('USDG')!.usd).toBe(1);
+    // WETH now has a real 24h change from the ETH/USDG pool's swaps
+    expect(snap.get('WETH')!.historySource).toBe('On-chain swaps (24h)');
+    expect(snap.get('WETH')!.change24h).not.toBeNull();
   }, 120_000);
 });

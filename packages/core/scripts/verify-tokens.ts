@@ -16,7 +16,7 @@ import { TESTNET_TOKENS } from '../src/tokens';
 
 const client = createPublicClient({
   chain: robinhoodChainTestnet,
-  transport: http(robinhoodChainTestnet.rpcUrls.default.http[0], { batch: true }),
+  transport: http(robinhoodChainTestnet.rpcUrls.default.http[0], { batch: { batchSize: 20 } }),
 });
 
 // Every token in tokens.ts is re-verified; failures are reported (and must be removed by hand).

@@ -1,11 +1,16 @@
 /**
- * Read-only market data for testnet tokens: vibe/vibe API prices and Uniswap V4
- * pool state / swap history. Takes a viem PublicClient so web and scripts share it.
- * No transactions, no keys.
+ * Read-only market data for testnet tokens, entirely on-chain: Uniswap V4 pool
+ * state and swap history via the public RPC. Takes a viem PublicClient so web and
+ * scripts share it. No transactions, no keys, no third-party APIs.
+ *
+ * vibe/vibe API blocks third-party origins; we read prices on-chain only. Ask
+ * vibe/vibe to allowlist PRISM's domain before using the API.
  */
 import { parseAbiItem, type Hex, type PublicClient } from 'viem';
 import {
   NATIVE_ETH,
+  invertSeries,
+  multiplySeries,
   POOL_MANAGER,
   ethPerToken,
   poolIdOf,
@@ -14,9 +19,7 @@ import {
   sqrtPriceFromSlot0,
   type PricePoint,
 } from './pool';
-import type { TestnetToken } from './tokens';
-
-export const VIBE_API = 'https://testnet.vibevibe.fun/api/v1/chains/46630';
+import { tokenById, type TestnetToken } from './tokens';
 
 const extsloadAbi = [
   {
@@ -147,127 +150,104 @@ function fetchSwapLogs(client: PublicClient, id: Hex | Hex[], from: bigint, to: 
   return client.getLogs({ address: POOL_MANAGER, event: swapEvent, args: { id }, fromBlock: from, toBlock: to });
 }
 
-export interface VibePrices {
-  usdPerEth: number | null;
-  /** lower-cased token address → ETH per token (vibe/vibe v6/pair-prices) */
-  ethPerTokenByAddress: Record<string, number>;
-  /** lower-cased quote address → USD (vibe/vibe market/quote-usd-rates) */
-  usdByQuoteAddress: Record<string, number>;
-}
-
-/** vibe/vibe public market endpoints. `base` lets the web app go through a proxy. */
-export async function fetchVibePrices(fetchImpl: typeof fetch, base = VIBE_API): Promise<VibePrices> {
-  const get = async (path: string) => {
-    const r = await fetchImpl(`${base}/${path}`);
-    if (!r.ok) throw new Error(`vibe/vibe API ${path}: HTTP ${r.status}`);
-    return r.json();
-  };
-  const [eth, pairs, quotes] = await Promise.all([
-    get('market/eth-usd'),
-    get('v6/pair-prices'),
-    get('market/quote-usd-rates').catch(() => null),
-  ]);
-  const usdPerEth = eth?.data?.usdPerEthCents ? Number(eth.data.usdPerEthCents) / 100 : null;
-  const ethPerTokenByAddress: Record<string, number> = {};
-  for (const p of pairs?.data?.items ?? []) {
-    if (p.priceEthWad) ethPerTokenByAddress[String(p.pairAddress).toLowerCase()] = Number(BigInt(p.priceEthWad)) / 1e18;
-  }
-  const usdByQuoteAddress: Record<string, number> = {};
-  for (const q of quotes?.data?.items ?? []) {
-    if (q.usdPerQuoteCents) usdByQuoteAddress[String(q.quoteAddress).toLowerCase()] = Number(q.usdPerQuoteCents) / 100;
-  }
-  return { usdPerEth, ethPerTokenByAddress, usdByQuoteAddress };
-}
-
-export type PriceSource = 'vibe/vibe API' | 'V4 pool spot' | 'WETH = 1 ETH' | 'none';
-export type HistorySource = 'V4 pool swaps (24h)' | 'none';
+export type PriceSource = 'On-chain pool price' | 'none';
+export type HistorySource = 'On-chain swaps (24h)' | 'none';
 
 export interface TokenMarket {
   id: string;
-  /** USD price, or null when unknown. */
+  /** USD price (token/ETH pool × ETH/USDG pool), or null when unknown. */
   usd: number | null;
   /** ETH per token, or null. */
   eth: number | null;
   priceSource: PriceSource;
-  /** % change over 24h from real history, null when not computable. */
+  /** % change over 24h in USD terms, from real swap history; null when not computable. */
   change24h: number | null;
-  /** 0..1 from real history, null → caller uses a stated default. */
+  /** 0..1 from real USD price history; null → caller uses a stated default. */
   volatility: number | null;
   historySource: HistorySource;
+  /** swaps in the last 24h across the pools behind this price */
   swaps24h: number;
 }
 
-/** Price from (a) vibe/vibe API, else (b) V4 pool spot. Never invents a price. */
-async function priceOf(client: PublicClient, token: TestnetToken, vibe: VibePrices | null) {
-  const addr = token.address.toLowerCase();
-  let eth: number | null = null;
-  let usd: number | null = null;
-  let priceSource: PriceSource = 'none';
-  if (token.kind === 'crypto' && token.symbol === 'WETH') {
-    eth = 1;
-    priceSource = 'WETH = 1 ETH';
-  } else if (vibe && vibe.usdByQuoteAddress[addr] !== undefined) {
-    usd = vibe.usdByQuoteAddress[addr]!;
-    eth = vibe.usdPerEth ? usd / vibe.usdPerEth : null;
-    priceSource = 'vibe/vibe API';
-  } else if (vibe && vibe.ethPerTokenByAddress[addr] !== undefined) {
-    eth = vibe.ethPerTokenByAddress[addr]!;
-    priceSource = 'vibe/vibe API';
-  } else {
-    const spot = await readPoolSpot(client, token).catch(() => null);
-    if (spot?.ethPerToken) {
-      eth = spot.ethPerToken;
-      priceSource = 'V4 pool spot';
-    }
-  }
-  if (usd === null && eth !== null && vibe?.usdPerEth) usd = eth * vibe.usdPerEth;
-  return { eth, usd, priceSource };
-}
+/** USDG (6 decimals) prices ETH in USD via the ETH/USDG pool. */
+export const USD_REFERENCE_ID = 'USDG';
+
+const isWeth = (t: TestnetToken) => t.kind === 'crypto' && t.symbol === 'WETH';
 
 /**
- * Market snapshot for many tokens: prices per token, plus 24h change and
- * volatility from one batched read of their pools' swap history.
- * 24h change is measured in ETH terms (the pools are ETH-paired).
+ * Market snapshot, fully on-chain:
+ * - token price in ETH = its ETH-paired V4 pool spot
+ * - ETH in USD = 1 / (ETH per USDG) from the ETH/USDG pool
+ * - token USD = token ETH × ETH USD; WETH = 1 ETH
+ * - 24h change + volatility from the pools' Swap events, combined into a USD series
+ *   (token/ETH × ETH/USD), so they are USD moves, not ETH moves.
  */
 export async function marketSnapshot(
   client: PublicClient,
   tokens: readonly TestnetToken[],
-  vibe: VibePrices | null,
 ): Promise<Map<string, TokenMarket>> {
-  const pooled = tokens.filter((t) => t.pool);
-  const [prices, histories] = await Promise.all([
-    Promise.all(tokens.map((t) => priceOf(client, t, vibe))),
+  const usdRef = tokenById(USD_REFERENCE_ID)!;
+  const pooled = [...new Map([...tokens, usdRef].filter((t) => t.pool).map((t) => [t.id, t])).values()];
+
+  const [spots, histories] = await Promise.all([
+    Promise.all(pooled.map((t) => readPoolSpot(client, t).catch(() => null))),
     historyContext(client)
       .then((ctx) => readSwapHistories(client, pooled, ctx).then((h) => ({ ctx, h })))
       .catch(() => null),
   ]);
-  const spots = await Promise.all(pooled.map((t) => readPoolSpot(client, t).catch(() => null)));
-  const live = new Set(pooled.filter((_, i) => spots[i]).map((t) => t.id));
+  const spotById = new Map(pooled.map((t, i) => [t.id, spots[i] ?? null]));
+  const ethPerUsdg = spotById.get(usdRef.id)?.ethPerToken ?? null;
+  const usdPerEth = ethPerUsdg ? 1 / ethPerUsdg : null;
+
+  // USD per ETH over time (forward-filled), from the ETH/USDG pool's swaps
+  const usdgPts = histories?.h.get(usdRef.id) ?? [];
+  const ethUsdSeries = invertSeries(usdgPts);
+  const nowSec = histories?.ctx.nowSec ?? 0;
+  const in24h = (pts: { t: number }[]) => pts.filter((x) => x.t > nowSec - 86400).length;
 
   const out = new Map<string, TokenMarket>();
-  tokens.forEach((t, i) => {
-    const p = prices[i]!;
+  for (const t of tokens) {
+    let eth: number | null = null;
+    let priceSource: PriceSource = 'none';
+    if (isWeth(t)) {
+      eth = 1; // wrapped 1:1
+      priceSource = usdPerEth ? 'On-chain pool price' : 'none';
+    } else if (t.id === usdRef.id) {
+      eth = ethPerUsdg;
+      priceSource = eth ? 'On-chain pool price' : 'none';
+    } else {
+      eth = spotById.get(t.id)?.ethPerToken ?? null;
+      if (eth) priceSource = 'On-chain pool price';
+    }
+    const usd = t.id === usdRef.id ? (eth ? 1 : null) : eth !== null && usdPerEth ? eth * usdPerEth : null;
+
+    // history in USD terms
     let change24h: number | null = null;
     let volatility: number | null = null;
     let historySource: HistorySource = 'none';
     let swaps24h = 0;
-    const pts = histories?.h.get(t.id);
-    if (histories && pts && live.has(t.id)) {
-      const inWindow = pts.filter((x) => x.t > histories.ctx.nowSec - 86400).length;
-      if (pts.length === 0) {
-        // V4 prices only move on swaps: no swaps in the whole window = unchanged
-        change24h = 0;
-        volatility = 0;
-        historySource = 'V4 pool swaps (24h)';
-      } else {
-        const stats = priceStats(pts, histories.ctx.nowSec);
-        change24h = stats.change24h;
-        volatility = stats.volatility ?? (inWindow === 0 ? 0 : null);
-        if (change24h !== null) historySource = 'V4 pool swaps (24h)';
+    if (histories && usdPerEth) {
+      const usdSeries = (() => {
+        if (t.id === usdRef.id) return null; // USDG is the unit — no USD history of its own
+        if (isWeth(t)) return ethUsdSeries;
+        if (!spotById.get(t.id)) return null;
+        return multiplySeries(histories.h.get(t.id) ?? [], ethUsdSeries);
+      })();
+      if (usdSeries) {
+        swaps24h = in24h(usdgPts) + (isWeth(t) ? 0 : in24h(histories.h.get(t.id) ?? []));
+        if (usdSeries.length === 0) {
+          // V4 prices only move on swaps: no swaps in either pool over the window = unchanged
+          change24h = 0;
+          volatility = 0;
+        } else {
+          const stats = priceStats(usdSeries, nowSec);
+          change24h = stats.change24h;
+          volatility = stats.volatility ?? (swaps24h === 0 ? 0 : null);
+        }
+        if (change24h !== null) historySource = 'On-chain swaps (24h)';
       }
-      swaps24h = inWindow;
     }
-    out.set(t.id, { id: t.id, ...p, change24h, volatility, historySource, swaps24h });
-  });
+    out.set(t.id, { id: t.id, usd, eth, priceSource, change24h, volatility, historySource, swaps24h });
+  }
   return out;
 }

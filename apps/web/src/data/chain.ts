@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { createPublicClient, erc20Abi, http, type PublicClient } from 'viem';
 import {
   BASKET_TOKENS,
-  fetchVibePrices,
   marketSnapshot,
   robinhoodChainTestnet,
   type TestnetToken,
@@ -12,13 +11,14 @@ import {
 // Read-only client: eth_call / eth_getLogs only. No wallet, no keys, no transactions.
 export const testnetClient = createPublicClient({
   chain: robinhoodChainTestnet,
-  // the public RPC intermittently answers with a duplicated CORS header ("*,*"), which
-  // browsers reject — retry those rather than failing the whole page
-  transport: http(robinhoodChainTestnet.rpcUrls.default.http[0], { batch: true, retryCount: 5, retryDelay: 300 }),
+  // The public RPC rejects large JSON-RPC batches (~50+ calls), and that error response
+  // carries a duplicated CORS header ("*,*") that browsers block. Keep batches small.
+  transport: http(robinhoodChainTestnet.rpcUrls.default.http[0], {
+    batch: { batchSize: 20 },
+    retryCount: 3,
+    retryDelay: 300,
+  }),
 }) as PublicClient;
-
-/** Same-origin proxy to https://testnet.vibevibe.fun/api/v1/chains/46630 (see vite.config.ts). */
-const VIBE_PROXY = '/vibe-api';
 
 export const explorerAddress = (a: string) => `${robinhoodChainTestnet.blockExplorers.default.url}/address/${a}`;
 
@@ -28,7 +28,7 @@ export interface LiveToken extends TestnetToken {
 
 export type LiveTokens =
   | { status: 'loading' }
-  | { status: 'live'; tokens: LiveToken[]; usdPerEth: number | null; apiOk: boolean }
+  | { status: 'live'; tokens: LiveToken[] }
   | { status: 'error'; message: string };
 
 async function load(): Promise<Extract<LiveTokens, { status: 'live' }>> {
@@ -44,14 +44,9 @@ async function load(): Promise<Extract<LiveTokens, { status: 'live' }>> {
     )
   ).filter((t): t is TestnetToken => t !== null);
 
-  const vibe = await fetchVibePrices(fetch, VIBE_PROXY).catch(() => null);
-  const snap = await marketSnapshot(testnetClient, verified, vibe);
-  return {
-    status: 'live',
-    tokens: verified.map((t) => ({ ...t, market: snap.get(t.id)! })),
-    usdPerEth: vibe?.usdPerEth ?? null,
-    apiOk: vibe !== null,
-  };
+  // prices are read on-chain only (V4 pools over the public RPC) — no third-party APIs
+  const snap = await marketSnapshot(testnetClient, verified);
+  return { status: 'live', tokens: verified.map((t) => ({ ...t, market: snap.get(t.id)! })) };
 }
 
 /** Live, read-only market view of the verified testnet basket tokens. */

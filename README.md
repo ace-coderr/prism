@@ -33,13 +33,15 @@ npm run dev              # http://localhost:5173
   stocks (NVDA, SPCX/SpaceX, AAPL) and pre-IPO test assets (OPENAI, ANTHROPIC), plus WETH and
   Seedify's mock SPCX. All are test assets with no value. Each address cites its source and
   passed on-chain `name/symbol/decimals/totalSupply` checks; the app re-checks on load.
-- **Prices** (read-only, no wallet): (a) the vibe/vibe API (`v6/pair-prices`, `market/eth-usd`),
-  else (b) the token's Uniswap V4 pool spot price. **24h change** (vs ETH) and **volatility**
-  come from the pool's real `Swap` events over the last 24h. Every row says which source it
-  used; nothing is invented. There are no Chainlink feeds on testnet.
-- The vibe/vibe API answers other websites with HTTP 403, so the app reads it through a
-  same-origin proxy (`/vibe-api` in `vite.config.ts`, dev + preview). A static deploy needs the
-  same rewrite, or prices fall back to on-chain pool spot (in ETH).
+- **Prices are fully on-chain** (read-only, no wallet, no third-party APIs): each token's
+  price in ETH comes from its ETH-paired Uniswap V4 pool, ETH's USD price from the ETH/USDG
+  pool, and USD = ETH price × ETH/USD. **24h change** and **volatility** come from those
+  pools' real `Swap` events over the last 24h, combined into a USD series. Labelled
+  "On-chain pool price". There are no Chainlink feeds on testnet.
+- Testnet USD is only as good as the ETH/USDG test pool: it currently values ETH around
+  $1.8k, well below the real market, so USD figures are testnet values, not market prices.
+- The vibe/vibe API blocks third-party origins, so PRISM does not call it. Ask vibe/vibe to
+  allowlist PRISM's domain before using it.
 - Robinhood's official Stock Tokens are deployed on **mainnet (4663) only** for now.
 - **Sample tokens**, My Crystals, Gallery and Agent use mock data and say so with a
   "Sample data" badge.

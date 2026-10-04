@@ -187,6 +187,17 @@ describe('gem silhouette', () => {
     expect(Math.abs(widestY)).toBeLessThanOrEqual((top - bottom) * 0.2);
   });
 
+  it('marks spike cubes so the UI can highlight them', () => {
+    const geo = buildCrystal(basket);
+    const spikes = geo.voxels.filter((v) => v.spike);
+    expect(spikes.length).toBeGreaterThan(0);
+    expect(spikes.every((v) => v.kind === 'facet' && v.cluster >= 0)).toBe(true);
+    // calm holdings have smaller spikes than jumpy ones
+    const calm = buildCrystal(basket.map((h) => ({ ...h, volatility: 0 }))).voxels.filter((v) => v.spike).length;
+    const jumpy = buildCrystal(basket.map((h) => ({ ...h, volatility: 1 }))).voxels.filter((v) => v.spike).length;
+    expect(jumpy).toBeGreaterThan(calm);
+  });
+
   it('caps volatility spikes so no column dominates', () => {
     const wild = buildCrystal(basket.map((h) => ({ ...h, volatility: 1 })));
     const calm = buildCrystal(basket.map((h) => ({ ...h, volatility: 0 })));
@@ -210,7 +221,7 @@ describe('exposedVoxels', () => {
     for (let x = 0; x < 3; x++)
       for (let y = 0; y < 3; y++)
         for (let z = 0; z < 3; z++)
-          block.push({ position: [x, y, z] as [number, number, number], color: '#fff', kind: 'core' as const, cluster: 0, gold: false });
+          block.push({ position: [x, y, z] as [number, number, number], color: '#fff', kind: 'core' as const, cluster: 0, gold: false, spike: false });
     expect(exposedVoxels(block)).toHaveLength(26);
   });
 });

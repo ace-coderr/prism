@@ -19,6 +19,11 @@ const OUTLINE = 1.14; // inverted-hull scale: thickness of the silhouette outlin
 // HDR gold (linear, slightly >1): crosses the bloom threshold for a warm glow, but
 // stays low enough that each cube's black frame still reads through it.
 const GOLD_HDR = new THREE.Color(2.5, 1.5, 0.24);
+/** Sealed-gift frost tint and the grey used to dim parts the legend isn't pointing at. */
+const FROST = new THREE.Color('#d6f1ff');
+const DIM = new THREE.Color('#23282c');
+
+export type CrystalFocus = 'size' | 'color' | 'spikes' | 'gold' | 'frost';
 
 // shared materials — every crystal reuses the same two programs
 const bodyMaterial = new THREE.MeshToonMaterial({
@@ -51,6 +56,14 @@ export interface CrystalProps {
   glow?: boolean;
   position?: [number, number, number];
   highlight?: boolean;
+  /**
+   * Legend focus: light up one part and dim the rest — the biggest holding ('size'),
+   * the green/red price colours ('color'), the spikes ('spikes'), the gold seams
+   * ('gold'), or the sealed-gift frost ('frost').
+   */
+  focus?: CrystalFocus | null;
+  /** A sealed gift: the crystal is frosted over. */
+  sealed?: boolean;
   onClick?: (e: ThreeEvent<MouseEvent>) => void;
   onPointerOver?: (e: ThreeEvent<PointerEvent>) => void;
   onPointerOut?: (e: ThreeEvent<PointerEvent>) => void;
@@ -66,14 +79,17 @@ export function Crystal({
   glow = true,
   position,
   highlight,
+  focus = null,
+  sealed = false,
   onClick,
   onPointerOver,
   onPointerOut,
 }: CrystalProps) {
-  const { voxels, radius } = useMemo(() => {
+  const { voxels, radius, biggest } = useMemo(() => {
     const geo = buildCrystal(holdings, history, { correlation, maxShards: 48, resolution: isCoarse ? 7 : 8 });
+    const biggest = geo.clusters.reduce((b, c, i) => (c.weight > (geo.clusters[b]?.weight ?? -1) ? i : b), 0);
     // interior cubes are never visible — skip them
-    return { voxels: exposedVoxels(geo.voxels), radius: geo.radius };
+    return { voxels: exposedVoxels(geo.voxels), radius: geo.radius, biggest };
   }, [holdings, history, correlation]);
 
   // grow capacity in steps so the instanced buffers are rarely reallocated
@@ -98,6 +114,19 @@ export function Crystal({
       h.setMatrixAt(i, m);
       if (v.gold) col.copy(GOLD_HDR);
       else col.set(v.color);
+      const frost = sealed || focus === 'frost';
+      if (frost) col.lerp(FROST, v.gold ? 0.35 : 0.62);
+      if (focus && focus !== 'frost') {
+        const lit =
+          focus === 'gold'
+            ? v.gold
+            : focus === 'spikes'
+              ? v.spike
+              : focus === 'size'
+                ? v.cluster === biggest && !v.gold
+                : !v.gold && v.kind !== 'core'; // 'color'
+        if (!lit) col.lerp(DIM, 0.82);
+      }
       b.setColorAt(i, col);
     });
     b.count = h.count = voxels.length;
@@ -105,7 +134,7 @@ export function Crystal({
     if (b.instanceColor) b.instanceColor.needsUpdate = true;
     b.computeBoundingSphere();
     h.computeBoundingSphere();
-  }, [voxels, capacity]);
+  }, [voxels, capacity, focus, sealed, biggest]);
 
   // start at the fitted size; later changes ease in from useFrame
   useLayoutEffect(() => {

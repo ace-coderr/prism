@@ -201,7 +201,7 @@ function ogSvg(): string {
     <text x="0" y="170" font-family="${GROTESK}" font-weight="700" font-size="64" letter-spacing="-2" fill="#f2f3f0">A stock basket</text>
     <text x="0" y="240" font-family="${GROTESK}" font-weight="700" font-size="64" letter-spacing="-2" fill="#f2f3f0">you can hold</text>
     <text x="0" y="300" font-family="Space Mono" font-weight="400" font-size="17" letter-spacing="2.5" fill="#9aa2a9">TOKENIZED STOCKS + ETH = ONE CRYSTAL</text>
-    <text x="0" y="334" font-family="Space Mono" font-weight="400" font-size="17" letter-spacing="2.5" fill="${GOLD}">GOLD SEAMS = DRAWDOWNS SURVIVED</text>
+    <text x="0" y="334" font-family="Space Mono" font-weight="400" font-size="17" letter-spacing="2.5" fill="${GOLD}">GOLD SEAMS = DROPS IT RECOVERED FROM</text>
     <g transform="translate(0 380)">
       <rect width="330" height="52" rx="26" fill="${LIME}"/>
       <text x="165" y="33" text-anchor="middle" font-family="Space Mono" font-weight="700" font-size="18" letter-spacing="1.5" fill="${BG}">prism-crystal.vercel.app</text>

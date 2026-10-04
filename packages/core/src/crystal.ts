@@ -74,6 +74,8 @@ export interface Voxel {
   cluster: number;
   /** Kintsugi: this cube fills a healed crack. */
   gold: boolean;
+  /** Part of a volatility spike (sticks out of the gem body). */
+  spike: boolean;
 }
 
 export interface Cluster {
@@ -417,6 +419,7 @@ export function buildCrystal(
             kind: core ? 'core' : seam ? 'bridge' : 'facet',
             cluster: seam ? -1 : best,
             gold: false,
+            spike: false,
           });
           continue;
         }
@@ -444,6 +447,7 @@ export function buildCrystal(
             kind: 'facet',
             cluster: hit.cluster,
             gold: false,
+            spike: true,
           });
         }
       }

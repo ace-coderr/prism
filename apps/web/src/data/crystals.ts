@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { erc20Abi, getAbiItem, type Address } from 'viem';
+import { erc20Abi, getAbiItem, zeroAddress, type Address } from 'viem';
 import {
   TESTNET_TOKENS,
   blockRanges,
@@ -62,6 +62,19 @@ async function tokenMeta(token: Address) {
   return { symbol, decimals };
 }
 
+/** One crystal's contents and seal, read from the contract. */
+async function readCrystal(crystal: Address, id: bigint): Promise<OnchainCrystal> {
+  const [[tokens, balances, eth], sealed] = await Promise.all([
+    testnetClient.readContract({ address: crystal, abi: prismCrystalAbi, functionName: 'holdings', args: [id] }),
+    testnetClient.readContract({ address: crystal, abi: prismCrystalAbi, functionName: 'sealedUntil', args: [id] }),
+  ]);
+  const assets: CrystalAsset[] = await Promise.all(
+    tokens.map(async (token, i) => ({ token, amount: balances[i]!, ...(await tokenMeta(token)) })),
+  );
+  if (eth > 0n) assets.push({ token: null, symbol: 'ETH', decimals: 18, amount: eth });
+  return { id, assets, sealedUntil: Number(sealed) };
+}
+
 /** The connected wallet's real crystals (read-only). */
 export function useMyCrystals(owner: Address | undefined) {
   const deployment = getDeployment(TARGET_CHAIN.id);
@@ -73,19 +86,50 @@ export function useMyCrystals(owner: Address | undefined) {
       const crystal = deployment!.prismCrystal;
       const logs = await transferLogs(crystal, owner!, deployment!.fromBlock);
       const ids = ownedFromTransfers(logs, owner!);
-      return Promise.all(
+      return Promise.all(ids.map((id) => readCrystal(crystal, id)));
+    },
+  });
+}
+
+export interface PublicCrystal extends OnchainCrystal {
+  owner: Address;
+}
+
+/**
+ * Every real crystal ever forged that still exists: mints are Transfer events from
+ * the zero address (read in RPC-safe block ranges), then current owner + contents.
+ * Burned crystals are skipped.
+ */
+export function useAllCrystals() {
+  const deployment = getDeployment(TARGET_CHAIN.id);
+  return useQuery({
+    queryKey: ['all-crystals', deployment?.prismCrystal],
+    enabled: !!deployment,
+    refetchInterval: 60_000,
+    queryFn: async (): Promise<PublicCrystal[]> => {
+      const crystal = deployment!.prismCrystal;
+      const head = await testnetClient.getBlockNumber();
+      const ids: bigint[] = [];
+      for (const [a, b] of blockRanges(deployment!.fromBlock, head, LOG_RANGE)) {
+        const mints = await testnetClient.getLogs({
+          address: crystal,
+          event: transferEvent,
+          args: { from: zeroAddress },
+          fromBlock: a,
+          toBlock: b,
+        });
+        for (const l of mints) ids.push(l.args.tokenId!);
+      }
+      const rows = await Promise.all(
         ids.map(async (id) => {
-          const [[tokens, balances, eth], sealed] = await Promise.all([
-            testnetClient.readContract({ address: crystal, abi: prismCrystalAbi, functionName: 'holdings', args: [id] }),
-            testnetClient.readContract({ address: crystal, abi: prismCrystalAbi, functionName: 'sealedUntil', args: [id] }),
-          ]);
-          const assets: CrystalAsset[] = await Promise.all(
-            tokens.map(async (token, i) => ({ token, amount: balances[i]!, ...(await tokenMeta(token)) })),
-          );
-          if (eth > 0n) assets.push({ token: null, symbol: 'ETH', decimals: 18, amount: eth });
-          return { id, assets, sealedUntil: Number(sealed) };
+          const owner = await testnetClient
+            .readContract({ address: crystal, abi: prismCrystalAbi, functionName: 'ownerOf', args: [id] })
+            .catch(() => null); // burned
+          if (!owner) return null;
+          return { ...(await readCrystal(crystal, id)), owner };
         }),
       );
+      return rows.filter((r): r is PublicCrystal => r !== null).sort((a, b) => (a.id < b.id ? -1 : 1));
     },
   });
 }

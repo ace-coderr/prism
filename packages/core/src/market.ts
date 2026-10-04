@@ -181,19 +181,24 @@ const isWeth = (t: TestnetToken) => t.kind === 'crypto' && t.symbol === 'WETH';
  * - token USD = token ETH × ETH USD; WETH = 1 ETH
  * - 24h change + volatility from the pools' Swap events, combined into a USD series
  *   (token/ETH × ETH/USD), so they are USD moves, not ETH moves.
+ *
+ * `history: false` skips the swap logs (the slow part): prices only, 24h fields null.
  */
 export async function marketSnapshot(
   client: PublicClient,
   tokens: readonly TestnetToken[],
+  { history = true }: { history?: boolean } = {},
 ): Promise<Map<string, TokenMarket>> {
   const usdRef = tokenById(USD_REFERENCE_ID)!;
   const pooled = [...new Map([...tokens, usdRef].filter((t) => t.pool).map((t) => [t.id, t])).values()];
 
   const [spots, histories] = await Promise.all([
     Promise.all(pooled.map((t) => readPoolSpot(client, t).catch(() => null))),
-    historyContext(client)
-      .then((ctx) => readSwapHistories(client, pooled, ctx).then((h) => ({ ctx, h })))
-      .catch(() => null),
+    history
+      ? historyContext(client)
+          .then((ctx) => readSwapHistories(client, pooled, ctx).then((h) => ({ ctx, h })))
+          .catch(() => null)
+      : null,
   ]);
   const spotById = new Map(pooled.map((t, i) => [t.id, spots[i] ?? null]));
   const ethPerUsdg = spotById.get(usdRef.id)?.ethPerToken ?? null;

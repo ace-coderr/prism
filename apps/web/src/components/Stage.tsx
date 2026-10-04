@@ -1,6 +1,6 @@
-import { Suspense, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
+import { Suspense, useLayoutEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { AdaptiveDpr, PerformanceMonitor } from '@react-three/drei';
+import { AdaptiveDpr, Html, PerformanceMonitor } from '@react-three/drei';
 import { Bloom, EffectComposer } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { candlePanelTexture } from './textures';
@@ -156,4 +156,15 @@ export function useRowLayout(n: number, gapFactor = 1) {
     return (wide ? [offset, 0, 0] : [0, -offset, 0]) as [number, number, number];
   });
   return { positions, size, wide };
+}
+
+/**
+ * drei's <Html> pinned to the canvas's own wrapper. Left alone, it first mounts there,
+ * then moves once the canvas connects its events — an unmount mid-render that can leave
+ * the label empty. A fixed portal means it never moves.
+ */
+export function SceneLabel(props: Omit<ComponentProps<typeof Html>, 'portal'>) {
+  const gl = useThree((s) => s.gl);
+  const portal = useMemo(() => ({ current: gl.domElement.parentNode as HTMLElement }), [gl]);
+  return <Html {...props} portal={portal} />;
 }

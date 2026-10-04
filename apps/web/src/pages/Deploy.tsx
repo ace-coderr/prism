@@ -6,6 +6,7 @@ import { Panel } from '../components/ui';
 import { TARGET_CHAIN, wagmiConfig } from '../wallet/config';
 import { StepList, useTxSteps } from '../wallet/steps';
 import { WalletButton, useWallet } from '../wallet/WalletButton';
+import { PageScroll } from '../components/PageHeader';
 
 /**
  * Hidden route (not in the nav): deploys the compiled PrismCrystal from the connected
@@ -32,7 +33,7 @@ export default function Deploy() {
     ]);
 
   return (
-    <div className="mx-auto flex h-full max-w-2xl flex-col gap-4 overflow-y-auto p-4">
+    <PageScroll className="max-w-2xl gap-4">
       <h1 className="headline text-3xl">Deploy PrismCrystal</h1>
       <p className="text-sm text-mist">
         Deploys the tested (but not audited) PrismCrystal contract to <b className="text-white">Robinhood Chain Testnet</b> from
@@ -88,6 +89,6 @@ export default function Deploy() {
           </p>
         </Panel>
       )}
-    </div>
+    </PageScroll>
   );
 }

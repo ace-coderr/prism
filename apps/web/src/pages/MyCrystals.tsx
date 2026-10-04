@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useAccount } from 'wagmi';
 import OnchainCrystals from './OnchainCrystals';
+import { PageHeader, PageScroll } from '../components/PageHeader';
+import { ViberCredit, ViberGuide } from '../components/Viber';
 import { Crystal } from '../components/Crystal';
 import { Stage, useRowLayout } from '../components/Stage';
 import { Change, DataBadge, Panel, formatEth } from '../components/ui';
@@ -49,7 +51,7 @@ function Details({ crystal }: { crystal: MockCrystal }) {
       <p className="mt-1 text-xs text-mist">
         Forged {crystal.forged}
         {seams > 0 && <span className="text-gold"> · {seams} gold seam{seams > 1 ? 's' : ''}</span>}
-        {cracks > 0 && <span> · {cracks} open crack{cracks > 1 ? 's' : ''}</span>}
+        {cracks > 0 && <span> · {cracks} drop{cracks > 1 ? 's' : ''} not recovered yet</span>}
       </p>
       <table className="mt-4 w-full text-sm">
         <thead className="label text-left text-mist">
@@ -91,20 +93,17 @@ export default function MyCrystals() {
 function SampleCrystals() {
   const [selected, setSelected] = useState(0);
   return (
-    <div className="mx-auto flex h-full max-w-7xl flex-col gap-4 overflow-y-auto p-4">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="headline text-3xl">My Crystals</h1>
-          <DataBadge live={false} />
-          <span className="text-xs text-mist">Connect a wallet to see your real crystals.</span>
-        </div>
+    <PageScroll className="max-w-7xl gap-4">
+      <PageHeader title="My Crystals" subtitle="The crystals in your wallet, and what is inside each one. Connect a wallet to see yours.">
+        <DataBadge live={false} />
+      </PageHeader>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <ViberGuide index={11} size={60}>
+          These three are samples so you can look around. Connect a wallet and your real crystals show up here.
+        </ViberGuide>
         <div className="flex gap-1.5">
           {MY_CRYSTALS.map((c, i) => (
-            <button
-              key={c.id}
-              onClick={() => setSelected(i)}
-              className={`chip ${i === selected ? 'chip-on' : ''}`}
-            >
+            <button key={c.id} onClick={() => setSelected(i)} className={`chip ${i === selected ? 'chip-on' : ''}`}>
               {c.name}
             </button>
           ))}
@@ -117,6 +116,7 @@ function SampleCrystals() {
         <p className="label pointer-events-none absolute bottom-3 left-4 text-mist">Click a crystal to see its holdings</p>
       </div>
       <Details crystal={MY_CRYSTALS[selected]!} />
-    </div>
+      <ViberCredit />
+    </PageScroll>
   );
 }

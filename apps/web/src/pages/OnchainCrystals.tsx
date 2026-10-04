@@ -14,7 +14,8 @@ import {
   type OwnedViber,
 } from '@prism/core';
 import { FittedCrystal } from '../components/Crystal';
-import { ViberCredit, useOwnedViber } from '../components/Viber';
+import { ViberCredit, ViberGuide, useOwnedViber } from '../components/Viber';
+import { PageHeader, PageScroll } from '../components/PageHeader';
 import { Stage } from '../components/Stage';
 import { Change, DataBadge, EthPrice, Panel } from '../components/ui';
 import { useTestnetTokens, type LiveToken } from '../data/chain';
@@ -52,33 +53,32 @@ export default function OnchainCrystals() {
   const selected = list.find((c) => c.id === selectedId) ?? list[0];
 
   const header = (
-    <div className="flex flex-wrap items-center gap-3">
-      <h1 className="headline text-3xl">My Crystals</h1>
+    <PageHeader title="My Crystals" subtitle="The crystals in your wallet and what is inside each one. Take things out, add more, or seal one as a gift.">
       <DataBadge live />
       {deployment && (
         <a className="font-mono text-[10px] text-mist hover:text-lime" href={explorerAddressUrl(deployment.prismCrystal)} target="_blank" rel="noreferrer">
           contract {deployment.prismCrystal.slice(0, 6)}…{deployment.prismCrystal.slice(-4)} ↗
         </a>
       )}
-    </div>
+    </PageHeader>
   );
 
   if (!deployment) {
     return (
-      <div className="mx-auto flex h-full max-w-3xl flex-col gap-4 overflow-y-auto p-4">
+      <PageScroll className="max-w-3xl gap-4">
         {header}
         <Panel className="p-6 text-sm text-mist">
           The PrismCrystal contract isn’t deployed on Robinhood Chain Testnet yet, so there are no real crystals to show.
           Disconnect your wallet to browse the sample crystals.
         </Panel>
-      </div>
+      </PageScroll>
     );
   }
 
   return (
-    <div className="mx-auto flex h-full max-w-7xl flex-col gap-4 overflow-y-auto p-4">
+    <PageScroll className="max-w-7xl gap-4">
+      {header}
       <div className="flex flex-wrap items-end justify-between gap-2">
-        {header}
         <div className="flex flex-wrap gap-1.5">
           {list.map((c) => (
             <button key={c.id.toString()} onClick={() => setSelectedId(c.id)} className={`chip ${selected?.id === c.id ? 'chip-on' : ''}`}>
@@ -93,10 +93,10 @@ export default function OnchainCrystals() {
       {crystals.isLoading && <p className="label text-mist">Reading your crystals from the chain…</p>}
       {crystals.isError && <p className="text-sm text-down">Couldn’t read crystals: {(crystals.error as Error).message.split('\n')[0]}</p>}
       {crystals.isSuccess && list.length === 0 && (
-        <Panel className="p-6 text-sm text-mist">
-          No crystals in this wallet yet.{' '}
-          <Link to="/forge" className="text-lime hover:underline">
-            Forge your first one →
+        <Panel className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <ViberGuide index={7}>No crystals in this wallet yet. Forge one — you can start with just ETH.</ViberGuide>
+          <Link to="/forge" className="btn btn-primary">
+            Forge your first crystal
           </Link>
         </Panel>
       )}
@@ -112,7 +112,8 @@ export default function OnchainCrystals() {
           onChanged={() => crystals.refetch()}
         />
       )}
-    </div>
+      <ViberCredit />
+    </PageScroll>
   );
 }
 
@@ -195,6 +196,7 @@ function CrystalView(props: {
               </button>
             ))}
           </div>
+          <p className="mb-4 text-sm text-mist">{TAB_HELP[tab]}</p>
           {tab === 'withdraw' && <WithdrawForm {...props} sealed={sealed} />}
           {tab === 'add' && <AddForm {...props} />}
           {tab === 'seal' && <SealForm {...props} />}
@@ -204,6 +206,13 @@ function CrystalView(props: {
     </div>
   );
 }
+
+const TAB_HELP: Record<Tab, string> = {
+  withdraw: 'Take some or all of the tokens out of this crystal and back into your wallet.',
+  add: 'Put more tokens or ETH into this crystal. It keeps everything it already holds.',
+  seal: 'Lock this crystal until a date, like a wrapped gift. You can still send it to someone.',
+  burn: 'Take everything out and destroy the crystal. Use this when you are done with it.',
+};
 
 type FormProps = { crystal: OnchainCrystal; owner: Address; contract: Address; onChanged: () => void };
 
@@ -419,7 +428,7 @@ function BurnForm({ crystal, owner, contract, onChanged, sealed }: FormProps & {
   };
   return (
     <div className="space-y-3">
-      <p className="text-sm text-mist">Sends every asset in this crystal to your wallet and burns the NFT. The crystal is gone for good.</p>
+      <p className="text-sm text-mist">Everything inside goes back to your wallet, then the crystal is destroyed for good.</p>
       <label className="flex items-start gap-2 text-xs text-mist">
         <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5 accent-[#d4f000]" />
         Burn crystal #{crystal.id.toString()} after emptying it.

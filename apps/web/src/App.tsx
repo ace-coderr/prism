@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Footer, Nav } from './components/Nav';
+import { Intro } from './components/Intro';
 import Home from './pages/Home';
 import Forge from './pages/Forge';
 import MyCrystals from './pages/MyCrystals';
@@ -40,6 +41,7 @@ export default function App() {
         </div>
       </main>
       <Footer />
+      <Intro />
     </div>
   );
 }

@@ -5,12 +5,18 @@ import { TARGET_CHAIN } from '../wallet/config';
 import { WalletButton } from '../wallet/WalletButton';
 
 // Home is the logo; the pill only lists the four destinations
-const LINKS = [
+const LINKS: Array<{ to: string; label: string; soon?: boolean }> = [
   { to: '/forge', label: 'Forge' },
   { to: '/my-crystals', label: 'My Crystals' },
   { to: '/gallery', label: 'Gallery' },
-  { to: '/agent', label: 'Agent' },
+  { to: '/agent', label: 'Agent', soon: true },
 ];
+
+const Soon = () => (
+  <span className="ml-1.5 rounded-full bg-amber-400/15 px-1.5 py-px align-[1px] font-mono text-[8px] font-bold tracking-[0.12em] text-amber-300">
+    SOON
+  </span>
+);
 
 // PRISM mark: a pixel/voxel gem — crown on top, pointed pavilion below.
 const GEM = ['..AAA..', '.ABBBA.', 'ABBGBBA', '.CCCCC.', '..CCC..', '...C...'];
@@ -80,6 +86,7 @@ export function Nav() {
             {LINKS.map((l) => (
               <NavLink key={l.to} to={l.to} className={link}>
                 {l.label}
+                {l.soon && <Soon />}
               </NavLink>
             ))}
           </nav>
@@ -114,6 +121,7 @@ export function Nav() {
                 className={({ isActive }) => `rounded-2xl px-4 py-3 ${link({ isActive })} ${isActive ? 'bg-lime/5' : 'hover:bg-white/5'}`}
               >
                 {l.label}
+                {l.soon && <Soon />}
               </NavLink>
             ))}
           </nav>

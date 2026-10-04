@@ -1,288 +1,419 @@
 import { useMemo, useState } from 'react';
-import { evenWeights, getDeployment, normalizeTo100, rebalance, totalOf, valueWeights, type Holding } from '@prism/core';
+import { Link } from 'react-router-dom';
+import { erc20Abi, formatUnits, type Address } from 'viem';
+import { useBalance, useReadContracts } from 'wagmi';
+import {
+  BASKET_TOKENS,
+  GAS_RESERVE_WEI,
+  getDeployment,
+  normalizeTo100,
+  parseTokenAmount,
+  planDeposit,
+  valueWeights,
+  type Holding,
+  type TestnetToken,
+} from '@prism/core';
 import { FittedCrystal } from '../components/Crystal';
+import { PageHeader, PageScroll } from '../components/PageHeader';
 import { Stage } from '../components/Stage';
 import { Change, DataBadge, EthPrice, Panel } from '../components/ui';
-import { explorerAddress, useTestnetTokens } from '../data/chain';
-import { CORRELATIONS, TOKENS } from '../data/mock';
+import { ViberCredit, ViberGuide } from '../components/Viber';
+import { DEFAULT_VOLATILITY } from '../data/crystalHoldings';
+import { useTestnetTokens, type LiveToken } from '../data/chain';
 import { TARGET_CHAIN } from '../wallet/config';
-import { DepositForm } from '../wallet/DepositForm';
+import { depositSteps } from '../wallet/deposit';
+import { StepList, useTxSteps } from '../wallet/steps';
+import { SwitchNetworkButton, WalletButton, useWallet } from '../wallet/WalletButton';
 
-const MAX_PICKS = 8;
-/** Shape-only default when there is no market data to derive volatility from. */
-const DEFAULT_VOLATILITY = 0.4;
+const MAX_ASSETS = 8;
+const STEPS = ['Pick', 'Amounts', 'Review'] as const;
 
-interface Option {
-  symbol: string;
-  name: string;
-  /** NaN = unknown (no price feed) → neutral crystal color */
-  change24h: number;
-  volatility: number;
-  price: number | null;
-  /** ETH per token — the main displayed price */
-  eth?: number | null;
-  live: boolean;
-  address?: string;
-  sourceUrl?: string;
-  /** where the price / 24h / volatility came from (testnet tokens only) */
-  priceSource?: string;
-  historySource?: string;
-  volKnown?: boolean;
-  swaps24h?: number;
-}
+/** Card subtitle: the token's on-chain name, spelled out where that name is just the symbol. */
+const describe = (t: TestnetToken) => (t.id === 'WETH' ? 'Wrapped ETH (testnet, no value)' : t.name);
 
-type Source = 'testnet' | 'sample';
+const fmt = (v: bigint, d: number) => {
+  const n = Number(formatUnits(v, d));
+  return n === 0 ? '0' : n < 0.0001 ? '<0.0001' : n.toLocaleString('en-US', { maximumFractionDigits: 4 });
+};
 
 export default function Forge() {
-  const [source, setSource] = useState<Source>('testnet');
-  const live = useTestnetTokens();
-
-  const options: Option[] = useMemo(() => {
-    if (source === 'sample') {
-      return TOKENS.map((t) => ({ ...t, price: t.price, live: false }));
-    }
-    if (live.status !== 'live') return [];
-    return live.tokens.map((t) => ({
-      symbol: t.id,
-      name: t.name,
-      // real 24h move from pool swaps; NaN (grey) when there is no history — never guessed
-      change24h: t.market.change24h ?? Number.NaN,
-      volatility: t.market.volatility ?? DEFAULT_VOLATILITY,
-      price: t.market.usd,
-      eth: t.market.eth,
-      live: true,
-      address: t.address,
-      sourceUrl: t.sourceUrl,
-      priceSource: t.market.priceSource,
-      historySource: t.market.historySource,
-      volKnown: t.market.volatility !== null,
-      swaps24h: t.market.swaps24h,
-    }));
-  }, [source, live]);
-
-  const [picksBySource, setPicksBySource] = useState<Record<Source, string[] | null>>({ testnet: null, sample: null });
-  const [weightsBySource, setWeightsBySource] = useState<Record<Source, number[]>>({ testnet: [], sample: [] });
-
-  // default selection per source: the first (up to) three options, evenly weighted
-  const defaultPicks = options.slice(0, 3).map((o) => o.symbol);
-  const picks = (picksBySource[source] ?? defaultPicks).filter((s) => options.some((o) => o.symbol === s));
-  const weights = picksBySource[source] ? weightsBySource[source] : evenWeights(picks.length);
-
-  const setState = (p: string[], w: number[]) => {
-    setPicksBySource((s) => ({ ...s, [source]: p }));
-    setWeightsBySource((s) => ({ ...s, [source]: w }));
-  };
-
-  const toggle = (symbol: string) => {
-    const i = picks.indexOf(symbol);
-    if (i >= 0) {
-      if (picks.length === 1) return;
-      setState(
-        picks.filter((_, k) => k !== i),
-        normalizeTo100(weights.filter((_, k) => k !== i)),
-      );
-    } else if (picks.length < MAX_PICKS) {
-      const n = picks.length + 1;
-      setState([...picks, symbol], rebalance([...weights, 0], n - 1, Math.round(100 / n)));
-    }
-  };
-
-  const bySymbol = useMemo(() => Object.fromEntries(options.map((o) => [o.symbol, o])), [options]);
-
-  // On-chain mode: real amounts drive the crystal (value-weighted in ETH) instead of sliders.
   const deployment = getDeployment(TARGET_CHAIN.id);
-  // the form is usable before prices arrive: ETH needs no price, tokens join once loaded
-  const onchain = source === 'testnet' && live.status !== 'error' && !!deployment;
-  const [amountValues, setAmountValues] = useState<{ values: Array<number | null>; eth: number }>({ values: [], eth: 0 });
-  const hasAmounts = onchain && (amountValues.values.some((v) => v === null || v > 0) || amountValues.eth > 0);
-  const effWeights = useMemo(() => {
-    if (!hasAmounts) return weights;
-    const vals = picks.map((_, i) => (i < amountValues.values.length ? (amountValues.values[i] as number | null) : 0));
-    return normalizeTo100(valueWeights([...vals, amountValues.eth]).map((w) => w * 100));
-  }, [hasAmounts, weights, picks, amountValues]);
-  const wethOption = bySymbol['WETH'];
-  const pickedLiveTokens = useMemo(
-    () => (live.status === 'live' ? picks.flatMap((id) => live.tokens.filter((t) => t.id === id)) : []),
-    [live, picks],
-  );
+  const crystal = deployment?.prismCrystal;
+  const live = useTestnetTokens();
+  const { address, isConnected, onTarget } = useWallet();
+  const [step, setStep] = useState(0);
+  const [picks, setPicks] = useState<string[]>([]);
+  const [amounts, setAmounts] = useState<Record<string, string>>({});
+  const [ethInput, setEthInput] = useState('');
+  const [forgedId, setForgedId] = useState<bigint | null>(null);
+  const tx = useTxSteps();
 
-  const total = totalOf(weights);
-  const holdings: Holding[] = useMemo(() => {
-    const list = picks.map((s, i) => ({
-      symbol: s,
-      weight: (effWeights[i] ?? 0) / 100,
-      change24h: bySymbol[s]!.change24h,
-      volatility: bySymbol[s]!.volatility,
-    }));
-    if (hasAmounts && amountValues.eth > 0) {
-      list.push({
-        symbol: 'ETH',
-        weight: (effWeights[picks.length] ?? 0) / 100,
-        change24h: wethOption?.change24h ?? Number.NaN,
-        volatility: wethOption?.volatility ?? DEFAULT_VOLATILITY,
-      });
-    }
-    return list;
-  }, [picks, effWeights, bySymbol, hasAmounts, amountValues.eth, wethOption]);
-  const knownChange = holdings.every((h) => Number.isFinite(h.change24h));
-  const change = holdings.reduce((s, h) => s + h.weight * h.change24h, 0);
-  const isLive = source === 'testnet' && live.status === 'live';
+  const marketById = useMemo(() => {
+    const m = new Map<string, LiveToken>();
+    if (live.status === 'live') for (const t of live.tokens) m.set(t.id, t);
+    return m;
+  }, [live]);
+
+  // wallet balances + allowances for every basket token (read-only)
+  const reads = useReadContracts({
+    contracts: BASKET_TOKENS.flatMap((t) => [
+      { address: t.address, abi: erc20Abi, functionName: 'balanceOf', args: [address!], chainId: TARGET_CHAIN.id },
+      { address: t.address, abi: erc20Abi, functionName: 'allowance', args: [address!, (crystal ?? t.address) as Address], chainId: TARGET_CHAIN.id },
+    ]),
+    query: { enabled: !!address, refetchInterval: 20_000 },
+  });
+  const balanceOf = (t: TestnetToken) => (reads.data?.[BASKET_TOKENS.indexOf(t) * 2]?.result as bigint | undefined) ?? null;
+  const allowanceOf = (t: TestnetToken) => (reads.data?.[BASKET_TOKENS.indexOf(t) * 2 + 1]?.result as bigint | undefined) ?? 0n;
+  const ethBal = useBalance({ address, chainId: TARGET_CHAIN.id, query: { enabled: !!address } });
+
+  const balancesKnown = isConnected && reads.isSuccess;
+  const ownsAnyStock = balancesKnown && BASKET_TOKENS.some((t) => t.kind !== 'crypto' && (balanceOf(t) ?? 0n) > 0n);
+
+  const picked = BASKET_TOKENS.filter((t) => picks.includes(t.id));
+  const rows = picked.map((t) => {
+    const raw = amounts[t.id] ?? '';
+    const amount = raw === '' ? 0n : parseTokenAmount(raw, t.decimals);
+    const eth = marketById.get(t.id)?.market.eth ?? null;
+    // 0 = nothing typed; null = typed but no price to value it with
+    const value: number | null = amount && amount > 0n ? (eth !== null ? Number(formatUnits(amount, t.decimals)) * eth : null) : 0;
+    return { t, raw, amount, value };
+  });
+  const ethWei = ethInput === '' ? 0n : (parseTokenAmount(ethInput, 18) ?? -1n);
+  const ethValue = ethWei > 0n ? Number(formatUnits(ethWei, 18)) : 0;
+
+  const filled = rows.filter((r) => r.amount && r.amount > 0n);
+  const plan = planDeposit(
+    filled.map((r) => ({
+      token: r.t.address,
+      symbol: r.t.id,
+      amount: r.amount!,
+      balance: balanceOf(r.t) ?? 0n,
+      allowance: allowanceOf(r.t),
+    })),
+    { amount: ethWei > 0n ? ethWei : 0n, balance: ethBal.data?.value ?? 0n },
+    MAX_ASSETS,
+  );
+  const problems = [
+    ...rows.filter((r) => r.raw !== '' && r.amount === null).map((r) => `Check the amount for ${r.t.id}.`),
+    ...(ethWei === -1n ? ['Check the ETH amount.'] : []),
+    ...(isConnected ? plan.problems : []),
+  ];
+
+  // live preview: value-weighted (ETH), or even weights before any amount is typed
+  const values = [...rows.map((r) => r.value), ethValue];
+  const typed = values.some((v) => v === null || v > 0);
+  const weights = typed ? valueWeights(values) : [...rows.map(() => 1 / Math.max(1, rows.length)), 0];
+  const pct = normalizeTo100(weights.map((w) => w * 100));
+  const weth = marketById.get('WETH');
+  const holdings: Holding[] = [
+    ...rows.map((r, i) => ({
+      symbol: r.t.id,
+      weight: weights[i]!,
+      change24h: marketById.get(r.t.id)?.market.change24h ?? Number.NaN,
+      volatility: marketById.get(r.t.id)?.market.volatility ?? DEFAULT_VOLATILITY,
+    })),
+    {
+      symbol: 'ETH',
+      weight: weights[rows.length] ?? 0,
+      change24h: weth?.market.change24h ?? Number.NaN,
+      volatility: weth?.market.volatility ?? DEFAULT_VOLATILITY,
+    },
+  ].filter((h) => h.weight > 0);
+
+  const toggle = (id: string) =>
+    setPicks((p) => (p.includes(id) ? p.filter((x) => x !== id) : p.length < MAX_ASSETS ? [...p, id] : p));
+
+  const amountsReady = (filled.length > 0 || ethWei > 0n) && problems.length === 0;
+
+  const forge = async () => {
+    if (!address || !crystal) return;
+    setForgedId(null);
+    await tx.run(
+      depositSteps({
+        crystal,
+        account: address,
+        items: filled.map((r) => ({ token: r.t.address, symbol: r.t.id, amount: r.amount! })),
+        needsApproval: plan.approvals.map((a) => ({ token: a.token, symbol: a.symbol, amount: a.amount })),
+        ethWei: ethWei > 0n ? ethWei : 0n,
+        target: { kind: 'forge' },
+        onForged: (id) => setForgedId(id),
+      }),
+    );
+    reads.refetch();
+    ethBal.refetch();
+  };
+
+  const approvals = plan.approvals.length;
+  const reviewItems = [
+    ...filled.map((r) => ({ id: r.t.id, amount: r.amount!, dec: r.t.decimals, i: rows.indexOf(r) })),
+    ...(ethWei > 0n ? [{ id: 'ETH', amount: ethWei, dec: 18, i: rows.length }] : []),
+  ];
 
   return (
-    <div className="mx-auto flex h-full max-w-7xl flex-col gap-4 overflow-y-auto p-4 lg:grid lg:grid-cols-[400px_1fr] lg:overflow-hidden">
-      <div className="relative order-1 h-[42vh] min-h-[280px] shrink-0 overflow-hidden rounded-lg border border-line lg:order-2 lg:h-auto">
-        <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
-          {holdings.length > 0 && <FittedCrystal holdings={holdings} correlation={CORRELATIONS} size={1.6} spin={0.2} top={0.16} bottom={0.84} />}
-        </Stage>
-        <div className="pointer-events-none absolute left-4 top-4 flex flex-col items-start gap-2">
-          <DataBadge live={isLive} />
-          <span className="label text-mist">
-            Basket 24h {knownChange ? <Change value={change} /> : <span className="text-mist/70">— no price feed</span>}
-          </span>
-        </div>
-        {source === 'testnet' && (
-          <p className="pointer-events-none absolute bottom-3 left-4 right-4 font-mono text-[10px] leading-relaxed text-mist/80">
-            Prices in ETH from on-chain Uniswap V4 pools. Green/red = real 24h move from on-chain swaps. Spikes = realized volatility. Grey = no history.
-          </p>
-        )}
-      </div>
+    <PageScroll className="max-w-7xl gap-5">
+      <PageHeader title="Forge a crystal" subtitle="Put test stocks and ETH into one crystal that lives in your wallet. Three steps, about a minute.">
+        <DataBadge live={live.status === 'live'} />
+      </PageHeader>
 
-      <Panel className="order-2 flex shrink-0 flex-col lg:order-1 lg:min-h-0 lg:overflow-hidden">
-        <div className="border-b border-line p-4">
-          <h1 className="headline text-2xl">Forge a crystal</h1>
-          <div className="mt-3 inline-flex rounded border border-line p-0.5" role="tablist">
-            {(['testnet', 'sample'] as const).map((s) => (
-              <button
-                key={s}
-                role="tab"
-                aria-selected={source === s}
-                onClick={() => setSource(s)}
-                className={`label rounded-sm px-3 py-1.5 transition ${source === s ? 'bg-lime text-ink' : 'text-mist hover:text-white'}`}
-              >
-                {s === 'testnet' ? 'Testnet tokens' : 'Sample tokens'}
-              </button>
-            ))}
-          </div>
-          <p className="mt-3 text-sm text-mist">
-            {source === 'testnet'
-              ? 'vibe/vibe test stocks + WETH on Robinhood Chain Testnet (46630), priced live from on-chain pools. Test assets, no value.'
-              : `Sample stock list with made-up prices, for trying bigger baskets. Up to ${MAX_PICKS} tokens.`}
-          </p>
-          {source === 'testnet' && live.status === 'loading' && <p className="label mt-3 text-mist">Reading chain…</p>}
-          {source === 'testnet' && live.status === 'error' && (
-            <p className="mt-3 text-sm text-down">Couldn't reach the testnet RPC ({live.message}). Try Sample tokens.</p>
-          )}
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {options.map((t) => (
-              <button key={t.symbol} onClick={() => toggle(t.symbol)} className={`chip ${picks.includes(t.symbol) ? 'chip-on' : ''}`}>
-                {t.symbol}
-              </button>
-            ))}
-          </div>
-        </div>
+      {/* progress */}
+      <ol className="grid grid-cols-3 gap-2" aria-label="Progress">
+        {STEPS.map((label, i) => (
+          <li key={label}>
+            <button
+              type="button"
+              disabled={i >= step}
+              onClick={() => setStep(i)}
+              className="w-full text-left disabled:cursor-default"
+              aria-current={i === step ? 'step' : undefined}
+            >
+              <span className={`block h-1.5 rounded-full transition-colors ${i <= step ? 'bg-lime' : 'bg-white/10'}`} />
+              <span className={`label mt-2 block ${i === step ? 'text-lime' : i < step ? 'text-white' : 'text-mist'}`}>
+                {i + 1} · {label}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ol>
 
-        <div className="space-y-4 p-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-          {picks.map((symbol, i) => {
-            const t = bySymbol[symbol]!;
-            const w = effWeights[i] ?? 0;
-            return (
-              <div key={symbol}>
-                <div className="mb-1.5 flex items-baseline justify-between gap-2 text-sm">
-                  <span className="min-w-0 truncate">
-                    <span className="font-medium">{symbol}</span> <span className="text-mist">{t.name}</span>
-                  </span>
-                  <span className="flex shrink-0 items-baseline gap-3">
-                    {t.live ? (
-                      <>
-                        {t.eth ? (
-                          <EthPrice eth={t.eth} usd={t.price} />
+      <div className="grid gap-5 lg:grid-cols-[1fr_420px]">
+        {/* ------------------------------------------------------------ wizard */}
+        <div className="order-2 space-y-4 lg:order-1">
+          {step === 0 && (
+            <>
+              <p className="text-sm text-mist">
+                Tap the tokens you want inside — up to {MAX_ASSETS} (adding ETH counts as one). They are vibe/vibe test tokens
+                with no real value.
+              </p>
+              {!isConnected && (
+                <Panel className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <ViberGuide index={6} size={64}>
+                    Look around freely. Connect a wallet when you want to see what you own and forge for real.
+                  </ViberGuide>
+                  <WalletButton variant="hero" />
+                </Panel>
+              )}
+              {balancesKnown && !ownsAnyStock && (
+                <Panel className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <ViberGuide index={6} size={64}>
+                    You don’t own test stocks yet. You can forge with ETH now.
+                  </ViberGuide>
+                  <div className="flex flex-wrap gap-2">
+                    <button className="btn btn-primary" onClick={() => setStep(1)}>
+                      Use ETH only
+                    </button>
+                    <button className="btn btn-secondary" disabled title="Buying test stocks with ETH inside PRISM is coming soon">
+                      Forge from ETH (soon)
+                    </button>
+                  </div>
+                </Panel>
+              )}
+              <div className="grid gap-3 sm:grid-cols-2">
+                {BASKET_TOKENS.map((t) => {
+                  const m = marketById.get(t.id)?.market;
+                  const on = picks.includes(t.id);
+                  const bal = balanceOf(t);
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => toggle(t.id)}
+                      className={`rounded-2xl border p-4 text-left transition ${on ? 'border-lime bg-lime/5' : 'border-white/10 bg-panel hover:border-white/25'}`}
+                    >
+                      <span className="flex items-baseline justify-between gap-2">
+                        <span className="font-display text-xl font-bold">{t.id}</span>
+                        <span className={`grid h-5 w-5 place-items-center rounded-full border text-[11px] ${on ? 'border-lime bg-lime text-ink' : 'border-white/25'}`}>
+                          {on ? '✓' : ''}
+                        </span>
+                      </span>
+                      <span className="mt-0.5 block truncate text-xs text-mist">{describe(t)}</span>
+                      <span className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                        {m?.eth ? (
+                          <EthPrice eth={m.eth} usd={m.usd} />
                         ) : (
-                          <span className="label rounded-sm border border-line px-1.5 py-0.5 text-[9px] text-mist">no price feed</span>
+                          <span className="font-mono text-xs text-mist">{live.status === 'loading' ? 'price…' : 'no price'}</span>
                         )}
-                        {Number.isFinite(t.change24h) && (
+                        {m?.change24h != null && (
                           <span className="text-xs">
-                            <Change value={t.change24h} />
+                            <Change value={m.change24h} /> <span className="text-mist">today</span>
                           </span>
                         )}
-                      </>
-                    ) : (
-                      <span className="text-xs">
-                        <Change value={t.change24h} />
                       </span>
-                    )}
-                    <span className="w-10 text-right font-mono font-bold tabular-nums">{w}%</span>
-                  </span>
-                </div>
-                {!onchain && (
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={w}
-                    aria-label={`${symbol} weight`}
-                    className="prism-range"
-                    style={{ ['--fill' as string]: `${w}%` }}
-                    onChange={(e) => setState(picks, rebalance(weights, i, Number(e.target.value)))}
-                  />
-                )}
-                {t.address && (
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[10px] text-mist/70">
-                    {t.priceSource && (
-                      <span title="Price source · 24h/volatility source">
-                        <span className="text-lime/80">{t.priceSource}</span>
-                        {t.historySource !== 'none' ? ` · 24h: on-chain swaps (${t.swaps24h})` : ' · 24h: no history'}
-                        {t.volKnown ? '' : ' · vol: default'}
-                      </span>
-                    )}
-                    <a href={explorerAddress(t.address)} target="_blank" rel="noreferrer" className="hover:text-lime">
-                      {t.address.slice(0, 6)}…{t.address.slice(-4)} ↗
-                    </a>
-                    {t.sourceUrl && (
-                      <a href={t.sourceUrl} target="_blank" rel="noreferrer" className="hover:text-lime">
-                        source ↗
-                      </a>
-                    )}
-                  </div>
-                )}
+                      {isConnected && (
+                        <span className="mt-2 block font-mono text-[11px] text-mist">You own {bal === null ? '…' : fmt(bal, t.decimals)}</span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
-
-        <div className="border-t border-line p-4">
-          {onchain && deployment ? (
-            <>
-              <p className="label mb-3 text-mist">Amounts (token units) · weights follow value in ETH</p>
-              {live.status === 'loading' && (
-                <p className="mb-3 text-xs text-mist">Loading token prices… you can already forge with ETH only.</p>
-              )}
-              <DepositForm
-                crystal={deployment.prismCrystal}
-                tokens={pickedLiveTokens}
-                target={{ kind: 'forge' }}
-                ethPrice={(t) => bySymbol[t.id]?.eth ?? null}
-                onValues={(values, eth) => setAmountValues({ values, eth })}
-              />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-mist">{picks.length === 0 ? 'Nothing picked yet — you can also go on with ETH only.' : `${picks.length} picked.`}</p>
+                <button className="btn btn-primary" onClick={() => setStep(1)}>
+                  Next: amounts →
+                </button>
+              </div>
             </>
-          ) : (
+          )}
+
+          {step === 1 && (
             <>
-              <div className="mb-3 flex items-center justify-between text-sm">
-                <span className="label text-mist">Total</span>
-                <span className={`font-mono font-bold tabular-nums ${total === 100 ? 'text-up' : 'text-down'}`}>{total}%</span>
+              <p className="text-sm text-mist">How much of each should go in? Amounts are in token units. ETH is optional.</p>
+              <Panel className="divide-y divide-white/10">
+                {[...rows.map((r, i) => ({ r, i })), { r: null, i: rows.length }].map(({ r, i }) => {
+                  const id = r ? r.t.id : 'ETH';
+                  const bal = r ? balanceOf(r.t) : (ethBal.data?.value ?? null);
+                  const dec = r ? r.t.decimals : 18;
+                  const raw = r ? r.raw : ethInput;
+                  const set = (v: string) => (r ? setAmounts((a) => ({ ...a, [id]: v })) : setEthInput(v));
+                  const max = r ? bal : bal !== null ? (bal > GAS_RESERVE_WEI ? bal - GAS_RESERVE_WEI : 0n) : null;
+                  const share = typed ? (pct[i] ?? 0) : 0;
+                  return (
+                    <div key={id} className="grid gap-2 p-4 sm:grid-cols-[110px_1fr_170px] sm:items-center">
+                      <div>
+                        <p className="font-display text-lg font-bold">{id}</p>
+                        {isConnected && <p className="font-mono text-[11px] text-mist">wallet: {bal === null ? '…' : fmt(bal, dec)}</p>}
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          inputMode="decimal"
+                          placeholder={r ? '0.0' : '0.0 (optional)'}
+                          value={raw}
+                          onChange={(e) => {
+                            tx.reset();
+                            set(e.target.value);
+                          }}
+                          aria-label={`${id} amount`}
+                          className="w-full rounded-xl border border-white/10 bg-ink px-3 py-2.5 font-mono text-sm outline-none focus:border-lime/60"
+                        />
+                        <button
+                          type="button"
+                          className="chip"
+                          disabled={!max}
+                          onClick={() => max && set(formatUnits(max, dec))}
+                          title={r ? undefined : 'Leaves ~0.002 ETH for fees'}
+                        >
+                          Max
+                        </button>
+                      </div>
+                      <p className="text-sm sm:text-right">
+                        {share > 0 ? (
+                          <>
+                            <span className="font-bold text-white">{id}</span> <span className="text-mist">is</span>{' '}
+                            <span className="font-mono font-bold text-lime">{share}%</span> <span className="text-mist">of this crystal</span>
+                          </>
+                        ) : (
+                          <span className="text-mist">—</span>
+                        )}
+                      </p>
+                    </div>
+                  );
+                })}
+              </Panel>
+              {rows.some((r) => r.value === null) && (
+                <p className="text-xs text-mist">Tokens without a price get an even share in the preview.</p>
+              )}
+              {problems.length > 0 && (filled.length > 0 || ethInput !== '') && (
+                <ul className="space-y-0.5 text-sm text-down">
+                  {problems.map((p) => (
+                    <li key={p}>· {p}</li>
+                  ))}
+                </ul>
+              )}
+              {!isConnected && <p className="text-xs text-mist">Connect a wallet to see your balances and to forge.</p>}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <button className="btn btn-secondary" onClick={() => setStep(0)}>
+                  ← Back
+                </button>
+                <button className="btn btn-primary" disabled={!amountsReady} onClick={() => setStep(2)}>
+                  Next: review →
+                </button>
               </div>
-              <button disabled title={source === 'sample' ? 'Sample tokens can’t be forged' : 'Waiting for live testnet data'} className="btn btn-primary w-full">
-                {source === 'sample'
-                  ? 'Sample tokens · preview only'
-                  : !deployment
-                    ? 'Forge on-chain · contract not deployed yet'
-                    : live.status === 'error'
-                      ? 'Forge on-chain · can’t reach the testnet RPC'
-                      : 'Forge on-chain · reading chain…'}
-              </button>
+            </>
+          )}
+
+          {step === 2 && (
+            <>
+              <Panel className="space-y-5 p-5">
+                <div>
+                  <p className="label text-mist">What goes in</p>
+                  <ul className="mt-2 space-y-1.5">
+                    {reviewItems.map((x) => (
+                      <li key={x.id} className="flex items-baseline justify-between gap-3 text-sm">
+                        <span>
+                          <span className="font-mono">{fmt(x.amount, x.dec)}</span> <span className="font-bold">{x.id}</span>
+                        </span>
+                        <span className="font-mono text-mist">{pct[x.i] ?? 0}% of the crystal</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <p className="label text-mist">What will happen</p>
+                  <p className="mt-2 text-sm text-white/90">
+                    {approvals > 0
+                      ? `${approvals} approval${approvals > 1 ? 's' : ''} (letting the crystal take exactly these tokens), then 1 forge transaction.`
+                      : '1 forge transaction.'}{' '}
+                    Your wallet asks you to confirm each one.
+                  </p>
+                </div>
+                <p className="rounded-2xl bg-lime/5 px-4 py-3 text-sm font-medium text-lime">Only you can withdraw. No admin can touch it.</p>
+                {problems.length > 0 && (
+                  <ul className="space-y-0.5 text-sm text-down">
+                    {problems.map((p) => (
+                      <li key={p}>· {p}</li>
+                    ))}
+                  </ul>
+                )}
+              </Panel>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <button className="btn btn-secondary" disabled={tx.running} onClick={() => setStep(1)}>
+                  ← Back
+                </button>
+                {!crystal ? (
+                  <button className="btn btn-primary" disabled>
+                    Contract not deployed yet
+                  </button>
+                ) : !isConnected ? (
+                  <WalletButton variant="hero" />
+                ) : !onTarget ? (
+                  <SwitchNetworkButton />
+                ) : (
+                  <button className="btn btn-primary" disabled={tx.running || problems.length > 0 || forgedId !== null} onClick={forge}>
+                    {tx.running ? 'Working…' : forgedId !== null ? 'Forged ✓' : 'Forge crystal'}
+                  </button>
+                )}
+              </div>
+              <StepList steps={tx.steps} />
+              {forgedId !== null && (
+                <ViberGuide index={7}>
+                  Done! Crystal #{forgedId.toString()} is in your wallet.{' '}
+                  <Link to="/my-crystals" className="text-lime underline">
+                    See it in My Crystals →
+                  </Link>
+                </ViberGuide>
+              )}
             </>
           )}
         </div>
-      </Panel>
-    </div>
+
+        {/* ------------------------------------------------------------ preview */}
+        {/* on phones the preview sits above the steps, so it only appears once there is something to show */}
+        <div className={`order-1 lg:order-2 ${holdings.length === 0 ? 'hidden lg:block' : ''}`}>
+          <div className="relative h-[260px] overflow-hidden rounded-3xl border border-white/10 lg:sticky lg:top-2 lg:h-[460px]">
+            <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
+              {holdings.length > 0 && <FittedCrystal holdings={holdings} size={1.6} spin={0.2} top={0.12} bottom={0.86} />}
+            </Stage>
+            {holdings.length === 0 && (
+              <p className="absolute inset-0 grid place-items-center px-8 text-center text-sm text-mist">Pick a token to see your crystal take shape.</p>
+            )}
+            <p className="label pointer-events-none absolute left-4 top-4 text-mist">Live preview</p>
+            <p className="pointer-events-none absolute bottom-3 left-4 right-4 font-mono text-[10px] text-mist/80">
+              Size = how much · colour = today’s move · spikes = how jumpy the price is
+            </p>
+          </div>
+        </div>
+      </div>
+      <ViberCredit />
+    </PageScroll>
   );
 }

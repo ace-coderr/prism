@@ -31,34 +31,68 @@ export type LiveTokens =
   | { status: 'live'; tokens: LiveToken[] }
   | { status: 'error'; message: string };
 
-async function load(): Promise<Extract<LiveTokens, { status: 'live' }>> {
-  // drop any token that fails its on-chain check right now
-  const verified = (
-    await Promise.all(
-      BASKET_TOKENS.map((t) =>
-        testnetClient
-          .readContract({ address: t.address, abi: erc20Abi, functionName: 'totalSupply' })
-          .then(() => t)
-          .catch(() => null),
-      ),
-    )
-  ).filter((t): t is TestnetToken => t !== null);
+type Live = Extract<LiveTokens, { status: 'live' }>;
 
-  // prices are read on-chain only (V4 pools over the public RPC) — no third-party APIs
-  const snap = await marketSnapshot(testnetClient, verified);
-  return { status: 'live', tokens: verified.map((t) => ({ ...t, market: snap.get(t.id)! })) };
+/** A full snapshot is reused across pages for this long before it is read again. */
+const FRESH_MS = 60_000;
+
+let latest: { state: Live; at: number; full: boolean } | null = null;
+let running = false;
+const listeners = new Set<(s: LiveTokens) => void>();
+
+function publish(state: LiveTokens) {
+  for (const l of listeners) l(state);
 }
 
-/** Live, read-only market view of the verified testnet basket tokens. */
+/**
+ * Two passes: pool prices first (about a second), then the 24h swap history (several
+ * seconds), so prices show up without waiting for the history.
+ */
+async function refresh() {
+  if (running) return;
+  running = true;
+  try {
+    // drop any token that fails its on-chain check right now
+    const verified = (
+      await Promise.all(
+        BASKET_TOKENS.map((t) =>
+          testnetClient
+            .readContract({ address: t.address, abi: erc20Abi, functionName: 'totalSupply' })
+            .then(() => t)
+            .catch(() => null),
+        ),
+      )
+    ).filter((t): t is TestnetToken => t !== null);
+    const toState = (snap: Map<string, TokenMarket>): Live => ({
+      status: 'live',
+      tokens: verified.map((t) => ({ ...t, market: snap.get(t.id)! })),
+    });
+
+    // prices are read on-chain only (V4 pools over the public RPC) — no third-party APIs
+    if (!latest) {
+      const quick = await marketSnapshot(testnetClient, verified, { history: false });
+      latest = { state: toState(quick), at: Date.now(), full: false };
+      publish(latest.state);
+    }
+    const full = await marketSnapshot(testnetClient, verified);
+    latest = { state: toState(full), at: Date.now(), full: true };
+    publish(latest.state);
+  } catch (e) {
+    if (!latest) publish({ status: 'error', message: (e as Error).message.split('\n')[0] ?? 'RPC error' });
+  } finally {
+    running = false;
+  }
+}
+
+/** Live, read-only market view of the verified testnet basket tokens (shared by every page). */
 export function useTestnetTokens(): LiveTokens {
-  const [state, setState] = useState<LiveTokens>({ status: 'loading' });
+  const [state, setState] = useState<LiveTokens>(() => latest?.state ?? { status: 'loading' });
   useEffect(() => {
-    let alive = true;
-    load()
-      .then((s) => alive && setState(s))
-      .catch((e: Error) => alive && setState({ status: 'error', message: e.message.split('\n')[0] ?? 'RPC error' }));
+    listeners.add(setState);
+    if (latest) setState(latest.state);
+    if (!latest?.full || Date.now() - latest.at > FRESH_MS) void refresh();
     return () => {
-      alive = false;
+      listeners.delete(setState);
     };
   }, []);
   return state;

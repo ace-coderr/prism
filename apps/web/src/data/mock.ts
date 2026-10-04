@@ -1,42 +1,38 @@
 import type { CorrelationInput, CrystalHistory, Holding } from '@prism/core';
 
-// All data here is mock. Real token addresses come from
-// https://docs.robinhood.com/chain/contracts in step 2.
+/*
+ * SAMPLE DATA — clearly labelled "Sample" wherever it appears. It only uses the real
+ * testnet tokens (the vibe/vibe test stocks + ETH, see packages/core/src/tokens.ts);
+ * the prices, moves and histories here are made up to show what crystals look like.
+ */
 
-export interface Token {
+export interface SampleToken {
   symbol: string;
   name: string;
-  kind: 'stock' | 'crypto';
-  price: number;
+  /** made-up 24h move, % */
   change24h: number;
+  /** made-up "how jumpy the price is", 0..1 */
   volatility: number;
 }
 
-export const TOKENS: Token[] = [
-  { symbol: 'NVDA', name: 'NVIDIA', kind: 'stock', price: 182.4, change24h: 3.8, volatility: 0.75 },
-  { symbol: 'AAPL', name: 'Apple', kind: 'stock', price: 241.1, change24h: 0.9, volatility: 0.3 },
-  { symbol: 'MSFT', name: 'Microsoft', kind: 'stock', price: 512.7, change24h: 1.4, volatility: 0.25 },
-  { symbol: 'GOOGL', name: 'Alphabet', kind: 'stock', price: 248.3, change24h: 2.1, volatility: 0.35 },
-  { symbol: 'AMZN', name: 'Amazon', kind: 'stock', price: 221.6, change24h: -1.8, volatility: 0.4 },
-  { symbol: 'META', name: 'Meta', kind: 'stock', price: 734.9, change24h: -2.7, volatility: 0.5 },
-  { symbol: 'TSLA', name: 'Tesla', kind: 'stock', price: 436.0, change24h: -5.6, volatility: 0.9 },
-  { symbol: 'AMD', name: 'AMD', kind: 'stock', price: 164.2, change24h: 6.2, volatility: 0.8 },
-  { symbol: 'NFLX', name: 'Netflix', kind: 'stock', price: 1204.5, change24h: -0.6, volatility: 0.45 },
-  { symbol: 'PLTR', name: 'Palantir', kind: 'stock', price: 181.9, change24h: 9.4, volatility: 0.95 },
-  { symbol: 'HOOD', name: 'Robinhood', kind: 'stock', price: 117.3, change24h: 4.4, volatility: 0.85 },
-  { symbol: 'ETH', name: 'Ether', kind: 'crypto', price: 4380.0, change24h: -3.1, volatility: 0.7 },
+export const TOKENS: SampleToken[] = [
+  { symbol: 'NVDA', name: 'NVIDIA (test stock)', change24h: 3.8, volatility: 0.75 },
+  { symbol: 'SPCX', name: 'SpaceX (test stock)', change24h: 1.2, volatility: 0.5 },
+  { symbol: 'AAPL', name: 'Apple (test stock)', change24h: -0.9, volatility: 0.3 },
+  { symbol: 'OPENAI', name: 'OpenAI (test asset)', change24h: 4.6, volatility: 0.6 },
+  { symbol: 'ANTHROPIC', name: 'Anthropic (test asset)', change24h: -2.4, volatility: 0.65 },
+  { symbol: 'ETH', name: 'Ether', change24h: -3.1, volatility: 0.7 },
 ];
 
-export const TOKEN_BY_SYMBOL = Object.fromEntries(TOKENS.map((t) => [t.symbol, t])) as Record<string, Token>;
+export const TOKEN_BY_SYMBOL = Object.fromEntries(TOKENS.map((t) => [t.symbol, t])) as Record<string, SampleToken>;
 
+/** Sample correlations (made up): the two AI test assets move together. */
 export const CORRELATIONS: CorrelationInput = {
-  NVDA: { AMD: 0.86 },
-  MSFT: { GOOGL: 0.78, AAPL: 0.74 },
-  HOOD: { ETH: 0.72 },
-  TSLA: { PLTR: 0.58 },
+  OPENAI: { ANTHROPIC: 0.82 },
+  NVDA: { AAPL: 0.72 },
 };
 
-/** Turn a { SYMBOL: percent } map into core holdings using mock market data. */
+/** Turn a { SYMBOL: percent } map into core holdings using the sample market data. */
 export function toHoldings(weights: Record<string, number>): Holding[] {
   return Object.entries(weights).map(([symbol, pct]) => {
     const t = TOKEN_BY_SYMBOL[symbol]!;
@@ -47,7 +43,6 @@ export function toHoldings(weights: Record<string, number>): Holding[] {
 export interface MockCrystal {
   id: string;
   name: string;
-  owner: string;
   weights: Record<string, number>;
   history?: CrystalHistory;
   /** sample basket value, in ETH */
@@ -55,12 +50,12 @@ export interface MockCrystal {
   forged: string;
 }
 
+/** Shown in My Crystals when no wallet is connected. */
 export const MY_CRYSTALS: MockCrystal[] = [
   {
     id: 'c1',
     name: 'Kintsugi Core',
-    owner: 'you',
-    weights: { NVDA: 35, MSFT: 25, AAPL: 20, ETH: 20 },
+    weights: { NVDA: 35, SPCX: 25, AAPL: 20, ETH: 20 },
     history: {
       drawdowns: [
         { depth: 32, recovered: true, symbol: 'NVDA' },
@@ -73,62 +68,90 @@ export const MY_CRYSTALS: MockCrystal[] = [
   {
     id: 'c2',
     name: 'Volt',
-    owner: 'you',
-    weights: { TSLA: 40, PLTR: 30, AMD: 30 },
-    history: { drawdowns: [{ depth: 27, recovered: false, symbol: 'TSLA' }] },
+    weights: { OPENAI: 40, ANTHROPIC: 35, NVDA: 25 },
+    history: {
+      drawdowns: [
+        { depth: 26, recovered: true, symbol: 'OPENAI' },
+        { depth: 21, recovered: false, symbol: 'ANTHROPIC' },
+      ],
+    },
     valueEth: 1.45,
     forged: '2026-07-01',
   },
   {
     id: 'c3',
     name: 'Quiet Giant',
-    owner: 'you',
-    weights: { MSFT: 30, GOOGL: 25, AMZN: 25, NFLX: 20 },
+    weights: { AAPL: 45, SPCX: 30, ETH: 25 },
+    history: { drawdowns: [{ depth: 19, recovered: true, symbol: 'AAPL' }] },
     valueEth: 3.02,
     forged: '2026-09-18',
   },
 ];
 
-const GALLERY_NAMES = [
-  'Aurora', 'Basalt', 'Cinder', 'Dune', 'Ember', 'Frost',
-  'Glint', 'Halo', 'Ion', 'Jade', 'Kestrel', 'Lumen',
+/** Gallery "Examples" row — samples, never presented as real crystals. */
+export const EXAMPLES: MockCrystal[] = [
+  {
+    id: 'e1',
+    name: 'Aurora',
+    weights: { NVDA: 50, ETH: 30, AAPL: 20 },
+    history: { drawdowns: [{ depth: 34, recovered: true, symbol: 'NVDA' }] },
+    valueEth: 2.1,
+    forged: 'example',
+  },
+  {
+    id: 'e2',
+    name: 'Basalt',
+    weights: { AAPL: 40, SPCX: 40, ETH: 20 },
+    history: { drawdowns: [{ depth: 22, recovered: true }] },
+    valueEth: 0.8,
+    forged: 'example',
+  },
+  {
+    id: 'e3',
+    name: 'Ember',
+    weights: { OPENAI: 35, ANTHROPIC: 35, NVDA: 30 },
+    history: {
+      drawdowns: [
+        { depth: 41, recovered: true, symbol: 'ANTHROPIC' },
+        { depth: 17, recovered: true, symbol: 'OPENAI' },
+      ],
+    },
+    valueEth: 5.4,
+    forged: 'example',
+  },
+  {
+    id: 'e4',
+    name: 'Glint',
+    weights: { SPCX: 60, ETH: 40 },
+    history: { drawdowns: [{ depth: 28, recovered: true, symbol: 'SPCX' }] },
+    valueEth: 1.2,
+    forged: 'example',
+  },
+  {
+    id: 'e5',
+    name: 'Halo',
+    weights: { ETH: 40, NVDA: 20, AAPL: 20, SPCX: 20 },
+    history: { drawdowns: [{ depth: 24, recovered: true, symbol: 'ETH' }] },
+    valueEth: 3.3,
+    forged: 'example',
+  },
+  {
+    id: 'e6',
+    name: 'Jade',
+    weights: { ANTHROPIC: 50, AAPL: 50 },
+    history: { drawdowns: [{ depth: 30, recovered: true, symbol: 'ANTHROPIC' }] },
+    valueEth: 0.6,
+    forged: 'example',
+  },
 ];
 
-function seeded(seed: number) {
-  let a = seed;
-  return () => {
-    a = (a * 1664525 + 1013904223) % 4294967296;
-    return a / 4294967296;
-  };
-}
-
-export const GALLERY: MockCrystal[] = GALLERY_NAMES.map((name, i) => {
-  const r = seeded(i * 97 + 13);
-  const pool = [...TOKENS].sort(() => r() - 0.5).slice(0, 2 + Math.floor(r() * 4));
-  const raw = pool.map(() => 0.2 + r());
-  const sum = raw.reduce((s, x) => s + x, 0);
-  const weights = Object.fromEntries(pool.map((t, k) => [t.symbol, Math.round((raw[k]! / sum) * 100)]));
-  const drawdowns =
-    r() > 0.55
-      ? [{ depth: 16 + Math.round(r() * 30), recovered: r() > 0.4, symbol: pool[0]!.symbol }]
-      : [];
-  return {
-    id: `g${i}`,
-    name,
-    owner: `collector_${(i * 7 + 3).toString(36)}`,
-    weights,
-    history: { drawdowns },
-    valueEth: Math.round((0.5 + r() * 11) * 100) / 100,
-    forged: '2026-09-01',
-  };
-});
-
+/** Agent page illustration (sample): an over-concentrated basket and a calmer one. */
 export const AGENT_PROPOSAL = {
-  before: { NVDA: 45, AMD: 25, TSLA: 20, ETH: 10 } as Record<string, number>,
-  after: { NVDA: 28, AMD: 12, MSFT: 20, AAPL: 15, ETH: 15, TSLA: 10 } as Record<string, number>,
+  before: { NVDA: 50, OPENAI: 30, ETH: 20 } as Record<string, number>,
+  after: { NVDA: 30, OPENAI: 15, AAPL: 20, SPCX: 15, ETH: 20 } as Record<string, number>,
   reasons: [
-    'NVDA + AMD are 86% correlated — together they were 70% of the basket.',
-    'Volatility-weighted risk drops ~31% by adding MSFT / AAPL ballast.',
-    'ETH bumped to 15% to keep a non-equity leg.',
+    'NVDA and OPENAI tend to move together, and they were 80% of this basket.',
+    'Adding AAPL and SPCX spreads it out, so one bad day hurts less.',
+    'ETH stays at 20% so not everything is a stock.',
   ],
 };

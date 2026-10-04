@@ -1,6 +1,6 @@
 import { Suspense, useMemo, useState, type ReactNode } from 'react';
-import { Billboard, Html, useTexture } from '@react-three/drei';
-import { useQuery } from '@tanstack/react-query';
+import { Billboard, useTexture } from '@react-three/drei';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import * as THREE from 'three';
 import { createPublicClient, http, type Address, type PublicClient } from 'viem';
 import {
@@ -15,6 +15,7 @@ import {
   type OwnedViber,
 } from '@prism/core';
 import { testnetClient } from '../data/chain';
+import { SceneLabel } from './Stage';
 import { glowTexture } from './textures';
 
 /*
@@ -98,6 +99,28 @@ export function useOwnedViber(owner: Address | undefined) {
   });
 }
 
+/** Vibers for many owners at once (Gallery), keyed by lower-cased owner address. */
+export function useOwnersVibers(owners: Address[]): Map<string, OwnedViber> {
+  const unique = [...new Set(owners.map((o) => o.toLowerCase()))] as Address[];
+  const results = useQueries({
+    queries: unique.map((owner) => ({
+      queryKey: ['owned-viber', VIBERS_NFT?.chainId, VIBERS_NFT?.address, owner],
+      enabled: !!VIBERS_NFT,
+      staleTime: 5 * 60_000,
+      queryFn: () =>
+        readOwnedViber(VIBERS_NFT?.chainId === robinhoodChainMainnet.id ? mainnetClient : testnetClient, owner, fetch).catch(
+          () => null,
+        ),
+    })),
+  });
+  const map = new Map<string, OwnedViber>();
+  unique.forEach((o, i) => {
+    const v = results[i]?.data;
+    if (v) map.set(o, v);
+  });
+  return map;
+}
+
 const shadowMaterial = new THREE.MeshBasicMaterial({
   map: glowTexture(),
   color: '#000000',
@@ -145,11 +168,11 @@ export function ViberBillboard({
           <BillboardImage url={viber.image} height={height} />
         </Billboard>
       </Suspense>
-      <Html position={[0, -0.18, 0]} center>
+      <SceneLabel position={[0, -0.18, 0]} center>
         <span className="pointer-events-none whitespace-nowrap rounded-full bg-ink/85 px-2 py-0.5 font-mono text-[10px] text-lime">
           Your viber{viber.label ? ` (${viber.label})` : ''}
         </span>
-      </Html>
+      </SceneLabel>
     </group>
   );
 }

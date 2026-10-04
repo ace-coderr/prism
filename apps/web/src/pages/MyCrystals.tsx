@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Crystal } from '../components/Crystal';
 import { Stage, useRowLayout } from '../components/Stage';
-import { Change, Panel, usd } from '../components/ui';
+import { Change, DataBadge, Panel, usd } from '../components/ui';
 import { CORRELATIONS, MY_CRYSTALS, TOKEN_BY_SYMBOL, toHoldings, type MockCrystal } from '../data/mock';
 
 function Row({ selected, onSelect }: { selected: number; onSelect: (i: number) => void }) {
@@ -39,7 +39,7 @@ function Details({ crystal }: { crystal: MockCrystal }) {
   return (
     <Panel className="p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-display text-xl font-semibold">{crystal.name}</h2>
+        <h2 className="headline text-2xl">{crystal.name}</h2>
         <span className="text-sm text-mist">
           {usd(crystal.value)} · 24h <Change value={change} />
         </span>
@@ -50,7 +50,7 @@ function Details({ crystal }: { crystal: MockCrystal }) {
         {cracks > 0 && <span> · {cracks} open crack{cracks > 1 ? 's' : ''}</span>}
       </p>
       <table className="mt-4 w-full text-sm">
-        <thead className="text-left text-xs text-mist">
+        <thead className="label text-left text-mist">
           <tr>
             <th className="pb-2 font-normal">Token</th>
             <th className="pb-2 text-right font-normal">Weight</th>
@@ -66,11 +66,11 @@ function Details({ crystal }: { crystal: MockCrystal }) {
                 <td className="py-2">
                   <span className="font-medium">{sym}</span> <span className="text-mist">{t.name}</span>
                 </td>
-                <td className="py-2 text-right tabular-nums">{w}%</td>
+                <td className="py-2 text-right font-mono tabular-nums">{w}%</td>
                 <td className="py-2 text-right">
                   <Change value={t.change24h} />
                 </td>
-                <td className="py-2 text-right tabular-nums">{usd((crystal.value * w) / 100)}</td>
+                <td className="py-2 text-right font-mono tabular-nums">{usd((crystal.value * w) / 100)}</td>
               </tr>
             );
           })}
@@ -85,26 +85,24 @@ export default function MyCrystals() {
   return (
     <div className="mx-auto flex h-full max-w-7xl flex-col gap-4 overflow-y-auto p-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
-        <h1 className="font-display text-2xl font-semibold">My Crystals</h1>
+        <div className="flex items-center gap-3"><h1 className="headline text-3xl">My Crystals</h1><DataBadge live={false} /></div>
         <div className="flex gap-1.5">
           {MY_CRYSTALS.map((c, i) => (
             <button
               key={c.id}
               onClick={() => setSelected(i)}
-              className={`rounded-full border px-3 py-1 text-xs transition ${
-                i === selected ? 'border-white/40 bg-white/10' : 'border-line text-mist hover:text-white'
-              }`}
+              className={`chip ${i === selected ? 'chip-on' : ''}`}
             >
               {c.name}
             </button>
           ))}
         </div>
       </div>
-      <div className="relative h-[46vh] min-h-[300px] shrink-0 overflow-hidden rounded-2xl border border-line">
+      <div className="relative h-[46vh] min-h-[300px] shrink-0 overflow-hidden rounded-lg border border-line">
         <Stage className="!absolute inset-0" camera={{ position: [0, 0, 8], fov: 40 }}>
           <Row selected={selected} onSelect={setSelected} />
         </Stage>
-        <p className="pointer-events-none absolute bottom-3 left-4 text-xs text-mist">Click a crystal to see its holdings</p>
+        <p className="label pointer-events-none absolute bottom-3 left-4 text-mist">Click a crystal to see its holdings</p>
       </div>
       <Details crystal={MY_CRYSTALS[selected]!} />
     </div>

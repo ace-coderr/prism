@@ -1,15 +1,14 @@
 import {
-  type Quat,
   type Vec3,
   add,
   clamp,
+  dot,
   fibonacciSphere,
   hashString,
   hslToHex,
   length,
   mixHex,
   normalize,
-  quatFromUp,
   rng,
   scale,
   tangentBasis,
@@ -53,31 +52,36 @@ export type CorrelationInput = number[][] | Record<string, Record<string, number
 
 export interface BuildCrystalOptions {
   correlation?: CorrelationInput;
-  /** Hard cap on facet shards across the whole crystal (keeps mobile cheap). */
+  /** Hard cap on spires across the whole crystal (keeps mobile cheap). */
   maxShards?: number;
+  /** Crystal radius in voxels. Higher = finer and more cubes. Default 8. */
+  resolution?: number;
 }
 
 // ---------------------------------------------------------------------------
 // Outputs (plain data — no three.js types)
 // ---------------------------------------------------------------------------
 
-export interface Shard {
-  kind: 'facet' | 'bridge';
-  /** Index into `clusters`, or -1 for bridges between fused clusters. */
-  cluster: number;
-  position: Vec3;
-  /** Rotation that maps the unit shard's +Y axis outward. [x, y, z, w]. */
-  quaternion: Quat;
-  /** [width, length, width] applied to a unit (1×1×1) crystal point. */
-  scale: Vec3;
+/** Integer grid cell. */
+export type Cell = [number, number, number];
+
+export interface Voxel {
+  /** Integer grid coordinates; one unit = one cube. */
+  position: Cell;
   color: string;
+  /** core = the central gem, facet = a holding's spire, bridge = fused correlated holdings. */
+  kind: 'core' | 'facet' | 'bridge';
+  /** Index into `clusters`; -1 for bridges. Core cells take the nearest cluster. */
+  cluster: number;
+  /** Kintsugi: this cube fills a healed crack. */
+  gold: boolean;
 }
 
 export interface Cluster {
   symbol: string;
   weight: number;
   direction: Vec3;
-  /** Linear size. Volume (size³) is proportional to weight. */
+  /** Linear size of the spire group. size³ is proportional to weight. */
   size: number;
   color: string;
   /** 0..1 strength of the color, from |change24h|. */
@@ -86,24 +90,25 @@ export interface Cluster {
   spikiness: number;
   /** Symbols this cluster is fused with (correlation > threshold). */
   fusedWith: string[];
-  shardCount: number;
+  spires: number;
 }
 
 export interface Crack {
   symbol?: string;
   depth: number;
-  /** Recovered drawdowns are rendered as gold kintsugi seams. */
+  /** Recovered drawdowns are filled with gold cubes; open ones stay as gaps. */
   gold: boolean;
-  points: Vec3[];
+  /** Grid cells the crack runs through (removed if open, gilded if gold). */
+  cells: Cell[];
 }
 
 export interface CrystalGeometry {
-  core: { radius: number; color: string };
+  voxels: Voxel[];
   clusters: Cluster[];
-  shards: Shard[];
   cracks: Crack[];
   fusions: Array<[string, string]>;
-  boundingRadius: number;
+  /** Max distance (in voxels) of any cube centre from the origin, plus half a cube. */
+  radius: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,11 +117,12 @@ export interface CrystalGeometry {
 
 export const CORRELATION_THRESHOLD = 0.7;
 export const CRACK_THRESHOLD = 15; // percent
-export const CORE_RADIUS = 0.55;
+export const KINTSUGI_GOLD = '#f6c143';
+const CORE_RADIUS = 0.55;
 const BASE_SIZE = 1.15;
 const DEFAULT_MAX_SHARDS = 64;
+const DEFAULT_RESOLUTION = 8;
 const COLOR_FULL_MOVE = 8; // a ±8% day saturates the color
-const GOLD = '#f5c451';
 
 // ---------------------------------------------------------------------------
 // Pieces (exported for tests and UI reuse)
@@ -130,12 +136,12 @@ export function normalizeHoldings(holdings: Holding[]): Holding[] {
   return valid.map((h) => ({ ...h, weight: h.weight / total }));
 }
 
-/** Green shades for gains, red for losses; a bigger move gives a deeper, more saturated color. */
+/** Flat, saturated green for gains and red for losses; a bigger move is deeper and stronger. */
 export function changeColor(change24h: number): { color: string; intensity: number } {
   const intensity = clamp(Math.abs(change24h) / COLOR_FULL_MOVE, 0, 1);
-  const hue = change24h >= 0 ? 148 : 355;
-  const sat = 0.35 + 0.6 * intensity;
-  const light = 0.8 - 0.32 * intensity;
+  const hue = change24h >= 0 ? 138 : 2;
+  const sat = 0.35 + 0.35 * intensity;
+  const light = 0.6 - 0.18 * intensity;
   return { color: hslToHex(hue, sat, light), intensity };
 }
 
@@ -180,9 +186,37 @@ export function groupByCorrelation(
   return { groups: [...byRoot.values()], edges };
 }
 
+const cellKey = (x: number, y: number, z: number) => `${x},${y},${z}`;
+
+/** Voxels with at least one empty face neighbour — the only ones worth drawing. */
+export function exposedVoxels(voxels: Voxel[]): Voxel[] {
+  const filled = new Set(voxels.map((v) => cellKey(...v.position)));
+  return voxels.filter((v) => {
+    const [x, y, z] = v.position;
+    return (
+      !filled.has(cellKey(x + 1, y, z)) ||
+      !filled.has(cellKey(x - 1, y, z)) ||
+      !filled.has(cellKey(x, y + 1, z)) ||
+      !filled.has(cellKey(x, y - 1, z)) ||
+      !filled.has(cellKey(x, y, z + 1)) ||
+      !filled.has(cellKey(x, y, z - 1))
+    );
+  });
+}
+
 // ---------------------------------------------------------------------------
 // buildCrystal
 // ---------------------------------------------------------------------------
+
+/** A spire in continuous space, later rasterized onto the voxel grid. */
+interface Spire {
+  kind: 'facet' | 'bridge';
+  cluster: number;
+  dir: Vec3;
+  len: number;
+  halfWidth: number;
+  color: string;
+}
 
 export function buildCrystal(
   holdingsIn: Holding[],
@@ -191,7 +225,9 @@ export function buildCrystal(
 ): CrystalGeometry {
   const holdings = normalizeHoldings(holdingsIn);
   const maxShards = options.maxShards ?? DEFAULT_MAX_SHARDS;
+  const resolution = options.resolution ?? DEFAULT_RESOLUTION;
   const { groups, edges } = groupByCorrelation(holdings, options.correlation);
+  if (holdings.length === 0) return { voxels: [], clusters: [], cracks: [], fusions: [], radius: 0 };
 
   // 1. Directions: one anchor per correlation group; members of a group sit
   //    in a tight ring around their anchor so they touch / fuse.
@@ -206,37 +242,38 @@ export function buildCrystal(
       directions[members[0]!] = anchor;
       return;
     }
-    const ring = 0.28 + 0.05 * members.length;
+    const ring = 0.22 + 0.05 * members.length;
     members.forEach((m, k) => {
       directions[m] = tilt(anchor, ring, (k / members.length) * Math.PI * 2);
     });
   });
 
-  // 2. Shard budget, proportional to weight (at least 2 each).
-  const rawCounts = holdings.map((h) => clamp(Math.round(3 + h.weight * 14), 2, 10));
+  // 2. Spire budget, proportional to weight.
+  const rawCounts = holdings.map((h) => clamp(Math.round(2 + h.weight * 10), 2, 8));
   const rawTotal = rawCounts.reduce((s, c) => s + c, 0);
   const budgetScale = rawTotal > maxShards ? maxShards / rawTotal : 1;
   const counts = rawCounts.map((c) => Math.max(1, Math.floor(c * budgetScale)));
 
-  // 3. Clusters + facet shards.
   const fusedWith: string[][] = holdings.map(() => []);
   for (const [i, j] of edges) {
     fusedWith[i]!.push(holdings[j]!.symbol);
     fusedWith[j]!.push(holdings[i]!.symbol);
   }
 
+  // 3. Clusters + their spires (continuous space, unit ≈ crystal core radius / 0.55).
   const clusters: Cluster[] = [];
-  const shards: Shard[] = [];
-  const dims: Array<{ len: number; width: number }> = [];
+  const spires: Spire[] = [];
+  const mainSpire: Spire[] = [];
 
   holdings.forEach((h, i) => {
     const dir = directions[i]!;
     const spikiness = clamp(h.volatility, 0, 1);
     const { color, intensity } = changeColor(h.change24h);
     const size = BASE_SIZE * Math.cbrt(h.weight);
-    const elongation = 1.15 + 1.9 * spikiness;
-    const baseWidth = size * 0.62 * (1 - 0.4 * spikiness);
-    const spread = 0.3 + 1.0 * Math.sqrt(h.weight) * (0.7 + 0.3 * spikiness);
+    // volatile holdings grow taller, thinner columns
+    const elongation = 0.95 + 1.6 * spikiness;
+    const halfWidth = size * 0.42 * (1 - 0.45 * spikiness);
+    const spread = 0.25 + 0.85 * Math.sqrt(h.weight);
     const rand = rng(hashString(h.symbol));
 
     clusters.push({
@@ -248,104 +285,169 @@ export function buildCrystal(
       intensity,
       spikiness,
       fusedWith: fusedWith[i]!,
-      shardCount: counts[i]!,
+      spires: counts[i]!,
     });
-    dims.push({ len: size * elongation, width: baseWidth });
 
     for (let s = 0; s < counts[i]!; s++) {
-      // first shard is the cluster's main spire, the rest fan out around it
       const a = rand();
       const b = rand();
       const c = rand();
       const d = rand();
-      const sdir = s === 0 ? dir : tilt(dir, spread * (0.35 + 0.65 * a), b * Math.PI * 2);
-      const lenJitter = s === 0 ? 1 : 0.55 + 0.4 * c;
-      const len = size * elongation * lenJitter;
-      const width = baseWidth * (s === 0 ? 1 : 0.6 + 0.35 * d);
-      shards.push({
+      const sdir = s === 0 ? dir : tilt(dir, spread * (0.4 + 0.6 * a), b * Math.PI * 2);
+      const spire: Spire = {
         kind: 'facet',
         cluster: i,
-        position: scale(sdir, CORE_RADIUS * 0.55 + len * 0.5),
-        quaternion: quatFromUp(sdir, d * Math.PI),
-        scale: [width, len, width],
+        dir: sdir,
+        len: size * elongation * (s === 0 ? 1 : 0.5 + 0.4 * c),
+        halfWidth: halfWidth * (s === 0 ? 1 : 0.6 + 0.35 * d),
         color,
-      });
+      };
+      spires.push(spire);
+      if (s === 0) mainSpire.push(spire);
     }
   });
 
-  // 4. Bridges: fused (highly correlated) neighbours share a crystal between them.
+  // Fused neighbours get a bridge spire between them so they read as one block.
   const fusions: Array<[string, string]> = [];
   for (const [i, j] of edges) {
-    const ci = clusters[i]!;
-    const cj = clusters[j]!;
-    fusions.push([ci.symbol, cj.symbol]);
-    const dir = normalize(add(ci.direction, cj.direction));
-    const len = ((dims[i]!.len + dims[j]!.len) / 2) * 0.8;
-    const width = ((dims[i]!.width + dims[j]!.width) / 2) * 0.9;
-    shards.push({
+    const a = mainSpire[i]!;
+    const b = mainSpire[j]!;
+    fusions.push([clusters[i]!.symbol, clusters[j]!.symbol]);
+    spires.push({
       kind: 'bridge',
       cluster: -1,
-      position: scale(dir, CORE_RADIUS * 0.55 + len * 0.5),
-      quaternion: quatFromUp(dir, 0.5),
-      scale: [width, len, width],
-      color: mixHex(ci.color, cj.color),
+      dir: normalize(add(a.dir, b.dir)),
+      len: ((a.len + b.len) / 2) * 0.85,
+      // wide enough to span the gap between the two main spires
+      halfWidth:
+        Math.max(a.halfWidth, b.halfWidth) +
+        Math.sin(Math.acos(clamp(dot(a.dir, b.dir), -1, 1)) / 2) * (CORE_RADIUS + a.len * 0.5),
+      color: mixHex(a.color, b.color),
     });
   }
 
-  // 5. Living crystal: deep drawdowns crack it; recovered ones heal in gold.
+  // 4. Rasterize onto the integer grid.
+  // The gem body is a fixed fraction of the crystal; spires start inside it and
+  // are scaled so the longest one reaches `resolution` cells from the centre.
+  const coreR = resolution * 0.45;
+  const baseG = coreR * 0.5;
+  const maxLen = spires.reduce((m, s) => Math.max(m, s.len), 1e-6);
+  const g = (resolution - baseG) / maxLen; // grid cells per continuous unit
+  const n = Math.ceil(resolution) + 1;
+  const cells = new Map<string, Voxel>();
+
+  for (let x = -n; x <= n; x++) {
+    for (let y = -n; y <= n; y++) {
+      for (let z = -n; z <= n; z++) {
+        const p: Vec3 = [x, y, z];
+        let best: Spire | null = null;
+        let bestScore = Infinity;
+        for (const s of spires) {
+          // every holding pokes out of the gem body, however small its weight
+          const lenG = Math.max(s.len * g, coreR * 0.95);
+          const t = dot(p, s.dir) - baseG;
+          if (t < 0 || t > lenG) continue;
+          const u = t / lenG;
+          // straight column, then a pointed tip over the last 40%
+          const taper = u < 0.6 ? 1 : (1 - u) / 0.4;
+          const allowed = Math.max(s.halfWidth * g * taper, u < 0.97 ? 0.55 : 0);
+          const r = length(add(p, scale(s.dir, -(t + baseG))));
+          if (r > allowed) continue;
+          const score = r / Math.max(allowed, 1e-6);
+          // facets win ties over bridges so each holding keeps its own color
+          if (score < bestScore - (s.kind === 'bridge' ? 0.05 : 0)) {
+            best = s;
+            bestScore = score;
+          }
+        }
+        const inCore = Math.abs(x) + Math.abs(y) * 0.8 + Math.abs(z) <= coreR;
+        if (!best && !inCore) continue;
+
+        if (best && !inCore) {
+          cells.set(cellKey(x, y, z), {
+            position: [x, y, z],
+            color: best.color,
+            kind: best.kind,
+            cluster: best.cluster,
+            gold: false,
+          });
+        } else {
+          // core cells take the color of the cluster they face
+          const dirP = normalize(p);
+          let ci = 0;
+          let bestDot = -Infinity;
+          clusters.forEach((c, k) => {
+            const d = dot(dirP, c.direction);
+            if (d > bestDot) {
+              bestDot = d;
+              ci = k;
+            }
+          });
+          cells.set(cellKey(x, y, z), {
+            position: [x, y, z],
+            color: clusters[ci]!.color,
+            kind: 'core',
+            cluster: ci,
+            gold: false,
+          });
+        }
+      }
+    }
+  }
+
+  // 5. Living crystal: deep drawdowns cut a gap; recovered ones are filled with gold.
   const cracks: Crack[] = (history?.drawdowns ?? [])
     .filter((d) => Math.abs(d.depth) > CRACK_THRESHOLD)
-    .map((d, k) => buildCrack(d, k, clusters));
+    .map((d, k) => {
+      const crack = crackCells(d, k, clusters, cells);
+      for (const c of crack.cells) {
+        const key = cellKey(...c);
+        if (crack.gold) {
+          const v = cells.get(key)!;
+          cells.set(key, { ...v, gold: true, color: KINTSUGI_GOLD });
+        } else {
+          cells.delete(key);
+        }
+      }
+      return crack;
+    });
 
-  const boundingRadius = shards.reduce((m, s) => {
-    return Math.max(m, length(s.position) + s.scale[1] * 0.5);
-  }, CORE_RADIUS);
-
-  const coreColor = clusters.length
-    ? clusters.reduce((acc, c, i) => (i === 0 ? c.color : mixHex(acc, c.color, c.weight)), '#ffffff')
-    : '#ffffff';
-
-  return {
-    core: { radius: CORE_RADIUS, color: mixHex(coreColor, '#ffffff', 0.6) },
-    clusters,
-    shards,
-    cracks,
-    fusions,
-    boundingRadius,
-  };
+  const voxels = [...cells.values()];
+  const radius = voxels.reduce((m, v) => Math.max(m, length(v.position)), 0) + 0.5;
+  return { voxels, clusters, cracks, fusions, radius };
 }
 
-function buildCrack(d: Drawdown, index: number, clusters: Cluster[]): Crack {
+/**
+ * A crack is a jagged one-cube-thick slice through the crystal: a plane through
+ * the origin, limited to a wedge around the affected holding. Deeper drawdowns
+ * open a wider wedge (a longer crack).
+ */
+function crackCells(d: Drawdown, index: number, clusters: Cluster[], cells: Map<string, Voxel>): Crack {
   const depth = Math.abs(d.depth);
   const target = d.symbol ? clusters.find((c) => c.symbol === d.symbol) : undefined;
   const rand = rng(hashString(`${d.symbol ?? 'basket'}:${index}:${depth}`));
-  const center: Vec3 = target
-    ? target.direction
-    : fibonacciSphere(7)[Math.floor(rand() * 7)]!;
+  const center: Vec3 = target ? target.direction : fibonacciSphere(7)[Math.floor(rand() * 7)]!;
   const [t, b] = tangentBasis(center);
   const heading = rand() * Math.PI * 2;
+  // `along` lies in the crack plane; `normal` is the plane normal
   const along = normalize(add(scale(t, Math.cos(heading)), scale(b, Math.sin(heading))));
-  const side: Vec3 = normalize([
-    center[1] * along[2] - center[2] * along[1],
-    center[2] * along[0] - center[0] * along[2],
-    center[0] * along[1] - center[1] * along[0],
-  ]);
+  const normal = normalize(add(scale(t, -Math.sin(heading)), scale(b, Math.cos(heading))));
+  const halfArc = 0.35 + clamp(depth / 100, 0, 1) * 1.5;
+  const cosArc = Math.cos(halfArc);
+  const phase = rand() * Math.PI * 2;
 
-  // deeper drawdown → longer crack
-  const halfArc = 0.3 + clamp(depth / 100, 0, 1) * 1.6;
-  const segments = 9;
-  const radius = CORE_RADIUS * 1.03;
-  const points: Vec3[] = [];
-  for (let s = 0; s <= segments; s++) {
-    const u = -halfArc + (2 * halfArc * s) / segments;
-    const jag = s === 0 || s === segments ? 0 : (rand() - 0.5) * 0.22;
-    const p = normalize(
-      add(add(scale(center, Math.cos(u)), scale(along, Math.sin(u))), scale(side, jag)),
-    );
-    points.push(scale(p, radius));
+  const out: Cell[] = [];
+  for (const v of cells.values()) {
+    const p = v.position;
+    const r = length(p);
+    if (r < 1.5) continue;
+    const dirP: Vec3 = [p[0] / r, p[1] / r, p[2] / r];
+    // inside the wedge around the target direction (measured within the crack plane)
+    const inPlane = normalize(add(dirP, scale(normal, -dot(dirP, normal))));
+    if (dot(inPlane, center) < cosArc) continue;
+    // zig-zag offset so the gap reads as a crack, not a cut
+    const jag = 0.9 * Math.sin(dot(p, along) * 0.9 + phase);
+    if (Math.abs(dot(p, normal) - jag) <= 0.75) out.push(p);
   }
-
-  return { symbol: d.symbol, depth, gold: d.recovered, points };
+  return { symbol: d.symbol, depth, gold: d.recovered, cells: out };
 }
-
-export const KINTSUGI_GOLD = GOLD;

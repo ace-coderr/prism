@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Html, OrbitControls } from '@react-three/drei';
 import { Crystal } from '../components/Crystal';
 import { Stage } from '../components/Stage';
-import { usd } from '../components/ui';
+import { DataBadge, usd } from '../components/ui';
 import { CORRELATIONS, GALLERY, toHoldings } from '../data/mock';
 
 // two staggered rings so every crystal is visible from the default angle
@@ -39,9 +39,9 @@ function Field() {
             />
             {hover === i && (
               <Html position={[p[0], p[1] - 1.35, p[2]]} center>
-                <div className="pointer-events-none whitespace-nowrap rounded-lg border border-line bg-ink/90 px-3 py-1.5 text-center text-xs">
-                  <div className="font-display text-sm text-white">{c.name}</div>
-                  <div className="text-mist">
+                <div className="pointer-events-none whitespace-nowrap rounded border border-lime/40 bg-ink/95 px-3 py-1.5 text-center text-xs">
+                  <div className="headline text-base text-white">{c.name}</div>
+                  <div className="font-mono text-[10px] text-mist">
                     {Object.keys(c.weights).join(' · ')} · {usd(c.value)}
                   </div>
                 </div>
@@ -70,8 +70,9 @@ export default function Gallery() {
         />
       </Stage>
       <div className="pointer-events-none absolute left-4 top-4 max-w-xs">
-        <h1 className="font-display text-2xl font-semibold">Gallery</h1>
-        <p className="mt-1 text-sm text-mist">
+        <h1 className="headline text-3xl">Gallery</h1>
+        <div className="mt-2"><DataBadge live={false} /></div>
+        <p className="mt-2 text-sm text-mist">
           {GALLERY.length} crystals forged by the community. Drag to orbit, hover to inspect.
         </p>
       </div>

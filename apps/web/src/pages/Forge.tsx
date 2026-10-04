@@ -37,14 +37,14 @@ export default function Forge() {
         <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
           <Crystal holdings={holdings} correlation={CORRELATIONS} size={1.7} spin={0.2} />
         </Stage>
-        <div className="pointer-events-none absolute left-4 top-4 text-xs text-mist">
+        <div className="label pointer-events-none absolute left-4 top-4 text-mist">
           Live preview · basket 24h <Change value={change} />
         </div>
       </div>
 
       <Panel className="order-2 flex shrink-0 flex-col lg:order-1 lg:min-h-0 lg:overflow-hidden">
         <div className="border-b border-line p-4">
-          <h1 className="font-display text-xl font-semibold">Forge a crystal</h1>
+          <h1 className="headline text-2xl">Forge a crystal</h1>
           <p className="mt-1 text-sm text-mist">Pick up to {MAX_PICKS} tokens, then shape the weights.</p>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {TOKENS.map((t) => {
@@ -53,9 +53,7 @@ export default function Forge() {
                 <button
                   key={t.symbol}
                   onClick={() => toggle(t.symbol)}
-                  className={`rounded-full border px-2.5 py-1 text-xs transition ${
-                    on ? 'border-white/40 bg-white/10 text-white' : 'border-line text-mist hover:border-white/20 hover:text-white'
-                  }`}
+                  className={`chip ${on ? 'chip-on' : ''}`}
                 >
                   {t.symbol}
                 </button>
@@ -77,7 +75,7 @@ export default function Forge() {
                   </span>
                   <span className="flex items-baseline gap-3">
                     <span className="text-xs"><Change value={t.change24h} /></span>
-                    <span className="w-10 text-right font-display tabular-nums">{w}%</span>
+                    <span className="w-10 text-right font-mono font-bold tabular-nums">{w}%</span>
                   </span>
                 </div>
                 <input
@@ -97,13 +95,13 @@ export default function Forge() {
 
         <div className="border-t border-line p-4">
           <div className="mb-3 flex items-center justify-between text-sm">
-            <span className="text-mist">Total</span>
-            <span className={`font-display tabular-nums ${total === 100 ? 'text-up' : 'text-down'}`}>{total}%</span>
+            <span className="label text-mist">Total</span>
+            <span className={`font-mono font-bold tabular-nums ${total === 100 ? 'text-up' : 'text-down'}`}>{total}%</span>
           </div>
           <button
             disabled
             title="Minting arrives with the contracts (step 2)"
-            className="w-full cursor-not-allowed rounded-full bg-white/10 py-2.5 text-sm text-mist"
+            className="btn btn-primary w-full"
           >
             Forge on-chain · coming soon
           </button>

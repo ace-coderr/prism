@@ -1,5 +1,5 @@
 import { Route, Routes } from 'react-router-dom';
-import { Nav } from './components/Nav';
+import { Footer, Nav } from './components/Nav';
 import Home from './pages/Home';
 import Forge from './pages/Forge';
 import MyCrystals from './pages/MyCrystals';
@@ -20,6 +20,7 @@ export default function App() {
           <Route path="*" element={<Home />} />
         </Routes>
       </main>
+      <Footer />
     </div>
   );
 }

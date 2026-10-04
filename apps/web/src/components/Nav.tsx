@@ -8,29 +8,41 @@ const LINKS = [
   { to: '/agent', label: 'Agent' },
 ];
 
-export function Logo() {
+// PRISM mark: a pixel/voxel gem — crown on top, pointed pavilion below.
+const GEM = ['..AAA..', '.ABBBA.', 'ABBGBBA', '.CCCCC.', '..CCC..', '...C...'];
+const SHADES: Record<string, string> = { A: '#e6ff5c', B: '#d4f000', C: '#8fa300', G: '#f6c143' };
+
+export function Logo({ size = 26 }: { size?: number }) {
+  const cell = 3;
   return (
-    <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden>
-      <defs>
-        <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#9db7ff" />
-          <stop offset="0.5" stopColor="#c7a6ff" />
-          <stop offset="1" stopColor="#7affc8" />
-        </linearGradient>
-      </defs>
-      <path d="M12 1 21 8.5 12 23 3 8.5Z" fill="url(#lg)" opacity="0.9" />
-      <path d="M3 8.5h18M12 1 8 8.5 12 23l4-14.5Z" stroke="#06060a" strokeWidth="0.8" fill="none" opacity="0.5" />
+    <svg viewBox="-1 -1 23 20" width={size} height={size} aria-hidden>
+      {GEM.flatMap((row, y) =>
+        [...row].map((ch, x) =>
+          ch === '.' ? null : (
+            <rect
+              key={`${x}-${y}`}
+              x={x * cell}
+              y={y * cell}
+              width={cell}
+              height={cell}
+              fill={SHADES[ch]}
+              stroke="#000"
+              strokeWidth={0.7}
+            />
+          ),
+        ),
+      )}
     </svg>
   );
 }
 
 export function Nav() {
   return (
-    <header className="z-20 border-b border-line/80 bg-ink/80 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4">
-        <NavLink to="/" className="flex shrink-0 items-center gap-2">
+    <header className="z-20 border-b border-line bg-ink/90 backdrop-blur">
+      <div className="mx-auto flex h-14 max-w-7xl items-center gap-5 px-4">
+        <NavLink to="/" className="flex shrink-0 items-center gap-2.5">
           <Logo />
-          <span className="font-display text-lg font-bold tracking-[0.2em]">PRISM</span>
+          <span className="headline text-xl tracking-[-0.02em]">PRISM</span>
         </NavLink>
         <nav className="no-scrollbar -mx-1 flex min-w-0 flex-1 gap-1 overflow-x-auto px-1">
           {LINKS.map((l) => (
@@ -39,8 +51,8 @@ export function Nav() {
               to={l.to}
               end={l.to === '/'}
               className={({ isActive }) =>
-                `whitespace-nowrap rounded-full px-3 py-1.5 text-sm transition ${
-                  isActive ? 'bg-white/10 text-white' : 'text-mist hover:text-white'
+                `label whitespace-nowrap rounded px-2.5 py-1.5 transition ${
+                  isActive ? 'bg-lime/10 text-lime' : 'text-mist hover:text-white'
                 }`
               }
             >
@@ -48,11 +60,19 @@ export function Nav() {
             </NavLink>
           ))}
         </nav>
-        <span className="hidden shrink-0 items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-xs text-mist sm:flex">
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-          Robinhood Chain Testnet
+        <span className="label hidden shrink-0 items-center gap-2 rounded border border-line px-2.5 py-1 text-mist sm:flex">
+          <span className="h-1.5 w-1.5 rounded-full bg-lime shadow-[0_0_8px_#d4f000]" />
+          Chain 46630
         </span>
       </div>
     </header>
+  );
+}
+
+export function Footer() {
+  return (
+    <footer className="label z-20 border-t border-line bg-ink px-4 py-2.5 text-center text-[10px] text-mist">
+      Built for vibe/vibe on Robinhood Chain Testnet · Testnet only, no real funds.
+    </footer>
   );
 }

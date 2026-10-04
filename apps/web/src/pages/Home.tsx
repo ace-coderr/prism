@@ -1,15 +1,19 @@
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { motion, useReducedMotion } from 'motion/react';
 import { explorerAddressUrl, getDeployment } from '@prism/core';
 import { FittedCrystal, type CrystalFocus } from '../components/Crystal';
-import { Logo } from '../components/Nav';
+import { ExplainerVideo } from '../components/ExplainerVideo';
+import { Faq } from '../components/Faq';
+import { ForgeMachine } from '../components/ForgeMachine';
+import { CountUp, EASE, Headline, Reveal, Section } from '../components/design';
 import { Stage } from '../components/Stage';
 import { LiveBadge } from '../components/ui';
 import { ViberGuide } from '../components/Viber';
-import { WalletButton } from '../wallet/WalletButton';
-import { TARGET_CHAIN } from '../wallet/config';
 import { useTestnetTokens } from '../data/chain';
-import { liveBasket } from '../data/crystalHoldings';
+import { LIVE_BASKET, liveBasket } from '../data/crystalHoldings';
+import { useChainStats } from '../data/crystals';
+import { TARGET_CHAIN } from '../wallet/config';
 
 /** The live basket (real 24h moves, jumpiness and drops), or null while it loads. */
 function useLiveBasket() {
@@ -17,165 +21,125 @@ function useLiveBasket() {
   return useMemo(() => ({ basket: liveBasket(live), failed: live.status === 'error' }), [live]);
 }
 
-/** Breathing room between the crystal and the headline, as a fraction of the canvas height. */
-const HEADLINE_GAP = 0.04;
-
-function Hero({ textTop }: { textTop: number }) {
-  const { basket } = useLiveBasket();
-  if (!basket) return null;
-  // camera fitted to the crystal's bounding sphere, inside the space above the headline
+export default function Home() {
   return (
-    <FittedCrystal
-      holdings={basket.holdings}
-      history={basket.history}
-      size={1.75}
-      spin={0.22}
-      top={0.06}
-      bottom={Math.max(0.35, textTop - HEADLINE_GAP)}
-    />
+    <>
+      <Hero />
+      <Idea />
+      <Machine />
+      <ReadYourCrystal />
+      <Video />
+      <Trust />
+      <Stats />
+      <Questions />
+    </>
   );
 }
 
-export default function Home() {
-  // where the headline block starts, as a fraction of the hero height (re-measured on resize)
-  const heroRef = useRef<HTMLDivElement>(null);
-  const textRef = useRef<HTMLDivElement>(null);
-  const [textTop, setTextTop] = useState(0.55);
-  useLayoutEffect(() => {
-    const page = heroRef.current;
-    const text = textRef.current;
-    if (!page || !text) return;
-    const update = () => {
-      const p = page.getBoundingClientRect();
-      if (p.height > 0) setTextTop((text.getBoundingClientRect().top - p.top) / p.height);
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(page);
-    ro.observe(text);
-    return () => ro.disconnect();
-  }, []);
+// ---------------------------------------------------------------- 00 hero
 
+function Hero() {
+  const { basket, failed } = useLiveBasket();
+  const reduce = useReducedMotion();
   return (
-    <div className="absolute inset-0 overflow-y-auto">
-      {/* ---------------------------------------------------------------- hero */}
-      <section ref={heroRef} className="relative h-full min-h-[560px]">
-        <Stage className="!absolute inset-0" camera={{ position: [0, 0, 7], fov: 40 }}>
-          <Hero textTop={textTop} />
-        </Stage>
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/80 to-transparent px-4 pt-24 pb-8 sm:pb-10">
-          <div ref={textRef} className="pointer-events-auto mx-auto flex max-w-3xl flex-col items-center text-center">
-            <p className="label mb-4 text-lime">Stocks + ETH → one crystal</p>
-            <h1 className="headline text-5xl sm:text-7xl">A stock basket you can hold</h1>
-            <p className="mt-4 max-w-xl text-sm text-white/80 sm:text-base">
-              Pick a few stocks and some ETH. PRISM puts them inside one crystal that you own — hold it, gift it, or sell it.
-            </p>
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-              <Link to="/forge" className="btn btn-primary">
+    <section className="relative">
+      <div className="container-x grid min-h-[100svh] items-center gap-4 pb-16 pt-24 md:pt-32 lg:grid-cols-[1.05fr_1fr] lg:gap-10 lg:pb-20">
+        <div className="order-2 lg:order-1">
+          <motion.div initial={reduce ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: EASE }}>
+            {basket ? (
+              <LiveBadge>Built from live testnet prices</LiveBadge>
+            ) : (
+              <span className="section-label text-[11px]">{failed ? 'Couldn’t reach the chain right now' : 'Reading live prices from the chain…'}</span>
+            )}
+          </motion.div>
+          <Headline as="h1" lead="A stock basket" accent="you can hold" className="mt-6" />
+          <Reveal delay={0.35}>
+            <p className="body-copy mt-7">Pick a few test stocks and some ETH. PRISM forges them into one crystal that lives in your wallet.</p>
+            <div className="mt-10 flex flex-wrap items-center gap-3">
+              <Link to="/forge" className="btn btn-primary btn-lg">
                 Forge a crystal
               </Link>
-              <WalletButton variant="hero" />
-            </div>
-            <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
-              <HeroStatus />
-              <a href="#how" className="label text-[10px] text-mist/80 hover:text-white">
-                How it works ↓
+              <a href="#video" className="btn btn-outline btn-lg">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden>
+                  <path d="M8 5.5v13l10.5-6.5L8 5.5Z" />
+                </svg>
+                Watch in 40s
               </a>
             </div>
-          </div>
+          </Reveal>
         </div>
-      </section>
-
-      <div className="mx-auto max-w-6xl space-y-20 px-4 pb-16 pt-14">
-        <HowItWorks />
-        <ReadYourCrystal />
-        <WhatsReal />
-      </div>
-    </div>
-  );
-}
-
-function HeroStatus() {
-  const { basket, failed } = useLiveBasket();
-  if (basket) return <LiveBadge>Built from live testnet prices</LiveBadge>;
-  return <span className="label text-[10px] text-mist">{failed ? 'Couldn’t reach the chain right now' : 'Reading live prices from the chain…'}</span>;
-}
-
-// ---------------------------------------------------------------- how it works
-
-function Step({ n, title, children, visual }: { n: number; title: string; children: ReactNode; visual: ReactNode }) {
-  return (
-    <div className="rounded-3xl border border-white/10 bg-panel p-5">
-      <div className="grid h-24 place-items-center rounded-2xl bg-ink/60">{visual}</div>
-      <p className="label mt-4 text-lime">Step {n}</p>
-      <h3 className="headline mt-1 text-2xl">{title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-mist">{children}</p>
-    </div>
-  );
-}
-
-const Chip = ({ children }: { children: ReactNode }) => (
-  <span className="rounded-full border border-white/15 px-2.5 py-1 font-mono text-[11px] text-white">{children}</span>
-);
-
-function HowItWorks() {
-  return (
-    <section id="how" className="scroll-mt-24 space-y-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p className="label text-lime">How it works</p>
-          <h2 className="headline mt-2 text-4xl">Three steps</h2>
+        <div className="relative order-1 h-[34svh] min-h-[240px] lg:order-2 lg:h-[72vh] lg:max-h-[720px]">
+          <Stage className="!absolute inset-0" camera={{ position: [0, 0, 7], fov: 40 }}>
+            {basket && (
+              <FittedCrystal holdings={basket.holdings} history={basket.history} size={1.75} assemble sway top={0.04} bottom={0.9} />
+            )}
+          </Stage>
+          <p className="section-label pointer-events-none absolute inset-x-0 bottom-0 text-center text-[10px]">
+            {LIVE_BASKET.map((s) => (s === 'WETH' ? 'ETH' : s)).join(' · ')} · equal parts
+          </p>
         </div>
-        <ViberGuide index={3} className="md:max-w-sm">
-          Think of it like a gift box for stocks. You fill it, close it, and the box itself becomes yours.
-        </ViberGuide>
-      </div>
-      <div className="grid gap-4 md:grid-cols-3">
-        <Step
-          n={1}
-          title="Pick stocks + ETH"
-          visual={
-            <div className="flex flex-wrap justify-center gap-1.5">
-              <Chip>NVDA</Chip>
-              <Chip>SPCX</Chip>
-              <Chip>AAPL</Chip>
-              <Chip>ETH</Chip>
-            </div>
-          }
-        >
-          Choose up to 8 test stocks and decide how much of each to put in. You can add ETH too.
-        </Step>
-        <Step n={2} title="Forge your crystal" visual={<Logo size={56} />}>
-          PRISM locks those tokens inside one crystal (an NFT) in your wallet. It holds your stocks, and only you can take
-          them out.
-        </Step>
-        <Step
-          n={3}
-          title="Hold, gift or sell it"
-          visual={
-            <div className="flex items-center gap-3 font-mono text-[11px] text-mist">
-              <span className="rounded-full bg-lime/10 px-2.5 py-1 text-lime">hold</span>
-              <span className="rounded-full bg-gold/10 px-2.5 py-1 text-gold">gift</span>
-              <span className="rounded-full bg-white/5 px-2.5 py-1 text-white">sell</span>
-            </div>
-          }
-        >
-          Keep it, send it to a friend, or sell it. Whoever has the crystal has everything inside it — the basket goes with
-          it.
-        </Step>
       </div>
     </section>
   );
 }
 
-// ---------------------------------------------------------------- read your crystal
+// ---------------------------------------------------------------- 01 idea
+
+function Idea() {
+  return (
+    <Section n="01" label="The idea">
+      <div className="grid gap-10 lg:grid-cols-[1.3fr_1fr] lg:items-end">
+        <Headline lead="Your basket." accent="One crystal." />
+        <Reveal delay={0.2}>
+          <p className="body-copy">
+            Most baskets are rows in an app. PRISM puts the real tokens inside one crystal that you own, and its shape shows
+            how they are doing.
+          </p>
+        </Reveal>
+      </div>
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------- 02 forge machine
+
+const STEPS = [
+  { n: '01', title: 'The pick', text: 'Choose up to 8 test stocks and some ETH, in the amounts you want.' },
+  { n: '02', title: 'The forge', text: 'One transaction puts them inside a new crystal in your wallet.' },
+  { n: '03', title: 'The hold', text: 'The crystal keeps the tokens. Only its owner can take them out.' },
+  { n: '04', title: 'The gift', text: 'Seal it, send it or sell it. Whoever holds it owns what is inside.' },
+];
+
+function Machine() {
+  return (
+    <Section n="02" label="The forge machine">
+      <Headline lead="Four steps," accent="one machine." />
+      <Reveal className="mt-14 md:mt-20">
+        <ForgeMachine />
+      </Reveal>
+      <ol className="mt-14 grid gap-10 sm:grid-cols-2 md:mt-20 lg:grid-cols-4 lg:gap-8">
+        {STEPS.map((s, i) => (
+          <Reveal key={s.n} delay={i * 0.08}>
+            <li className="border-t border-white/[0.1] pt-6">
+              <p className="font-mono text-sm text-lime">{s.n}</p>
+              <h3 className="mt-3 font-display text-2xl font-bold tracking-[-0.02em]">{s.title}</h3>
+              <p className="mt-3 text-[15px] leading-relaxed text-mist">{s.text}</p>
+            </li>
+          </Reveal>
+        ))}
+      </ol>
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------- 03 read your crystal
 
 const LEGEND: Array<{ focus: CrystalFocus; label: string; text: string }> = [
-  { focus: 'size', label: 'Size', text: 'how much of each asset is inside. This live basket holds six in equal parts.' },
-  { focus: 'color', label: 'Green / red', text: 'today’s price move. Deeper colour = a bigger move.' },
-  { focus: 'spikes', label: 'Spikes', text: 'how jumpy the price is. Calm stocks stay smooth.' },
-  { focus: 'gold', label: 'Gold seams', text: 'a drop of 5% or more that the price later climbed back from.' },
-  { focus: 'frost', label: 'Frost', text: 'a sealed gift. Nobody can take anything out until the date it opens.' },
+  { focus: 'size', label: 'Size', text: 'How much of each asset is inside. This live basket holds six in equal parts.' },
+  { focus: 'color', label: 'Green / red', text: 'Today’s price move. A deeper colour is a bigger move.' },
+  { focus: 'spikes', label: 'Spikes', text: 'How jumpy the price is. Calm assets stay smooth.' },
+  { focus: 'gold', label: 'Gold seams', text: 'A real drop of 5% or more that the price later climbed back from.' },
+  { focus: 'frost', label: 'Frost', text: 'A sealed gift. Nothing comes out until the date it opens.' },
 ];
 
 function ReadYourCrystal() {
@@ -183,46 +147,35 @@ function ReadYourCrystal() {
   const { basket } = useLiveBasket();
   const active = LEGEND.find((l) => l.focus === focus);
   const guide = (
-    <ViberGuide index={4} size={64} className="mt-2">
-      Gold seams are my favourite. They show the drops a basket survived.
+    <ViberGuide index={4} size={64}>
+      Gold seams are my favourite. Each one is a real drop this basket climbed back from.
     </ViberGuide>
   );
   return (
-    <section className="space-y-6">
-      <div>
-        <p className="label text-lime">Read your crystal</p>
-        <h2 className="headline mt-2 text-4xl">Every part means something</h2>
-        <p className="mt-2 text-sm text-mist">Point at (or tap) a word to light up that part of the crystal.</p>
-      </div>
-      <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
-        <div className="relative h-[300px] overflow-hidden rounded-3xl border border-white/10 sm:h-[440px]">
-          <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
-            {basket && (
-            <FittedCrystal
-              holdings={basket.holdings}
-              history={basket.history}
-              size={1.6}
-              spin={0.25}
-              top={0.08}
-              bottom={0.92}
-              focus={focus}
-            />
-            )}
-          </Stage>
-          <span className="absolute left-4 top-4">
-            <LiveBadge>{basket ? `Live basket · last ${basket.hours}h` : 'Reading the chain…'}</LiveBadge>
-          </span>
-        </div>
-        {/* phones: short chips right under the crystal, so the lit part stays in view */}
+    <Section n="03" label="Read your crystal">
+      <Headline lead="Every cube" accent="means something." />
+      <div className="mt-14 grid gap-10 md:mt-20 lg:grid-cols-[1.15fr_1fr] lg:gap-16">
+        <Reveal>
+          <div className="relative h-[360px] overflow-hidden rounded-[32px] border border-white/[0.08] bg-panel sm:h-[520px] lg:h-[600px]">
+            <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
+              {basket && <FittedCrystal holdings={basket.holdings} history={basket.history} size={1.6} sway top={0.1} bottom={0.9} focus={focus} />}
+            </Stage>
+            <span className="absolute left-5 top-5">
+              <LiveBadge>{basket ? `Live basket · last ${basket.hours}h` : 'Reading the chain…'}</LiveBadge>
+            </span>
+          </div>
+        </Reveal>
+
+        {/* phones: chips right under the crystal so the lit part stays in view */}
         <div className="lg:hidden">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             {LEGEND.map((l) => (
               <button
                 key={l.focus}
                 type="button"
                 aria-pressed={focus === l.focus}
                 onClick={() => setFocus(focus === l.focus ? null : l.focus)}
-                className={`rounded-full border px-3 py-1.5 font-display text-sm font-bold transition ${
+                className={`rounded-full border px-4 py-2 font-display text-sm font-bold transition ${
                   focus === l.focus ? 'border-lime/60 bg-lime/10 text-lime' : 'border-white/15 text-white'
                 }`}
               >
@@ -230,7 +183,7 @@ function ReadYourCrystal() {
               </button>
             ))}
           </div>
-          <p className="mt-3 min-h-[3rem] text-sm text-mist">
+          <p className="body-copy mt-5 min-h-[3.4rem]">
             {active ? (
               <>
                 <span className={`font-bold ${active.focus === 'gold' ? 'text-gold' : 'text-white'}`}>{active.label}</span> = {active.text}
@@ -239,77 +192,205 @@ function ReadYourCrystal() {
               'Tap a word to light up that part of the crystal.'
             )}
           </p>
-          {guide}
+          <div className="mt-8">{guide}</div>
         </div>
-        <div className="hidden flex-col gap-2 lg:flex" onMouseLeave={() => setFocus(null)}>
-          {LEGEND.map((l) => {
+
+        <div className="hidden flex-col justify-center gap-3 lg:flex" onMouseLeave={() => setFocus(null)}>
+          <p className="mb-3 text-sm text-mist">Point at a line to light up that part of the crystal.</p>
+          {LEGEND.map((l, i) => {
             const on = focus === l.focus;
             return (
-              <button
-                key={l.focus}
-                type="button"
-                aria-pressed={on}
-                onMouseEnter={() => setFocus(l.focus)}
-                onFocus={() => setFocus(l.focus)}
-                // hover already selects on desktop, and taps fire mouseenter first, so a click only ever selects
-                onClick={() => setFocus(l.focus)}
-                className={`rounded-2xl border px-4 py-3 text-left transition ${
-                  on ? 'border-lime/60 bg-lime/5' : 'border-white/10 bg-panel hover:border-white/25'
-                }`}
-              >
-                <span className={`font-display text-lg font-bold ${l.focus === 'gold' ? 'text-gold' : on ? 'text-lime' : 'text-white'}`}>
-                  {l.label}
-                </span>
-                <span className="text-sm text-mist"> = {l.text}</span>
-              </button>
+              <Reveal key={l.focus} delay={i * 0.06} y={16}>
+                <button
+                  type="button"
+                  aria-pressed={on}
+                  onMouseEnter={() => setFocus(l.focus)}
+                  onFocus={() => setFocus(l.focus)}
+                  // hover already selects, and taps fire mouseenter first, so a click only selects
+                  onClick={() => setFocus(l.focus)}
+                  className={`w-full rounded-2xl border px-6 py-5 text-left transition-colors ${
+                    on ? 'border-lime/50 bg-lime/[0.06]' : 'border-white/[0.07] bg-panel hover:border-white/20'
+                  }`}
+                >
+                  <span className={`block font-display text-xl font-bold ${l.focus === 'gold' ? 'text-gold' : on ? 'text-lime' : 'text-white'}`}>{l.label}</span>
+                  <span className="mt-1 block text-[15px] leading-relaxed text-mist">{l.text}</span>
+                </button>
+              </Reveal>
             );
           })}
-          {guide}
+          <div className="mt-6">{guide}</div>
         </div>
       </div>
-    </section>
+    </Section>
   );
 }
 
-// ---------------------------------------------------------------- what's real
+// ---------------------------------------------------------------- 04 video
 
-function WhatsReal() {
+function Video() {
+  return (
+    <Section id="video" n="04" label="PRISM in 40 seconds">
+      <Headline lead="The whole idea," accent="in 40 seconds." />
+      <Reveal className="mt-14 md:mt-20">
+        <ExplainerVideo />
+      </Reveal>
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------- 05 trust
+
+function Trust() {
   const d = getDeployment(TARGET_CHAIN.id);
-  const items: Array<{ title: string; text: ReactNode }> = [
-    { title: 'Testnet only', text: 'PRISM runs on Robinhood Chain Testnet. Nothing here is real money.' },
-    { title: 'Test stocks have no value', text: 'NVDA, SPCX and the others are vibe/vibe test tokens, made for trying things out.' },
+  const cards: Array<{ title: string; text: string; icon: ReactNode; link?: { href: string; label: string } }> = [
     {
-      title: 'No admin, and the code is public',
-      text: (
+      title: 'No admin',
+      text: 'The contract has no owner, no pause button and no upgrade path. Nobody can change the rules later.',
+      icon: <path d="M12 3 4 6v6c0 4.4 3.4 8.3 8 9 4.6-.7 8-4.6 8-9V6l-8-3Zm-3.5 9.5 2.5 2.5 4.5-5" />,
+    },
+    {
+      title: 'Only you withdraw',
+      text: 'Only a crystal’s owner can take tokens out. A seal can even lock that until a date you pick.',
+      icon: (
         <>
-          The crystal contract has no owner, no pause button and no upgrades.{' '}
-          {d ? (
-            <a className="text-lime hover:underline" href={`${explorerAddressUrl(d.prismCrystal)}#code`} target="_blank" rel="noreferrer">
-              Read the verified code ↗
-            </a>
-          ) : null}
+          <rect x="5" y="10.5" width="14" height="10" rx="2" />
+          <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
         </>
       ),
     },
-    { title: 'Your wallet signs everything', text: 'PRISM never asks for your seed phrase or keys. Every step shows up in your own wallet first.' },
+    {
+      title: 'Verified on-chain',
+      text: 'The contract’s source code is published and verified on the block explorer, so anyone can read it.',
+      icon: <path d="M7 3h7l5 5v13H7V3Zm7 1.5V9h4.5M10 13.5l2 2 4-4" />,
+      link: d ? { href: `${explorerAddressUrl(d.prismCrystal)}#code`, label: 'Read the verified code' } : undefined,
+    },
   ];
   return (
-    <section className="grid gap-6 rounded-3xl border border-white/10 bg-panel p-6 lg:grid-cols-[1fr_auto] lg:items-end">
-      <div>
-        <p className="label text-lime">What’s real</p>
-        <h2 className="headline mt-2 text-4xl">Straight answers</h2>
-        <ul className="mt-5 grid gap-4 sm:grid-cols-2">
-          {items.map((i) => (
-            <li key={i.title} className="rounded-2xl bg-ink/60 p-4">
-              <p className="font-display text-lg font-bold">{i.title}</p>
-              <p className="mt-1 text-sm leading-relaxed text-mist">{i.text}</p>
-            </li>
-          ))}
-        </ul>
+    <Section n="05" label="Built to be trusted">
+      <Headline lead="Your crystal," accent="your rules." />
+      <div className="mt-14 grid gap-6 md:mt-20 md:grid-cols-3 md:gap-8">
+        {cards.map((c, i) => (
+          <Reveal key={c.title} delay={i * 0.08}>
+            <div className="card card-hover flex h-full flex-col p-8">
+              <span className="grid h-12 w-12 place-items-center rounded-2xl border border-lime/30 bg-lime/[0.06] text-lime">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  {c.icon}
+                </svg>
+              </span>
+              <h3 className="mt-8 font-display text-2xl font-bold tracking-[-0.02em]">{c.title}</h3>
+              <p className="mt-3 flex-1 text-[15px] leading-relaxed text-mist">{c.text}</p>
+              {c.link && (
+                <a href={c.link.href} target="_blank" rel="noreferrer" className="mt-6 font-mono text-xs uppercase tracking-[0.14em] text-lime hover:underline">
+                  {c.link.label} ↗
+                </a>
+              )}
+            </div>
+          </Reveal>
+        ))}
       </div>
-      <ViberGuide index={5} className="lg:max-w-xs">
-        It’s a test playground. Break things, learn how it works, lose nothing.
-      </ViberGuide>
-    </section>
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------- 06 stats
+
+function Stats() {
+  const s = useChainStats();
+  const items = [
+    { label: 'Crystals forged', value: s.forged },
+    { label: 'Unique owners', value: s.owners },
+    { label: 'ETH held in crystals', value: s.ethHeld, format: (v: number) => v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) },
+    { label: 'Test stocks supported', value: s.stocks },
+  ];
+  return (
+    <Section n="06" label="Live on Robinhood Chain">
+      <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+        <Headline lead="Read straight" accent="from the chain." />
+        <Reveal delay={0.2}>
+          <LiveBadge>Robinhood Chain Testnet</LiveBadge>
+        </Reveal>
+      </div>
+      <div className="mt-14 grid gap-6 sm:grid-cols-2 md:mt-20 lg:grid-cols-4 lg:gap-8">
+        {items.map((it, i) => (
+          <Reveal key={it.label} delay={i * 0.08}>
+            <div className="card h-full p-8">
+              <p className="font-display text-5xl font-bold tracking-[-0.04em] text-white md:text-6xl">
+                <CountUp value={it.value} format={it.format} />
+              </p>
+              <p className="section-label mt-5 text-[11px]">{it.label}</p>
+            </div>
+          </Reveal>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------- 07 faq
+
+const FAQ: Array<{ q: string; a: ReactNode }> = [
+  {
+    q: 'What is PRISM?',
+    a: 'A way to hold a basket of test stocks and ETH as one object: a crystal (an NFT) that holds the actual tokens. Its shape shows how the basket is doing.',
+  },
+  {
+    q: 'Is this real money?',
+    a: 'No. PRISM runs on Robinhood Chain Testnet only. The test stocks are test assets with no value, and testnet ETH is free.',
+  },
+  {
+    q: 'Who can take things out of a crystal?',
+    a: 'Only the wallet that owns it. The contract has no admin, no pause button and no upgrades, so nobody else (not even PRISM) can move what is inside.',
+  },
+  {
+    q: 'What are the gold seams?',
+    a: 'Each one marks a real drop of 5% or more in one of the crystal’s holdings that the price later climbed back from. A drop that has not recovered yet shows as an open crack.',
+  },
+  {
+    q: 'What happens when I gift or sell a crystal?',
+    a: 'Everything inside goes with it. The new owner can take the tokens out, unless you sealed it: then nobody can until the date you picked.',
+  },
+  {
+    q: 'Do I need test stocks to start?',
+    a: 'No. You can forge a crystal with just testnet ETH and add test stocks later.',
+  },
+  {
+    q: 'What are vibe/vibe and Robinhood Chain?',
+    a: 'Robinhood Chain is a blockchain from Robinhood; PRISM runs on its public testnet. vibe/vibe is a launchpad on it that issues the test stocks PRISM uses. PRISM is built for vibe/vibe, not by them.',
+  },
+  {
+    q: 'Is the contract audited?',
+    a: 'No. It is tested and its code is verified on the block explorer, but it has not been audited. Treat it as a testnet experiment.',
+  },
+];
+
+function Questions() {
+  return (
+    <Section n="07" label="Questions you might have">
+      <div className="grid gap-12 lg:grid-cols-[1fr_1.4fr] lg:gap-20">
+        <div>
+          <Headline lead="Good" accent="questions." />
+          <Reveal delay={0.2}>
+            <div className="mt-10 hidden lg:block">
+              <Crystalette />
+            </div>
+          </Reveal>
+        </div>
+        <Reveal>
+          <Faq items={FAQ} />
+        </Reveal>
+      </div>
+    </Section>
+  );
+}
+
+/** A small live crystal beside the FAQ on wide screens. */
+function Crystalette() {
+  const { basket } = useLiveBasket();
+  return (
+    <div className="relative h-[280px] w-[280px]">
+      <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }} backdrop={false}>
+        {basket && <FittedCrystal holdings={basket.holdings} history={basket.history} size={1.5} sway top={0.06} bottom={0.94} />}
+      </Stage>
+    </div>
   );
 }

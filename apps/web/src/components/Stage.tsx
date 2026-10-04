@@ -1,4 +1,5 @@
-import { Suspense, useLayoutEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react';
+import { Suspense, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { useInView } from 'motion/react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { AdaptiveDpr, Html, PerformanceMonitor } from '@react-three/drei';
 import { Bloom, EffectComposer } from '@react-three/postprocessing';
@@ -24,9 +25,14 @@ interface StageProps {
 export function Stage({ children, camera, className, bloom = true, backdrop = true }: StageProps) {
   const [dprMax, setDprMax] = useState(isCoarse ? 1.25 : 1.75);
   const [fx, setFx] = useState(!isCoarse);
+  // canvases scrolled out of view stop rendering (no wasted frames on long pages)
+  const ref = useRef<HTMLCanvasElement>(null);
+  const visible = useInView(ref, { margin: '200px 0px' });
 
   return (
     <Canvas
+      ref={ref}
+      frameloop={visible ? 'always' : 'never'}
       className={className}
       dpr={[1, dprMax]}
       camera={{ position: camera?.position ?? [0, 0, 6], fov: camera?.fov ?? 40 }}

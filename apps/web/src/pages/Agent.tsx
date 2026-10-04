@@ -21,43 +21,48 @@ export default function Agent() {
   const selected = list.find((c) => c.id === selectedId) ?? list[0];
 
   return (
-    <PageScroll className="max-w-6xl gap-6">
-      <PageHeader title="Agent" subtitle="A read-only look at your real crystals: how each one has drifted since you forged it, and what to do about it.">
-        <span className="rounded-full bg-amber-400/15 px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-amber-300">
+    <PageScroll>
+      <PageHeader
+        label="Agent"
+        lead="A second look"
+        accent="at your crystal."
+        subtitle="A read-only look at your real crystals: how each one has drifted since you forged it, and what to do about it."
+      >
+        <span className="whitespace-nowrap rounded-full bg-amber-400/15 px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-amber-300">
           Rebalancing: soon
         </span>
       </PageHeader>
 
       {!isConnected && (
-        <Panel className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
-          <ViberGuide index={9} size={80}>
+        <div className="card flex flex-col gap-6 p-8 sm:flex-row sm:items-center sm:justify-between md:p-10">
+          <ViberGuide index={9} size={88}>
             I watch your crystals and suggest changes, like trimming a stock that grew too big. Connect your wallet and
             I’ll look at yours. I can never move your tokens on my own.
           </ViberGuide>
           <div className="flex flex-wrap gap-2">
             <WalletButton variant="hero" />
-            <Link to="/forge" className="btn btn-secondary">
+            <Link to="/forge" className="btn btn-outline">
               Forge a crystal
             </Link>
           </div>
-        </Panel>
+        </div>
       )}
 
       {isConnected && crystals.isLoading && <p className="label text-mist">Reading your crystals from the chain…</p>}
       {isConnected && crystals.isError && <p className="text-sm text-down">Couldn’t read your crystals right now. Try again in a moment.</p>}
       {isConnected && crystals.isSuccess && list.length === 0 && (
-        <Panel className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
-          <ViberGuide index={10} size={80}>
+        <div className="card flex flex-col gap-6 p-8 sm:flex-row sm:items-center sm:justify-between md:p-10">
+          <ViberGuide index={10} size={88}>
             You don’t have a crystal yet, so there’s nothing for me to look at. Forge one and come back.
           </ViberGuide>
-          <Link to="/forge" className="btn btn-primary">
+          <Link to="/forge" className="btn btn-primary btn-lg">
             Forge a crystal
           </Link>
-        </Panel>
+        </div>
       )}
 
       {list.length > 1 && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-2">
           {list.map((c) => (
             <button key={c.id.toString()} onClick={() => setSelectedId(c.id)} className={`chip ${selected?.id === c.id ? 'chip-on' : ''}`}>
               #{c.id.toString()}
@@ -85,15 +90,15 @@ function CrystalAnalysis({ crystal, live }: { crystal: OnchainCrystal; live: Liv
 
   if (!analysis) return <p className="label text-mist">Reading live prices…</p>;
   return (
-    <section className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <h2 className="headline text-2xl">Crystal #{crystal.id.toString()}</h2>
+    <section className="flex flex-col gap-10">
+      <div className="flex flex-wrap items-center gap-4">
+        <h2 className="font-display text-4xl font-bold tracking-[-0.03em]">Crystal #{crystal.id.toString()}</h2>
         <LiveBadge />
       </div>
-      <ViberGuide index={10} size={72}>
+      <ViberGuide index={10} size={88} className="max-w-3xl">
         {analysis.suggestion}
       </ViberGuide>
-      <div className="relative h-[42vh] min-h-[300px] overflow-hidden rounded-3xl border border-white/10">
+      <div className="relative h-[48vh] min-h-[340px] overflow-hidden rounded-[32px] border border-white/[0.08]">
         <Stage className="!absolute inset-0" camera={{ position: [0, 0, 8], fov: 40 }}>
           <BeforeAfter before={holdings} after={after} same={!analysis.actionable} />
         </Stage>
@@ -102,7 +107,7 @@ function CrystalAnalysis({ crystal, live }: { crystal: OnchainCrystal; live: Liv
           {analysis.actionable && <span className="label rounded-full bg-ink/80 px-3 py-1 text-lime">After trimming</span>}
         </div>
       </div>
-      <Panel className="grid gap-5 p-5 md:grid-cols-[1fr_auto] md:items-start">
+      <Panel className="grid gap-8 rounded-3xl p-8 md:grid-cols-[1fr_auto] md:items-start">
         <WeightsTable analysis={analysis} crystal={crystal} />
         <div className="flex flex-col items-start gap-2">
           <button disabled className="btn btn-primary" title="Rebalancing inside PRISM is coming soon">

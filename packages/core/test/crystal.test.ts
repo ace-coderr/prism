@@ -3,6 +3,7 @@ import {
   buildCrystal,
   changeColor,
   exposedVoxels,
+  seamYaw,
   groupByCorrelation,
   GOLD_SEAM_HALF_WIDTH,
   KINTSUGI_GOLD,
@@ -388,5 +389,60 @@ describe('living crystal (kintsugi)', () => {
     const size = (depth: number) =>
       buildCrystal(basket, { drawdowns: [{ depth, recovered: true }] }).cracks[0]!.cells.length;
     expect(size(70)).toBeGreaterThan(size(20));
+  });
+});
+
+describe('clean regions', () => {
+  const six = ['AAPL', 'NVDA', 'SPCX', 'ANTHROPIC', 'OPENAI', 'WETH'].map((symbol, i) => ({
+    symbol,
+    weight: 1 / 6,
+    change24h: [3, 17, -1, 32, 9, -1.5][i]!,
+    volatility: [0.36, 0.5, 0.91, 1, 0.53, 0.18][i]!,
+  }));
+  const history = {
+    drawdowns: [
+      { depth: 11.7, recovered: true, symbol: 'ANTHROPIC' },
+      { depth: 9.4, recovered: false, symbol: 'SPCX' },
+      { depth: 6.2, recovered: true, symbol: 'SPCX' },
+    ],
+  };
+
+  it('each holding (with its seams) is one contiguous region, and cracks stay inside it', () => {
+    const geo = buildCrystal(six, history, { crackThreshold: 5 });
+    const exposed = exposedVoxels(geo.voxels);
+    geo.clusters.forEach((c, ci) => {
+      const cells = exposed.filter((v) => v.cluster === ci);
+      const set = new Set(cells.map((v) => key(v.position)));
+      const seen = new Set<string>([key(cells[0]!.position)]);
+      const stack = [cells[0]!.position];
+      while (stack.length) {
+        const [x, y, z] = stack.pop()!;
+        for (let dx = -1; dx <= 1; dx++)
+          for (let dy = -1; dy <= 1; dy++)
+            for (let dz = -1; dz <= 1; dz++) {
+              const k = key([x + dx, y + dy, z + dz]);
+              if (set.has(k) && !seen.has(k)) {
+                seen.add(k);
+                stack.push([x + dx, y + dy, z + dz]);
+              }
+            }
+      }
+      expect(seen.size, c.symbol).toBe(set.size);
+    });
+    for (const v of geo.voxels.filter((x) => x.gold)) expect(['ANTHROPIC', 'SPCX']).toContain(geo.clusters[v.cluster]!.symbol);
+  });
+
+  it('seamYaw turns the gold seam towards the camera (+z)', () => {
+    const geo = buildCrystal(six, history, { crackThreshold: 5 });
+    const yaw = seamYaw(geo);
+    const seam = geo.cracks.find((c) => c.gold)!.cells;
+    const mx = seam.reduce((s, c) => s + c[0], 0);
+    const mz = seam.reduce((s, c) => s + c[2], 0);
+    // rotation about +y by `yaw`
+    const rx = mx * Math.cos(yaw) + mz * Math.sin(yaw);
+    const rz = -mx * Math.sin(yaw) + mz * Math.cos(yaw);
+    expect(Math.abs(rx)).toBeLessThan(1e-6);
+    expect(rz).toBeGreaterThan(0);
+    expect(seamYaw(buildCrystal(six))).toBe(0);
   });
 });

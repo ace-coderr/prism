@@ -53,7 +53,7 @@ export function Intro() {
           {CARDS.map((c, i) => (
             <div key={i} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-ink/60 p-3 sm:flex-col sm:p-4 sm:text-center">
               {/* smaller and beside the text on phones, so all three cards fit on one screen */}
-              <ViberImage viber={viberAt(c.viber)} size={112} className="h-16! w-16! rounded-xl sm:h-28! sm:w-28! sm:rounded-2xl" />
+              <ViberImage viber={viberAt(c.viber)} size={112} phoneSize={64} className="rounded-xl sm:rounded-2xl" />
               <p className="text-sm leading-relaxed text-white/90">{c.text}</p>
             </div>
           ))}

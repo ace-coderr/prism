@@ -425,10 +425,13 @@ export function buildCrystal(
           });
           continue;
         }
-        // outside the body: part of a spike?
+        // outside the body: part of a spike? (only above the spike's own holding, so no
+        // holding's colour ever lands on another's region)
         let hit: Spike | null = null;
         let hitScore = Infinity;
+        const owner = spikes.length ? sector(p).best : -1;
         for (const s of spikes) {
+          if (s.cluster !== owner) continue;
           const t = dot(p, s.dir) - s.base;
           if (t < 0 || t > s.len) continue;
           const u = t / s.len;
@@ -456,6 +459,8 @@ export function buildCrystal(
     }
   }
 
+  dropLooseSpikeCells(cells);
+
   const fusions: Array<[string, string]> = edges.map(([i, j]) => [clusters[i]!.symbol, clusters[j]!.symbol]);
 
   // 5. Living crystal: deep drawdowns crack the surface along meandering paths; recovered
@@ -481,6 +486,52 @@ export function buildCrystal(
   const voxels = [...cells.values()];
   const radius = voxels.reduce((m, v) => Math.max(m, length(v.position)), 0) + 0.5;
   return { voxels, clusters, cracks, fusions, radius };
+}
+
+/**
+ * Spike cubes must touch their own holding's body (through cubes of the same holding);
+ * any that don't would float as a stray patch of colour on a neighbour, so drop them.
+ */
+function dropLooseSpikeCells(cells: Map<string, Voxel>) {
+  const reached = new Set<string>();
+  const stack: Voxel[] = [];
+  for (const [k, v] of cells) {
+    if (!v.spike) {
+      reached.add(k);
+      stack.push(v);
+    }
+  }
+  while (stack.length) {
+    const v = stack.pop()!;
+    const [x, y, z] = v.position;
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dz = -1; dz <= 1; dz++) {
+          const k = cellKey(x + dx, y + dy, z + dz);
+          const n = cells.get(k);
+          if (n && n.spike && !reached.has(k) && n.cluster === v.cluster) {
+            reached.add(k);
+            stack.push(n);
+          }
+        }
+  }
+  for (const [k, v] of cells) if (v.spike && !reached.has(k)) cells.delete(k);
+}
+
+/**
+ * Yaw (radians about +y) that turns the crystal so its first gold seam (else its first
+ * crack) faces +z, i.e. the camera in a default view. 0 when it has none.
+ */
+export function seamYaw(geo: CrystalGeometry): number {
+  const crack = geo.cracks.find((c) => c.gold && c.cells.length > 0) ?? geo.cracks.find((c) => c.cells.length > 0);
+  if (!crack) return 0;
+  let x = 0;
+  let z = 0;
+  for (const c of crack.cells) {
+    x += c[0];
+    z += c[2];
+  }
+  return Math.hypot(x, z) < 1e-6 ? 0 : Math.atan2(-x, z);
 }
 
 // ---------------------------------------------------------------------------
@@ -572,8 +623,12 @@ function crackAlongSurface(
     : paths.map((path) => path.map((p) => scale(p, Math.max(0, length(p) - 1.6) / Math.max(length(p), 1e-6))));
   const width = d.recovered ? GOLD_SEAM_HALF_WIDTH : OPEN_CRACK_HALF_WIDTH;
 
+  // a holding's crack stays inside that holding's region, so every holding keeps one
+  // clean, contiguous patch of colour (a basket-wide crack may cross regions)
+  const own = target ? clusters.indexOf(target) : -1;
   const out: Cell[] = [];
   for (const v of cells.values()) {
+    if (own >= 0 && v.cluster !== own) continue;
     const p = v.position;
     let hit = false;
     for (const path of [...paths, ...inner]) {

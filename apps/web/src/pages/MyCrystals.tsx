@@ -2,7 +2,7 @@ import { useAccount } from 'wagmi';
 import OnchainCrystals from './OnchainCrystals';
 import { PageHeader, PageScroll } from '../components/PageHeader';
 import { ViberGuide } from '../components/Viber';
-import { Panel } from '../components/ui';
+import { Reveal } from '../components/design';
 import { WalletButton } from '../wallet/WalletButton';
 
 export default function MyCrystals() {
@@ -12,14 +12,16 @@ export default function MyCrystals() {
 
 function NotConnected() {
   return (
-    <PageScroll className="max-w-3xl gap-6">
-      <PageHeader title="My Crystals" subtitle="The crystals in your wallet, and what is inside each one." />
-      <Panel className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
-        <ViberGuide index={11} size={72}>
-          Connect your wallet to see your crystals.
-        </ViberGuide>
-        <WalletButton variant="hero" />
-      </Panel>
+    <PageScroll>
+      <PageHeader label="My crystals" lead="Your" accent="crystals." subtitle="The crystals in your wallet, and what is inside each one." />
+      <Reveal>
+        <div className="card flex flex-col gap-6 p-8 sm:flex-row sm:items-center sm:justify-between md:p-10">
+          <ViberGuide index={11} size={88}>
+            Connect your wallet to see your crystals.
+          </ViberGuide>
+          <WalletButton variant="hero" />
+        </div>
+      </Reveal>
     </PageScroll>
   );
 }

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { erc20Abi, getAbiItem, type Address } from 'viem';
+import { erc20Abi, formatUnits, getAbiItem, type Address } from 'viem';
 import {
   TESTNET_TOKENS,
   blockRanges,
@@ -9,7 +9,7 @@ import {
   type TransferLog,
 } from '@prism/core';
 import { TARGET_CHAIN } from '../wallet/config';
-import { testnetClient } from './chain';
+import { testnetClient, useTestnetTokens } from './chain';
 
 /** getLogs range per request — 500k blocks stayed within the public RPC's limits in testing. */
 const LOG_RANGE = 400_000n;
@@ -145,7 +145,7 @@ export function useAllCrystals() {
     queryKey: ['all-crystals', deployment?.prismCrystal],
     enabled: !!deployment,
     refetchInterval: 60_000,
-    queryFn: async (): Promise<PublicCrystal[]> => {
+    queryFn: async (): Promise<{ crystals: PublicCrystal[]; forged: number }> => {
       const crystal = deployment!.prismCrystal;
       const forged = await forgeRecords(crystal, deployment!.fromBlock);
       const rows = await Promise.all(
@@ -157,9 +157,33 @@ export function useAllCrystals() {
           return { ...(await readCrystal(crystal, id, rec)), owner };
         }),
       );
-      return rows.filter((r): r is PublicCrystal => r !== null).sort((a, b) => (a.id < b.id ? -1 : 1));
+      const crystals = rows.filter((r): r is PublicCrystal => r !== null).sort((a, b) => (a.id < b.id ? -1 : 1));
+      return { crystals, forged: forged.size };
     },
   });
+}
+
+/**
+ * Headline numbers, all read from the chain: crystals ever forged (Forged events),
+ * distinct current owners, ETH held across all crystals (the contract's own ledger)
+ * and how many test stocks pass their on-chain checks right now.
+ */
+export function useChainStats() {
+  const deployment = getDeployment(TARGET_CHAIN.id);
+  const all = useAllCrystals();
+  const live = useTestnetTokens();
+  const eth = useQuery({
+    queryKey: ['eth-held', deployment?.prismCrystal],
+    enabled: !!deployment,
+    refetchInterval: 60_000,
+    queryFn: () => testnetClient.readContract({ address: deployment!.prismCrystal, abi: prismCrystalAbi, functionName: 'totalEthRecorded' }),
+  });
+  return {
+    forged: all.data?.forged ?? null,
+    owners: all.data ? new Set(all.data.crystals.map((c) => c.owner.toLowerCase())).size : null,
+    ethHeld: eth.data !== undefined ? Number(formatUnits(eth.data, 18)) : null,
+    stocks: live.status === 'live' ? live.tokens.filter((t) => t.kind !== 'crypto').length : null,
+  };
 }
 
 /** Earliest forge block among crystals (how far back their price history must reach). */

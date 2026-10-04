@@ -55,7 +55,12 @@ export default function OnchainCrystals() {
   const selected = list.find((c) => c.id === selectedId) ?? list[0];
 
   const header = (
-    <PageHeader title="My Crystals" subtitle="The crystals in your wallet and what is inside each one. Take things out, add more, or seal one as a gift.">
+    <PageHeader
+      label="My crystals"
+      lead="Your"
+      accent="crystals."
+      subtitle="The crystals in your wallet and what is inside each one. Take things out, add more, or seal one as a gift."
+    >
       <LiveBadge />
       {deployment && (
         <a className="font-mono text-[10px] text-mist hover:text-lime" href={explorerAddressUrl(deployment.prismCrystal)} target="_blank" rel="noreferrer">
@@ -67,7 +72,7 @@ export default function OnchainCrystals() {
 
   if (!deployment) {
     return (
-      <PageScroll className="max-w-3xl gap-4">
+      <PageScroll>
         {header}
         <Panel className="p-6 text-sm text-mist">
           The PrismCrystal contract isn’t deployed on Robinhood Chain Testnet yet, so there are no crystals to show.
@@ -77,7 +82,7 @@ export default function OnchainCrystals() {
   }
 
   return (
-    <PageScroll className="max-w-7xl gap-4">
+    <PageScroll>
       {header}
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div className="flex flex-wrap gap-1.5">
@@ -94,12 +99,14 @@ export default function OnchainCrystals() {
       {crystals.isLoading && <p className="label text-mist">Reading your crystals from the chain…</p>}
       {crystals.isError && <p className="text-sm text-down">Couldn’t read crystals: {(crystals.error as Error).message.split('\n')[0]}</p>}
       {crystals.isSuccess && list.length === 0 && (
-        <Panel className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
-          <ViberGuide index={7}>No crystals in this wallet yet. Forge one — you can start with just ETH.</ViberGuide>
-          <Link to="/forge" className="btn btn-primary">
+        <div className="card flex flex-col gap-6 p-8 sm:flex-row sm:items-center sm:justify-between md:p-10">
+          <ViberGuide index={7} size={88}>
+            No crystals in this wallet yet. Forge one: you can start with just ETH.
+          </ViberGuide>
+          <Link to="/forge" className="btn btn-primary btn-lg">
             Forge your first crystal
           </Link>
-        </Panel>
+        </div>
       )}
 
       {selected && (
@@ -150,48 +157,49 @@ function CrystalView(props: {
   const totalUsd = rows.reduce((s, r) => s + (r.usdValue ?? 0), 0);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
-      <div className="relative h-[46vh] min-h-[300px] overflow-hidden rounded-lg border border-line">
+    <div className="grid gap-8 lg:grid-cols-[1fr_440px] lg:gap-10">
+      <div className="relative h-[52vh] min-h-[360px] overflow-hidden rounded-[32px] border border-white/[0.08] lg:sticky lg:top-28 lg:h-[620px]">
         <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
           {holdings.length > 0 && (
             <FittedCrystal holdings={holdings} history={history} sealed={sealed} size={1.6} spin={0.2} top={0.14} bottom={0.94} companion={viber} />
           )}
         </Stage>
-        <div className="pointer-events-none absolute left-4 top-4 space-y-1">
-          <p className="headline text-2xl">Crystal #{crystal.id.toString()}</p>
+        <div className="pointer-events-none absolute left-6 top-6 space-y-1.5">
+          <p className="font-display text-3xl font-bold tracking-[-0.03em]">Crystal #{crystal.id.toString()}</p>
           {totalEth > 0 && <EthPrice eth={totalEth} usd={totalUsd || null} />}
           {sealed && <p className="label text-[#bfe6ff]">❄ Sealed until {fmtDate(crystal.sealedUntil)}</p>}
         </div>
       </div>
 
-      <div className="space-y-4">
-        <Panel className="p-4">
-          <table className="w-full text-sm">
-            <thead className="label text-left text-mist">
-              <tr>
-                <th className="pb-2 font-normal">Asset</th>
-                <th className="pb-2 text-right font-normal">Amount</th>
-                <th className="pb-2 text-right font-normal">Value</th>
-                <th className="pb-2 text-right font-normal">24h</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(({ a, m, ethValue, usdValue }) => (
-                <tr key={a.token ?? 'eth'} className="border-t border-line">
-                  <td className="py-2 font-medium">{a.symbol}</td>
-                  <td className="py-2 text-right font-mono">{fmtAmount(a.amount, a.decimals)}</td>
-                  <td className="py-2 text-right">{ethValue !== null ? <EthPrice eth={ethValue} usd={usdValue} /> : <span className="text-xs text-mist">no price</span>}</td>
-                  <td className="py-2 text-right text-xs">
-                    {m?.market.change24h != null ? <Change value={m.market.change24h} /> : <span className="text-mist">—</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="space-y-6">
+        <Panel className="rounded-3xl p-6">
+          <p className="section-label mb-2 text-[11px]">Inside</p>
+          <ul className="divide-y divide-white/[0.06]">
+            {rows.map(({ a, m, ethValue, usdValue }) => (
+              <li key={a.token ?? 'eth'} className="flex items-start justify-between gap-4 py-4">
+                <div className="min-w-0">
+                  <p className="font-display text-lg font-bold">{a.symbol}</p>
+                  <p className="font-mono text-xs text-mist">{fmtAmount(a.amount, a.decimals)}</p>
+                </div>
+                <div className="flex flex-col items-end gap-1 text-right">
+                  {ethValue !== null ? <EthPrice eth={ethValue} usd={usdValue} /> : <span className="text-xs text-mist">no price</span>}
+                  <span className="text-xs">
+                    {m?.market.change24h != null ? (
+                      <>
+                        <Change value={m.market.change24h} /> <span className="text-mist">today</span>
+                      </>
+                    ) : (
+                      <span className="text-mist">—</span>
+                    )}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
         </Panel>
 
-        <Panel className="p-4">
-          <div className="mb-4 flex flex-wrap gap-1.5">
+        <Panel className="rounded-3xl p-6">
+          <div className="mb-5 flex flex-wrap gap-2">
             {(['withdraw', 'add', 'seal', 'burn'] as const).map((t) => (
               <button key={t} className={`chip ${tab === t ? 'chip-on' : ''}`} onClick={() => setTab(t)}>
                 {t === 'burn' ? 'Empty & burn' : t[0]!.toUpperCase() + t.slice(1)}

@@ -14,14 +14,18 @@
   --color-gold: #f6c143;
 }
 
-html, body, #root { height: 100%; }
+html { background: var(--color-ink); scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 body {
   margin: 0;
+  min-height: 100vh;
   background: var(--color-ink);
   color: #f2f3f0;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
+#root { min-height: 100vh; display: flex; flex-direction: column; }
 
 @layer components {
   .label {
@@ -63,6 +67,65 @@ body {
   }
   .btn-secondary:hover { background: rgba(212, 240, 0, 0.06); }
   .btn:disabled { cursor: not-allowed; opacity: 0.55; box-shadow: none; }
+  .btn { transition: background-color 0.15s, box-shadow 0.15s, color 0.15s, transform 0.12s; }
+  .btn:not(:disabled):active { transform: scale(0.97); }
+  .btn-outline {
+    background: transparent;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+  }
+  .btn-outline:hover { border-color: rgba(212, 240, 0, 0.7); color: var(--color-lime); }
+  .btn-lg { padding: 0.95rem 1.8rem; font-size: 13px; }
+
+  /* ---- design system ---- */
+  .container-x { width: 100%; max-width: 1200px; margin-inline: auto; padding-inline: 20px; }
+  @media (min-width: 768px) { .container-x { padding-inline: 32px; } }
+  .section-y { padding-block: 88px; }
+  @media (min-width: 768px) { .section-y { padding-block: 160px; } }
+  .section-label {
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 12px;
+    color: #7d858c;
+  }
+  .display {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.045em;
+    line-height: 0.95;
+    font-size: clamp(2.75rem, 6.6vw, 6rem);
+  }
+  .display-md {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 0.98;
+    font-size: clamp(2.5rem, 5vw, 4.5rem);
+  }
+  .body-copy { max-width: 60ch; color: #a3abb2; line-height: 1.7; font-size: 1.0625rem; }
+  /* dark panel, 1px border; hover lifts it and adds a lime edge glow (transform + opacity only) */
+  .card {
+    position: relative;
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--color-panel);
+    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .card::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    pointer-events: none;
+    border: 1px solid rgba(212, 240, 0, 0.55);
+    box-shadow: 0 18px 50px -20px rgba(212, 240, 0, 0.35);
+    opacity: 0;
+    transition: opacity 0.25s;
+  }
+  .card-hover:hover { transform: translateY(-4px); }
+  .card-hover:hover::after { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { .card-hover:hover { transform: none; } }
   .chip {
     border-radius: 4px;
     border: 1px solid var(--color-line);

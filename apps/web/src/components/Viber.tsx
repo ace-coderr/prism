@@ -1,4 +1,4 @@
-import { Suspense, useMemo, useState, type ReactNode } from 'react';
+import { Suspense, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Billboard, useTexture } from '@react-three/drei';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import * as THREE from 'three';
@@ -23,9 +23,24 @@ import { glowTexture } from './textures';
  */
 
 /** An official viber image, displayed as-is. */
-export function ViberImage({ viber, size = 96, className = '' }: { viber: OfficialViber; size?: number; className?: string }) {
+export function ViberImage({
+  viber,
+  size = 96,
+  phoneSize,
+  className = '',
+}: {
+  viber: OfficialViber;
+  size?: number;
+  /** a smaller size below the `sm` breakpoint */
+  phoneSize?: number;
+  className?: string;
+}) {
   const [failed, setFailed] = useState(false);
-  if (failed) return <span className={`inline-block rounded-2xl bg-white/5 ${className}`} style={{ width: size, height: size }} aria-hidden />;
+  const dims = phoneSize
+    ? ({ '--viber': `${size}px`, '--viber-phone': `${phoneSize}px` } as CSSProperties)
+    : { width: size, height: size };
+  const sized = phoneSize ? 'h-[var(--viber-phone)] w-[var(--viber-phone)] sm:h-[var(--viber)] sm:w-[var(--viber)]' : '';
+  if (failed) return <span className={`inline-block rounded-2xl bg-white/5 ${sized} ${className}`} style={dims} aria-hidden />;
   return (
     <img
       src={viberImageUrl(viber.file)}
@@ -36,8 +51,8 @@ export function ViberImage({ viber, size = 96, className = '' }: { viber: Offici
       loading="lazy"
       decoding="async"
       onError={() => setFailed(true)}
-      className={`shrink-0 select-none ${className}`}
-      style={{ width: size, height: size }}
+      className={`shrink-0 select-none ${sized} ${className}`}
+      style={dims}
       draggable={false}
     />
   );
@@ -58,9 +73,10 @@ export function ViberGuide({
 }) {
   const viber = viberAt(index);
   return (
-    <div className={`flex items-end gap-3 ${className}`}>
-      <ViberImage viber={viber} size={size} />
-      <div className="relative mb-3 rounded-2xl rounded-bl-sm border border-white/10 bg-panel px-4 py-3 text-sm leading-relaxed text-white/90">
+    // phones: the viber sits above its speech bubble so the text gets the full width
+    <div className={`flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-end ${className}`}>
+      <ViberImage viber={viber} size={size} phoneSize={Math.min(size, 64)} />
+      <div className="relative min-w-0 rounded-2xl rounded-tl-sm border border-white/10 bg-panel px-4 py-3 text-sm leading-relaxed text-white/90 sm:mb-3 sm:rounded-tl-2xl sm:rounded-bl-sm">
         {children}
       </div>
     </div>

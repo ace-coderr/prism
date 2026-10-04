@@ -25,7 +25,7 @@ export function SoonButton({ children }: { children: ReactNode }) {
 /** Marks numbers read live from Robinhood Chain Testnet. */
 export function LiveBadge({ children = 'Live testnet data' }: { children?: ReactNode }) {
   return (
-    <span className="label inline-flex items-center gap-1.5 rounded border border-lime/50 bg-lime/10 px-2 py-0.5 text-[10px] text-lime">
+    <span className="label inline-flex items-center gap-1.5 whitespace-nowrap rounded border border-lime/50 bg-lime/10 px-2 py-0.5 text-[10px] text-lime">
       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-lime" />
       {children}
     </span>

@@ -1,12 +1,14 @@
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Float } from '@react-three/drei';
+import { useReducedMotion } from 'motion/react';
 import * as THREE from 'three';
 import {
   type OwnedViber,
   LIVE_CRACK_THRESHOLD,
   buildCrystal,
   exposedVoxels,
+  seamYaw,
   type CorrelationInput,
   type CrystalHistory,
   type Holding,
@@ -44,6 +46,8 @@ const glowMaterial = new THREE.MeshBasicMaterial({
 });
 
 const isCoarse = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
+/** Seconds each cube takes to fly into place when a crystal assembles. */
+const ASSEMBLE_SECONDS = 0.75;
 
 export interface CrystalProps {
   holdings: Holding[];
@@ -65,6 +69,10 @@ export interface CrystalProps {
   focus?: CrystalFocus | null;
   /** A sealed gift: the crystal is frosted over. */
   sealed?: boolean;
+  /** Cubes fly in and assemble the crystal the first time it appears. */
+  assemble?: boolean;
+  /** Sway gently around the gold seam (kept facing the camera) instead of spinning. */
+  sway?: boolean;
   onClick?: (e: ThreeEvent<MouseEvent>) => void;
   onPointerOver?: (e: ThreeEvent<PointerEvent>) => void;
   onPointerOut?: (e: ThreeEvent<PointerEvent>) => void;
@@ -82,11 +90,14 @@ export function Crystal({
   highlight,
   focus = null,
   sealed = false,
+  assemble = false,
+  sway = false,
   onClick,
   onPointerOver,
   onPointerOut,
 }: CrystalProps) {
-  const { voxels, radius, biggest } = useMemo(() => {
+  const reduce = useReducedMotion();
+  const { voxels, radius, biggest, yaw } = useMemo(() => {
     const geo = buildCrystal(holdings, history, {
       correlation,
       maxShards: 48,
@@ -95,7 +106,7 @@ export function Crystal({
     });
     const biggest = geo.clusters.reduce((b, c, i) => (c.weight > (geo.clusters[b]?.weight ?? -1) ? i : b), 0);
     // interior cubes are never visible — skip them
-    return { voxels: exposedVoxels(geo.voxels), radius: geo.radius, biggest };
+    return { voxels: exposedVoxels(geo.voxels), radius: geo.radius, biggest, yaw: seamYaw(geo) };
   }, [holdings, history, correlation]);
 
   // grow capacity in steps so the instanced buffers are rarely reallocated
@@ -147,13 +158,69 @@ export function Crystal({
     fit.current?.scale.setScalar(targetScale);
   }, []);
 
-  useFrame((_, dt) => {
+  // the first time there is a shape: turn its gold seam (else a crack) to the camera
+  const faced = useRef(false);
+  useLayoutEffect(() => {
+    if (faced.current || voxels.length === 0 || !spinner.current) return;
+    spinner.current.rotation.y = yaw;
+    faced.current = true;
+  }, [voxels, yaw]);
+
+  // assembly: every cube flies in from outside (inner cubes first) and grows into place
+  const assembly = useRef<{ start: number; offsets: Float32Array; delays: Float32Array; done: boolean } | null>(null);
+  const assembled = useRef(false);
+  useLayoutEffect(() => {
+    if (!assemble || reduce || assembled.current || voxels.length === 0) return;
+    assembled.current = true;
+    const offsets = new Float32Array(voxels.length * 3);
+    const delays = new Float32Array(voxels.length);
+    let seed = 7;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    voxels.forEach((v, i) => {
+      const [x, y, z] = v.position;
+      const len = Math.hypot(x, y, z) || 1;
+      const dist = radius * (1.4 + rand() * 1.8);
+      offsets[i * 3] = (x / len) * dist + (rand() - 0.5) * radius;
+      offsets[i * 3 + 1] = (y / len) * dist + (rand() - 0.5) * radius;
+      offsets[i * 3 + 2] = (z / len) * dist + (rand() - 0.5) * radius;
+      delays[i] = 0.05 + (len / radius) * 0.55 + rand() * 0.35;
+    });
+    assembly.current = { start: -1, offsets, delays, done: false };
+  }, [voxels, assemble, reduce, radius]);
+
+  const tmp = useMemo(() => new THREE.Matrix4(), []);
+  useFrame((state, dt) => {
     const d = Math.min(dt, 0.1);
-    if (spinner.current) spinner.current.rotation.y += spin * d;
+    if (spinner.current && !reduce) {
+      if (sway) spinner.current.rotation.y = yaw + Math.sin(state.clock.elapsedTime * 0.35) * 0.55;
+      else spinner.current.rotation.y += spin * d;
+    }
     if (fit.current) {
       const k = highlight ? 1.12 : 1;
       fit.current.scale.setScalar(THREE.MathUtils.damp(fit.current.scale.x, targetScale * k, 8, d));
     }
+    const a = assembly.current;
+    const b = body.current;
+    const h = hull.current;
+    if (!a || a.done || !b || !h) return;
+    if (a.start < 0) a.start = state.clock.elapsedTime;
+    const t = state.clock.elapsedTime - a.start;
+    let done = true;
+    voxels.forEach((v, i) => {
+      const k = THREE.MathUtils.clamp((t - a.delays[i]!) / ASSEMBLE_SECONDS, 0, 1);
+      if (k < 1) done = false;
+      const e = 1 - (1 - k) ** 3;
+      const [x, y, z] = v.position;
+      const px = x + a.offsets[i * 3]! * (1 - e);
+      const py = y + a.offsets[i * 3 + 1]! * (1 - e);
+      const pz = z + a.offsets[i * 3 + 2]! * (1 - e);
+      tmp.makeScale(e, e, e).setPosition(px, py, pz);
+      b.setMatrixAt(i, tmp);
+      tmp.makeScale(e * OUTLINE, e * OUTLINE, e * OUTLINE).setPosition(px, py, pz);
+      h.setMatrixAt(i, tmp);
+    });
+    b.instanceMatrix.needsUpdate = h.instanceMatrix.needsUpdate = true;
+    if (done) a.done = true;
   });
 
   const crystal = (
@@ -179,7 +246,7 @@ export function Crystal({
           <planeGeometry args={[size * 2.6, size * 2.6]} />
         </mesh>
       )}
-      {float ? (
+      {float && !reduce ? (
         <Float speed={1.4} rotationIntensity={0.2} floatIntensity={0.5}>
           {crystal}
         </Float>

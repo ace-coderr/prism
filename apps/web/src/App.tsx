@@ -1,7 +1,9 @@
 import { Suspense, lazy } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { Footer, Nav } from './components/Nav';
 import { Intro } from './components/Intro';
+import { EASE } from './components/design';
 import Home from './pages/Home';
 import Forge from './pages/Forge';
 import MyCrystals from './pages/MyCrystals';
@@ -13,13 +15,21 @@ import Agent from './pages/Agent';
 const Deploy = import.meta.env.DEV ? lazy(() => import('./pages/Deploy')) : null;
 
 export default function App() {
+  const location = useLocation();
   return (
-    <div className="flex h-full flex-col">
+    // "user": honour prefers-reduced-motion everywhere (transforms off, fades kept short)
+    <MotionConfig reducedMotion="user">
       <Nav />
-      {/* the nav floats above the page: content starts below the pill (16px gap + pill + 16px) */}
-      <main className="relative min-h-0 flex-1 pt-20 sm:pt-[88px]">
-        <div className="relative h-full">
-          <Routes>
+      <AnimatePresence mode="wait" initial={false} onExitComplete={() => window.scrollTo(0, 0)}>
+        <motion.main
+          key={location.pathname}
+          className="relative flex-1"
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.28, ease: EASE }}
+        >
+          <Routes location={location}>
             <Route path="/" element={<Home />} />
             <Route path="/forge" element={<Forge />} />
             <Route path="/my-crystals" element={<MyCrystals />} />
@@ -38,10 +48,10 @@ export default function App() {
             )}
             <Route path="*" element={<Home />} />
           </Routes>
-        </div>
-      </main>
+        </motion.main>
+      </AnimatePresence>
       <Footer />
       <Intro />
-    </div>
+    </MotionConfig>
   );
 }

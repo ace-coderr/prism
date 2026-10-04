@@ -8,7 +8,8 @@ import { getDeployment, type CrystalHistory, type Holding, type OwnedViber } fro
 import { Crystal } from '../components/Crystal';
 import { PageHeader, PageScroll } from '../components/PageHeader';
 import { SceneLabel, Stage } from '../components/Stage';
-import { EthPrice, LiveBadge, Panel } from '../components/ui';
+import { EthPrice, LiveBadge } from '../components/ui';
+import { Reveal, SectionLabel } from '../components/design';
 import { ViberBillboard, ViberGuide, useOwnersVibers } from '../components/Viber';
 import { holdingsFromAssets, marketLookup, realCrystalHistory } from '../data/crystalHoldings';
 import { useTestnetTokens } from '../data/chain';
@@ -18,8 +19,8 @@ import { shortAddress } from '../wallet/WalletButton';
 
 /** Below this many crystals, a viber invites people to forge one. */
 const FEW = 6;
-const SPACING = 3.3;
-const ROW_SPACING = 3.2;
+const SPACING = 3.9;
+const ROW_SPACING = 3.7;
 /** Up to this many crystals stand in a grid; more stand in a ring you can orbit. */
 const GRID_MAX = 8;
 
@@ -127,16 +128,16 @@ function CrystalScene({ items, interactive }: { items: SceneItem[]; interactive:
             />
             {it.companion && <ViberBillboard viber={it.companion} position={[p[0] + 0.85, p[1] - 1.05, p[2] + 0.2]} height={1.25} />}
             <SceneLabel position={[p[0], p[1] - 1.45, p[2]]} center>
-              <div className="pointer-events-none whitespace-nowrap rounded-full border border-white/10 bg-ink/85 px-3 py-1 text-center">
-                <span className="font-display text-sm font-bold text-white">{it.label}</span>
-                {it.sublabel && <span className="ml-2 font-mono text-[10px] text-mist">{it.sublabel}</span>}
+              <div className="pointer-events-none whitespace-nowrap rounded-full border border-white/15 bg-ink/90 px-4 py-1.5 text-center shadow-[0_8px_24px_-8px_rgba(0,0,0,0.8)]">
+                <span className="font-display text-base font-bold text-white">{it.label}</span>
+                {it.sublabel && <span className="ml-2 font-mono text-[11px] text-mist">{it.sublabel}</span>}
               </div>
             </SceneLabel>
           </group>
         );
       })}
       {interactive && (
-        <OrbitControls makeDefault enableDamping enablePan={false} minDistance={3} maxDistance={40} autoRotate={items.length > GRID_MAX} autoRotateSpeed={0.35} />
+        <OrbitControls makeDefault enableDamping enablePan={false} enableZoom={false} autoRotate={items.length > GRID_MAX} autoRotateSpeed={0.35} />
       )}
     </>
   );
@@ -148,23 +149,23 @@ const fmtQty = (v: bigint, d: number) =>
 function RealCrystalCard({ c, totalEth }: { c: PublicCrystal; totalEth: number }) {
   const sealed = c.sealedUntil * 1000 > Date.now();
   return (
-    <Panel className="p-4">
-      <div className="flex items-baseline justify-between gap-2">
-        <p className="font-display text-xl font-bold">Crystal #{c.id.toString()}</p>
+    <div className="card card-hover h-full p-7">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="font-display text-2xl font-bold tracking-[-0.02em]">Crystal #{c.id.toString()}</p>
         {totalEth > 0 && <EthPrice eth={totalEth} />}
       </div>
-      <p className="mt-0.5 font-mono text-[11px] text-mist">
+      <p className="mt-2 font-mono text-[11px] text-mist">
         owner {shortAddress(c.owner)}
         {sealed ? ' · ❄ sealed gift' : ''}
       </p>
-      <ul className="mt-3 flex flex-wrap gap-1.5">
+      <ul className="mt-6 flex flex-wrap gap-2">
         {c.assets.map((a) => (
           <li key={a.token ?? 'eth'} className="chip">
             {fmtQty(a.amount, a.decimals)} {a.symbol}
           </li>
         ))}
       </ul>
-    </Panel>
+    </div>
   );
 }
 
@@ -172,9 +173,9 @@ export default function Gallery() {
   const deployment = getDeployment(TARGET_CHAIN.id);
   const all = useAllCrystals();
   // price history must reach back to the oldest crystal's forge block
-  const live = useTestnetTokens(earliestForge(all.data));
+  const live = useTestnetTokens(earliestForge(all.data?.crystals));
   const marketOf = useMemo(() => marketLookup(live.status === 'live' ? live.tokens : undefined), [live]);
-  const real = useMemo(() => all.data ?? [], [all.data]);
+  const real = useMemo(() => all.data?.crystals ?? [], [all.data]);
   const vibers = useOwnersVibers(real.map((c) => c.owner));
   // stable per crystal, so each 3D crystal is only rebuilt when its data changes
   const shapes = useMemo(
@@ -195,44 +196,55 @@ export default function Gallery() {
     companion: vibers.get(c.owner.toLowerCase()) ?? null,
   }));
   return (
-    <PageScroll className="max-w-7xl gap-8">
-      <PageHeader title="Gallery" subtitle="Every crystal forged on PRISM — who owns it and what is inside. Drag to look around.">
+    <PageScroll>
+      <PageHeader
+        label="Gallery"
+        lead="Every crystal,"
+        accent="on-chain."
+        subtitle="Every crystal ever forged on PRISM: who owns it and what is inside. Drag the scene to look around."
+      >
         {!!deployment && all.isSuccess && <LiveBadge />}
       </PageHeader>
 
-      {/* ------------------------------------------------------------ real crystals */}
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="headline text-2xl">Forged on PRISM</h2>
-          <p className="font-mono text-[11px] text-mist">
-            {all.isLoading ? 'reading the chain…' : `${real.length} real crystal${real.length === 1 ? '' : 's'}`}
+      <section className="flex flex-col gap-10">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <SectionLabel>Forged on PRISM</SectionLabel>
+          <p className="font-mono text-xs text-mist">
+            {all.isLoading ? 'reading the chain…' : `${real.length} crystal${real.length === 1 ? '' : 's'}`}
           </p>
         </div>
         {all.isError && <p className="text-sm text-down">Couldn’t read crystals from the chain right now. Try again in a moment.</p>}
-        {all.isSuccess && real.length < FEW && (
-          <Panel className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
-            <ViberGuide index={8}>Be one of the first. Forge a crystal.</ViberGuide>
-            <Link to="/forge" className="btn btn-primary">
-              Forge a crystal
-            </Link>
-          </Panel>
-        )}
         {real.length > 0 && (
-          <>
-            <div className="relative h-[380px] overflow-hidden rounded-3xl border border-white/10 sm:h-[440px]">
+          <Reveal>
+            <div className="relative h-[420px] overflow-hidden rounded-[32px] border border-white/[0.08] sm:h-[520px]">
               <Stage className="!absolute inset-0" camera={{ position: [0, 3, 11], fov: 45 }}>
                 <CrystalScene items={realItems} interactive />
               </Stage>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {real.map((c) => (
-                <RealCrystalCard key={c.id.toString()} c={c} totalEth={holdingsFromAssets(c.assets, marketOf).totalEth} />
-              ))}
+          </Reveal>
+        )}
+        {real.length > 0 && (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8">
+            {real.map((c, i) => (
+              <Reveal key={c.id.toString()} delay={Math.min(i, 6) * 0.06}>
+                <RealCrystalCard c={c} totalEth={holdingsFromAssets(c.assets, marketOf).totalEth} />
+              </Reveal>
+            ))}
+          </div>
+        )}
+        {all.isSuccess && real.length < FEW && (
+          <Reveal>
+            <div className="card flex flex-col gap-6 p-8 sm:flex-row sm:items-center sm:justify-between">
+              <ViberGuide index={8} size={80}>
+                Be one of the first. Forge a crystal.
+              </ViberGuide>
+              <Link to="/forge" className="btn btn-primary btn-lg">
+                Forge a crystal
+              </Link>
             </div>
-          </>
+          </Reveal>
         )}
       </section>
-
     </PageScroll>
   );
 }

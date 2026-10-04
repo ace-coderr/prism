@@ -12,7 +12,10 @@ import {
   valueWeights,
   type Holding,
   type TestnetToken,
+  type TokenMarket,
 } from '@prism/core';
+import { motion } from 'motion/react';
+import { EASE } from '../components/design';
 import { FittedCrystal } from '../components/Crystal';
 import { PageHeader, PageScroll } from '../components/PageHeader';
 import { Stage } from '../components/Stage';
@@ -48,6 +51,51 @@ const fmt = (v: bigint, d: number) => {
   const n = Number(formatUnits(v, d));
   return n === 0 ? '0' : n < 0.0001 ? '<0.0001' : n.toLocaleString('en-US', { maximumFractionDigits: 4 });
 };
+
+function TokenCard({
+  token: t,
+  market: m,
+  loading,
+  on,
+  balance,
+  onToggle,
+}: {
+  token: TestnetToken;
+  market?: TokenMarket;
+  loading: boolean;
+  on: boolean;
+  /** undefined = no wallet connected; null = still reading */
+  balance?: bigint | null;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onToggle}
+      className={`card card-hover min-w-0 p-6 text-left ${on ? '!border-lime/70 !bg-lime/[0.05]' : ''}`}
+    >
+      <span className="flex items-start justify-between gap-3">
+        <span className="font-display text-2xl font-bold tracking-[-0.02em]">{t.id}</span>
+        <span className={`grid h-6 w-6 place-items-center rounded-full border text-xs transition-colors ${on ? 'border-lime bg-lime text-ink' : 'border-white/25'}`}>
+          {on ? '✓' : ''}
+        </span>
+      </span>
+      <span className="mt-1 block truncate text-sm text-mist">{describe(t)}</span>
+      <span className="mt-5 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        {m?.eth ? <EthPrice eth={m.eth} usd={m.usd} /> : <span className="font-mono text-xs text-mist">{loading ? 'price…' : 'no price'}</span>}
+        {m?.change24h != null && (
+          <span className="text-xs">
+            <Change value={m.change24h} /> <span className="text-mist">today</span>
+          </span>
+        )}
+      </span>
+      {balance !== undefined && (
+        <span className="mt-3 block font-mono text-[11px] text-mist">You own {balance === null ? '…' : fmt(balance, t.decimals)}</span>
+      )}
+    </button>
+  );
+}
 
 export default function Forge() {
   const deployment = getDeployment(TARGET_CHAIN.id);
@@ -163,51 +211,64 @@ export default function Forge() {
   ];
 
   return (
-    <PageScroll className="max-w-7xl gap-5">
-      <PageHeader title="Forge a crystal" subtitle="Put test stocks and ETH into one crystal that lives in your wallet. Three steps, about a minute.">
+    <PageScroll>
+      <PageHeader
+        label="Forge"
+        lead="Forge a"
+        accent="crystal."
+        subtitle="Put test stocks and ETH into one crystal that lives in your wallet. Three steps, about a minute."
+      >
         {live.status === 'live' && <LiveBadge />}
       </PageHeader>
 
-      {/* progress */}
-      <ol className="grid grid-cols-3 gap-2" aria-label="Progress">
-        {STEPS.map((label, i) => (
-          <li key={label}>
-            <button
-              type="button"
-              disabled={i >= step}
-              onClick={() => setStep(i)}
-              className="w-full text-left disabled:cursor-default"
-              aria-current={i === step ? 'step' : undefined}
-            >
-              <span className={`block h-1.5 rounded-full transition-colors ${i <= step ? 'bg-lime' : 'bg-white/10'}`} />
-              <span className={`label mt-2 block ${i === step ? 'text-lime' : i < step ? 'text-white' : 'text-mist'}`}>
-                {i + 1} · {label}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ol>
+      <div className="flex flex-col gap-10">
+        {/* progress */}
+        <ol className="grid grid-cols-3 gap-3 md:gap-5" aria-label="Progress">
+          {STEPS.map((label, i) => (
+            <li key={label}>
+              <button
+                type="button"
+                disabled={i >= step}
+                onClick={() => setStep(i)}
+                className="w-full text-left disabled:cursor-default"
+                aria-current={i === step ? 'step' : undefined}
+              >
+                <span className="block h-1.5 overflow-hidden rounded-full bg-white/10">
+                  <motion.span
+                    className="block h-full origin-left rounded-full bg-lime"
+                    initial={false}
+                    animate={{ scaleX: i <= step ? 1 : 0 }}
+                    transition={{ duration: 0.45, ease: EASE }}
+                  />
+                </span>
+                <span className={`section-label mt-3 block text-[11px] ${i === step ? '!text-lime' : i < step ? '!text-white' : ''}`}>
+                  0{i + 1} / {label}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ol>
 
-      <div className="grid gap-5 lg:grid-cols-[1fr_420px]">
+        <div className="grid gap-10 lg:grid-cols-[1fr_440px] lg:gap-12">
         {/* ------------------------------------------------------------ wizard */}
-        <div className="order-2 space-y-4 lg:order-1">
+        <div className="order-2 flex min-w-0 flex-col gap-8 lg:order-1">
           {step === 0 && (
             <>
-              <p className="text-sm text-mist">
-                Tap the tokens you want inside — up to {MAX_ASSETS} (adding ETH counts as one). They are vibe/vibe test tokens
+              <p className="body-copy">
+                Tap the tokens you want inside: up to {MAX_ASSETS} (adding ETH counts as one). They are vibe/vibe test tokens
                 with no real value.
               </p>
               {!isConnected && (
-                <Panel className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <ViberGuide index={6} size={64}>
+                <div className="card flex flex-col items-start gap-5 p-6 xl:flex-row xl:items-center xl:justify-between">
+                  <ViberGuide index={6} size={72}>
                     Look around freely. Connect a wallet when you want to see what you own and forge for real.
                   </ViberGuide>
                   <WalletButton variant="hero" />
-                </Panel>
+                </div>
               )}
               {balancesKnown && !ownsAnyStock && (
-                <Panel className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <ViberGuide index={6} size={64}>
+                <div className="card flex flex-col items-start gap-5 p-6 xl:flex-row xl:items-center xl:justify-between">
+                  <ViberGuide index={6} size={72}>
                     You don’t own test stocks yet. You can forge with ETH now.
                   </ViberGuide>
                   <div className="flex flex-wrap gap-2">
@@ -218,59 +279,33 @@ export default function Forge() {
                       Forge from ETH (soon)
                     </button>
                   </div>
-                </Panel>
+                </div>
               )}
               {GROUPS.map((g) => {
                 const tokens = g.ids.map((id) => BASKET_TOKENS.find((t) => t.id === id)).filter((t): t is TestnetToken => !!t);
                 if (tokens.length === 0) return null;
                 return (
-                  <section key={g.label} className="space-y-2">
-                    <h3 className="label text-mist">{g.label}</h3>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {tokens.map((t) => {
-                  const m = marketById.get(t.id)?.market;
-                  const on = picks.includes(t.id);
-                  const bal = balanceOf(t);
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => toggle(t.id)}
-                      className={`rounded-2xl border p-4 text-left transition ${on ? 'border-lime bg-lime/5' : 'border-white/10 bg-panel hover:border-white/25'}`}
-                    >
-                      <span className="flex items-baseline justify-between gap-2">
-                        <span className="font-display text-xl font-bold">{t.id}</span>
-                        <span className={`grid h-5 w-5 place-items-center rounded-full border text-[11px] ${on ? 'border-lime bg-lime text-ink' : 'border-white/25'}`}>
-                          {on ? '✓' : ''}
-                        </span>
-                      </span>
-                      <span className="mt-0.5 block truncate text-xs text-mist">{describe(t)}</span>
-                      <span className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                        {m?.eth ? (
-                          <EthPrice eth={m.eth} usd={m.usd} />
-                        ) : (
-                          <span className="font-mono text-xs text-mist">{live.status === 'loading' ? 'price…' : 'no price'}</span>
-                        )}
-                        {m?.change24h != null && (
-                          <span className="text-xs">
-                            <Change value={m.change24h} /> <span className="text-mist">today</span>
-                          </span>
-                        )}
-                      </span>
-                      {isConnected && (
-                        <span className="mt-2 block font-mono text-[11px] text-mist">You own {bal === null ? '…' : fmt(bal, t.decimals)}</span>
-                      )}
-                    </button>
-                  );
-                })}
+                  <section key={g.label} className="flex flex-col gap-4">
+                    <h3 className="section-label text-[11px]">{g.label}</h3>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                      {tokens.map((t) => (
+                        <TokenCard
+                          key={t.id}
+                          token={t}
+                          market={marketById.get(t.id)?.market}
+                          loading={live.status === 'loading'}
+                          on={picks.includes(t.id)}
+                          balance={isConnected ? balanceOf(t) : undefined}
+                          onToggle={() => toggle(t.id)}
+                        />
+                      ))}
                     </div>
                   </section>
                 );
               })}
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs text-mist">{picks.length === 0 ? 'Nothing picked yet — you can also go on with ETH only.' : `${picks.length} picked.`}</p>
-                <button className="btn btn-primary" onClick={() => setStep(1)}>
+              <div className="flex flex-wrap items-center justify-between gap-4 border-t border-white/[0.08] pt-8">
+                <p className="text-sm text-mist">{picks.length === 0 ? 'Nothing picked yet. You can also go on with ETH only.' : `${picks.length} picked.`}</p>
+                <button className="btn btn-primary btn-lg" onClick={() => setStep(1)}>
                   Next: amounts →
                 </button>
               </div>
@@ -421,19 +456,20 @@ export default function Forge() {
         {/* ------------------------------------------------------------ preview */}
         {/* on phones the preview sits above the steps, so it only appears once there is something to show */}
         <div className={`order-1 lg:order-2 ${holdings.length === 0 ? 'hidden lg:block' : ''}`}>
-          <div className="relative h-[260px] overflow-hidden rounded-3xl border border-white/10 lg:sticky lg:top-2 lg:h-[460px]">
+          <div className="relative h-[300px] overflow-hidden rounded-[32px] border border-white/[0.08] lg:sticky lg:top-28 lg:h-[560px]">
             <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
               {holdings.length > 0 && <FittedCrystal holdings={holdings} size={1.6} spin={0.2} top={0.12} bottom={0.86} />}
             </Stage>
             {holdings.length === 0 && (
               <p className="absolute inset-0 grid place-items-center px-8 text-center text-sm text-mist">Pick a token to see your crystal take shape.</p>
             )}
-            <p className="label pointer-events-none absolute left-4 top-4 text-mist">Live preview</p>
-            <p className="pointer-events-none absolute bottom-3 left-4 right-4 font-mono text-[10px] text-mist/80">
+            <p className="section-label pointer-events-none absolute left-6 top-6 text-[11px]">Live preview</p>
+            <p className="pointer-events-none absolute bottom-5 left-6 right-6 font-mono text-[10px] text-mist/80">
               Size = how much · colour = today’s move · spikes = how jumpy the price is
             </p>
           </div>
         </div>
+      </div>
       </div>
     </PageScroll>
   );

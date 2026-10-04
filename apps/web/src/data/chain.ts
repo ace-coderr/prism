@@ -6,6 +6,7 @@ import {
   readMarket,
   robinhoodChainTestnet,
   type MarketHistory,
+  type Snapshot,
   type TestnetToken,
   type TokenMarket,
 } from '@prism/core';
@@ -99,6 +100,22 @@ async function refresh() {
   } finally {
     running = false;
   }
+}
+
+/**
+ * Show the cached snapshot's prices right away (no history yet). The live read still
+ * runs and replaces them; it skips its quick price-only pass since prices are already up.
+ */
+export function seedFromSnapshot(s: Snapshot) {
+  if (latest) return;
+  const tokens = s.tokens
+    .map((id) => BASKET_TOKENS.find((t) => t.id === id))
+    .filter((t): t is TestnetToken => !!t && !!s.markets[t.id])
+    .map((t) => ({ ...t, market: s.markets[t.id]! }));
+  if (tokens.length === 0) return;
+  verified = tokens;
+  latest = { state: { status: 'live', tokens, history: null }, at: s.generatedAt * 1000, full: false };
+  publish(latest.state);
 }
 
 let extending: Promise<void> | null = null;

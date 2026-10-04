@@ -7,9 +7,10 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.json && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.server.json",
     "serve:dist": "node scripts/serve-dist.mjs",
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "build:vercel": "node scripts/vercel-output.mjs"
   },
   "dependencies": {
     "@prism/core": "*",
@@ -36,6 +37,7 @@
     "tailwindcss": "^4.1.13",
     "typescript": "^5.9.2",
     "vite": "^7.1.6",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "esbuild": "^0.28.2"
   }
 }

@@ -18,6 +18,7 @@ import { ViberGuide, useOwnedViber } from '../components/Viber';
 import { PageHeader, PageScroll } from '../components/PageHeader';
 import { Stage } from '../components/Stage';
 import { Change, EthPrice, LiveBadge, Panel } from '../components/ui';
+import { LoadingStage } from '../components/LoadingStage';
 import { useTestnetTokens, type LiveToken, type LiveTokens } from '../data/chain';
 import { realCrystalHistory } from '../data/crystalHoldings';
 import { earliestForge, useMyCrystals, type OnchainCrystal } from '../data/crystals';
@@ -96,7 +97,7 @@ export default function OnchainCrystals() {
       </div>
 
       {!onTarget && <SwitchNetworkButton />}
-      {crystals.isLoading && <p className="label text-mist">Reading your crystals from the chain…</p>}
+      {crystals.isLoading && <LoadingStage label="Reading your crystals from the chain…" />}
       {crystals.isError && <p className="text-sm text-down">Couldn’t read crystals: {(crystals.error as Error).message.split('\n')[0]}</p>}
       {crystals.isSuccess && list.length === 0 && (
         <div className="card flex flex-col gap-6 p-8 sm:flex-row sm:items-center sm:justify-between md:p-10">
@@ -135,7 +136,7 @@ function CrystalView(props: {
   onChanged: () => void;
 }) {
   const { crystal, marketOf, viber, live } = props;
-  const history = useMemo(() => realCrystalHistory(live, crystal, marketOf), [live, crystal, marketOf]);
+  const history = useMemo(() => realCrystalHistory(live, crystal), [live, crystal, marketOf]);
   const sealed = crystal.sealedUntil * 1000 > Date.now();
   const [tab, setTab] = useState<Tab>('withdraw');
 

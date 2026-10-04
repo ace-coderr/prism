@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
 import { explorerAddressUrl, getDeployment } from '@prism/core';
-import { FittedCrystal, type CrystalFocus } from '../components/Crystal';
+import { FittedCrystal, FittedLoadingCrystal, type CrystalFocus } from '../components/Crystal';
 import { ExplainerVideo } from '../components/ExplainerVideo';
 import { Faq } from '../components/Faq';
 import { ForgeMachine } from '../components/ForgeMachine';
@@ -13,12 +13,20 @@ import { ViberGuide } from '../components/Viber';
 import { useTestnetTokens } from '../data/chain';
 import { LIVE_BASKET, liveBasket } from '../data/crystalHoldings';
 import { useChainStats } from '../data/crystals';
+import { useSnapshot } from '../data/snapshot';
 import { TARGET_CHAIN } from '../wallet/config';
 
-/** The live basket (real 24h moves, jumpiness and drops), or null while it loads. */
+/**
+ * The live basket (real 24h moves, jumpiness and drops): from the cached snapshot at
+ * once, then from the browser's own chain read when it lands. Null only while neither has.
+ */
 function useLiveBasket() {
   const live = useTestnetTokens();
-  return useMemo(() => ({ basket: liveBasket(live), failed: live.status === 'error' }), [live]);
+  const snapshot = useSnapshot();
+  return useMemo(() => {
+    const own = liveBasket(live);
+    return { basket: own ?? snapshot.data?.basket ?? null, failed: live.status === 'error' && !snapshot.data?.basket };
+  }, [live, snapshot.data]);
 }
 
 export default function Home() {
@@ -70,8 +78,10 @@ function Hero() {
         </div>
         <div className="relative order-1 h-[34svh] min-h-[240px] lg:order-2 lg:h-[72vh] lg:max-h-[720px]">
           <Stage className="!absolute inset-0" camera={{ position: [0, 0, 7], fov: 40 }}>
-            {basket && (
+            {basket ? (
               <FittedCrystal holdings={basket.holdings} history={basket.history} size={1.75} assemble sway top={0.04} bottom={0.9} />
+            ) : (
+              <FittedLoadingCrystal size={1.75} top={0.04} bottom={0.9} />
             )}
           </Stage>
           <p className="section-label pointer-events-none absolute inset-x-0 bottom-0 text-center text-[10px]">
@@ -158,7 +168,11 @@ function ReadYourCrystal() {
         <Reveal>
           <div className="relative h-[360px] overflow-hidden rounded-[32px] border border-white/[0.08] bg-panel sm:h-[520px] lg:h-[600px]">
             <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
-              {basket && <FittedCrystal holdings={basket.holdings} history={basket.history} size={1.6} sway top={0.1} bottom={0.9} focus={focus} />}
+              {basket ? (
+                <FittedCrystal holdings={basket.holdings} history={basket.history} size={1.6} sway top={0.1} bottom={0.9} focus={focus} />
+              ) : (
+                <FittedLoadingCrystal size={1.6} top={0.1} bottom={0.9} />
+              )}
             </Stage>
             <span className="absolute left-5 top-5">
               <LiveBadge>{basket ? `Live basket · last ${basket.hours}h` : 'Reading the chain…'}</LiveBadge>
@@ -389,7 +403,11 @@ function Crystalette() {
   return (
     <div className="relative h-[280px] w-[280px]">
       <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }} backdrop={false}>
-        {basket && <FittedCrystal holdings={basket.holdings} history={basket.history} size={1.5} sway top={0.06} bottom={0.94} />}
+        {basket ? (
+          <FittedCrystal holdings={basket.holdings} history={basket.history} size={1.5} sway top={0.06} bottom={0.94} />
+        ) : (
+          <FittedLoadingCrystal size={1.5} top={0.06} bottom={0.94} />
+        )}
       </Stage>
     </div>
   );

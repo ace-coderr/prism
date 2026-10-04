@@ -21,3 +21,6 @@ typechain-types
 # misc
 .DS_Store
 *.log
+
+# vercel build output
+.vercel

@@ -9,11 +9,12 @@ import { Crystal } from '../components/Crystal';
 import { PageHeader, PageScroll } from '../components/PageHeader';
 import { SceneLabel, Stage } from '../components/Stage';
 import { EthPrice, LiveBadge } from '../components/ui';
+import { LoadingStage } from '../components/LoadingStage';
 import { Reveal, SectionLabel } from '../components/design';
 import { ViberBillboard, ViberGuide, useOwnersVibers } from '../components/Viber';
 import { holdingsFromAssets, marketLookup, realCrystalHistory } from '../data/crystalHoldings';
 import { useTestnetTokens } from '../data/chain';
-import { earliestForge, useAllCrystals, type PublicCrystal } from '../data/crystals';
+import { earliestForge, useGalleryCrystals, type PublicCrystal } from '../data/crystals';
 import { TARGET_CHAIN } from '../wallet/config';
 import { shortAddress } from '../wallet/WalletButton';
 
@@ -171,19 +172,26 @@ function RealCrystalCard({ c, totalEth }: { c: PublicCrystal; totalEth: number }
 
 export default function Gallery() {
   const deployment = getDeployment(TARGET_CHAIN.id);
-  const all = useAllCrystals();
+  // live read once it lands; the cached snapshot (with server-side seams) until then
+  const gallery = useGalleryCrystals();
   // price history must reach back to the oldest crystal's forge block
-  const live = useTestnetTokens(earliestForge(all.data?.crystals));
+  const live = useTestnetTokens(earliestForge(gallery.crystals ?? undefined));
   const marketOf = useMemo(() => marketLookup(live.status === 'live' ? live.tokens : undefined), [live]);
-  const real = useMemo(() => all.data?.crystals ?? [], [all.data]);
+  const real = useMemo(() => gallery.crystals ?? [], [gallery.crystals]);
   const vibers = useOwnersVibers(real.map((c) => c.owner));
   // stable per crystal, so each 3D crystal is only rebuilt when its data changes
   const shapes = useMemo(
     () =>
       new Map(
-        real.map((c) => [c.id, { holdings: holdingsFromAssets(c.assets, marketOf).holdings, history: realCrystalHistory(live, c, marketOf) }]),
+        real.map((c) => [
+          c.id,
+          {
+            holdings: holdingsFromAssets(c.assets, marketOf).holdings,
+            history: realCrystalHistory(live, c) ?? gallery.snapshotHistory.get(c.id) ?? undefined,
+          },
+        ]),
       ),
-    [real, live, marketOf],
+    [real, live, marketOf, gallery.snapshotHistory],
   );
 
   const realItems: SceneItem[] = real.map((c) => ({
@@ -203,17 +211,18 @@ export default function Gallery() {
         accent="on-chain."
         subtitle="Every crystal ever forged on PRISM: who owns it and what is inside. Drag the scene to look around."
       >
-        {!!deployment && all.isSuccess && <LiveBadge />}
+        {!!deployment && gallery.crystals && <LiveBadge>{gallery.live ? 'Live testnet data' : 'Testnet data · refreshing'}</LiveBadge>}
       </PageHeader>
 
       <section className="flex flex-col gap-10">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <SectionLabel>Forged on PRISM</SectionLabel>
           <p className="font-mono text-xs text-mist">
-            {all.isLoading ? 'reading the chain…' : `${real.length} crystal${real.length === 1 ? '' : 's'}`}
+            {gallery.loading ? 'reading the chain…' : `${real.length} crystal${real.length === 1 ? '' : 's'}`}
           </p>
         </div>
-        {all.isError && <p className="text-sm text-down">Couldn’t read crystals from the chain right now. Try again in a moment.</p>}
+        {gallery.loading && <LoadingStage label="Reading every crystal from the chain…" />}
+        {gallery.error && <p className="text-sm text-down">Couldn’t read crystals from the chain right now. Try again in a moment.</p>}
         {real.length > 0 && (
           <Reveal>
             <div className="relative h-[420px] overflow-hidden rounded-[32px] border border-white/[0.08] sm:h-[520px]">
@@ -232,7 +241,7 @@ export default function Gallery() {
             ))}
           </div>
         )}
-        {all.isSuccess && real.length < FEW && (
+        {gallery.crystals && real.length < FEW && (
           <Reveal>
             <div className="card flex flex-col gap-6 p-8 sm:flex-row sm:items-center sm:justify-between">
               <ViberGuide index={8} size={80}>

@@ -77,6 +77,15 @@ Check a production build locally with the same rewrite behaviour:
 npm run build && npm run serve:dist -w @prism/web   # http://localhost:4173
 ```
 
+
+**Instant first load.** `GET /api/snapshot` (source: `apps/web/server/snapshot.ts`, logic in
+`packages/core/src/snapshot.ts`) reads the chain server-side (public RPC, read-only, batches ≤ 20)
+and returns everything the first screen needs: prices, 24h moves, the live basket's cracks and seams,
+every crystal (with its own seams) and the live stats, in ~3 KB. It is cached by Vercel's CDN
+(`s-maxage=300, stale-while-revalidate=600`). Pages render from it at once, show an assembling
+crystal while anything loads, and refresh live in the background. `npm run build` also writes
+Vercel's Build Output (`.vercel/output`: the static site + the function bundled with esbuild); in
+`npm run dev`, Vite serves the same route with a 5-minute in-memory cache.
 ## vibe vibers
 
 vibe/vibe's "vibe vibers" characters appear in PRISM **with permission** from the vibe/vibe

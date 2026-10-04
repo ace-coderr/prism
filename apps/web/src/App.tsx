@@ -4,6 +4,7 @@ import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { Footer, Nav } from './components/Nav';
 import { Intro } from './components/Intro';
 import { EASE } from './components/design';
+import { useSnapshot } from './data/snapshot';
 import Home from './pages/Home';
 import Forge from './pages/Forge';
 import MyCrystals from './pages/MyCrystals';
@@ -16,6 +17,8 @@ const Deploy = import.meta.env.DEV ? lazy(() => import('./pages/Deploy')) : null
 
 export default function App() {
   const location = useLocation();
+  // the cached chain snapshot: every page renders from it until live data lands
+  useSnapshot();
   return (
     // "user": honour prefers-reduced-motion everywhere (transforms off, fades kept short)
     <MotionConfig reducedMotion="user">

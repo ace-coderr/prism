@@ -5,6 +5,7 @@ import { Crystal } from '../components/Crystal';
 import { PageHeader, PageScroll } from '../components/PageHeader';
 import { Stage, useRowLayout } from '../components/Stage';
 import { LiveBadge, Panel } from '../components/ui';
+import { LoadingStage } from '../components/LoadingStage';
 import { ViberGuide } from '../components/Viber';
 import { analyzeCrystal, type Analysis } from '../data/agent';
 import { useTestnetTokens, type LiveTokens } from '../data/chain';
@@ -48,7 +49,7 @@ export default function Agent() {
         </div>
       )}
 
-      {isConnected && crystals.isLoading && <p className="label text-mist">Reading your crystals from the chain…</p>}
+      {isConnected && crystals.isLoading && <LoadingStage label="Reading your crystals from the chain…" />}
       {isConnected && crystals.isError && <p className="text-sm text-down">Couldn’t read your crystals right now. Try again in a moment.</p>}
       {isConnected && crystals.isSuccess && list.length === 0 && (
         <div className="card flex flex-col gap-6 p-8 sm:flex-row sm:items-center sm:justify-between md:p-10">
@@ -81,14 +82,14 @@ function CrystalAnalysis({ crystal, live }: { crystal: OnchainCrystal; live: Liv
   const analysis = useMemo(() => {
     if (live.status !== 'live') return null;
     const now = new Map(holdings.map((h) => [h.symbol, h.weight]));
-    return analyzeCrystal(crystal.id, now, forgeWeights(live, crystal, marketOf));
+    return analyzeCrystal(crystal.id, now, forgeWeights(live, crystal));
   }, [live, holdings, crystal, marketOf]);
   const after = useMemo(
     () => (analysis ? holdings.map((h) => ({ ...h, weight: analysis.target.get(h.symbol) ?? 0 })) : holdings),
     [analysis, holdings],
   );
 
-  if (!analysis) return <p className="label text-mist">Reading live prices…</p>;
+  if (!analysis) return <LoadingStage label="Reading live prices…" />;
   return (
     <section className="flex flex-col gap-10">
       <div className="flex flex-wrap items-center gap-4">

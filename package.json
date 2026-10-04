@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "npm run dev -w @prism/web",
-    "build": "npm run build -w @prism/web",
+    "build": "npm run build -w @prism/web && npm run build:vercel -w @prism/web",
     "test": "npm run test -w @prism/core && npm run test -w @prism/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test:rpc": "npm run test:rpc -w @prism/core",

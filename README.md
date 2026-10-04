@@ -13,7 +13,8 @@ Built for the vibe/vibe launchpad.
 
 | Path | What |
 | --- | --- |
-| `apps/web` | Vite + React + TypeScript app (react-three-fiber, drei, Tailwind) |
+| `apps/web` | Vite + React + TypeScript app (react-three-fiber, drei, Tailwind, Motion) |
+| `apps/video` | Remotion: the 40-second explainer (renders into `apps/web/public/media/`) |
 | `packages/core` | Pure TS logic: `buildCrystal`, weight helpers, chain config (vitest) |
 | `contracts` | Hardhat + TypeScript contracts (step 2) |
 | `PLAN.md` | Phase plan |
@@ -22,13 +23,31 @@ Built for the vibe/vibe launchpad.
 
 ```bash
 npm install
-npm test                 # core unit tests (offline)
+npm test                 # core + web unit tests (offline)
 npm run test:rpc         # + live read-only checks against the testnet RPC
 npm run verify:tokens    # re-verify token candidates on chain 46630
 npm run check:liquidity  # probe Uniswap V4 pools for the verified tokens
 npm run dev              # http://localhost:5173
 npm run test:contracts   # Hardhat tests for the PrismCrystal contract
+npm run video:studio     # edit the explainer in Remotion Studio
+npm run video:render     # re-render the explainer videos + poster (each video < 6 MB)
 ```
+
+## Explainer video
+
+`apps/video` is a Remotion project (React + TypeScript) that reuses `buildCrystal` from
+`packages/core`, the voxel look, the palette and the fonts (Space Grotesk, Space Mono; SIL OFL,
+in `apps/video/public/fonts`). No voiceover and no music, only short captions. The crystal in
+the video is an illustrative basket of the six supported assets (it explains the idea; the
+live data is on the site). The end card shows one official vibe viber, loaded as-is from
+vibe/vibe's site, with a small credit. `npm run video:render` writes:
+
+| File | Format |
+| --- | --- |
+| `prism-explainer.mp4` | 1920×1080, H.264 (Home section 04) |
+| `prism-explainer.webm` | 1920×1080, VP9 (Home section 04) |
+| `prism-explainer-poster.jpg` | poster frame |
+| `prism-explainer-square.mp4` | 1080×1080, H.264 (for X) |
 
 ## Deployed contract
 

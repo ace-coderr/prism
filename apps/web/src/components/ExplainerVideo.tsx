@@ -52,7 +52,7 @@ export function ExplainerVideo() {
             <video
               ref={video}
               className="absolute inset-0 h-full w-full object-cover"
-              poster={VIDEO.poster}
+              poster={near ? VIDEO.poster : undefined}
               muted
               loop
               playsInline

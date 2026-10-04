@@ -6,17 +6,23 @@ import {
   TESTNET_TOKENS,
   feedPrice,
   robinhoodChainTestnet,
-  tokenBySymbol,
+  VIBE_ADMIN_NOTE,
+  tokenById,
 } from '../src';
 
 // Mainnet (4663) addresses from https://docs.robinhood.com/chain/contracts — must never leak into the testnet list.
 const KNOWN_MAINNET = ['0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73', '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168'];
-const ALLOWED_SOURCES = ['https://docs.robinhood.com/', 'https://testnet.vibevibe.fun/', 'https://docs.chain.link/'];
+const ALLOWED_SOURCES = ['https://docs.robinhood.com/', 'https://testnet.vibevibe.fun', 'https://docs.chain.link/'];
 
 describe('TESTNET_TOKENS', () => {
   it('targets chain 46630', () => {
     expect(TESTNET_CHAIN_ID).toBe(46630);
     expect(robinhoodChainTestnet.id).toBe(TESTNET_CHAIN_ID);
+  });
+
+  it('has unique ids', () => {
+    const ids = TESTNET_TOKENS.map((t) => t.id);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it('has valid, checksummed, unique addresses', () => {
@@ -42,7 +48,7 @@ describe('TESTNET_TOKENS', () => {
 
   it('has sane metadata and price feed fields', () => {
     for (const t of TESTNET_TOKENS) {
-      expect(t.symbol).toMatch(/^[A-Za-z0-9]{2,10}$/);
+      expect(t.symbol).toMatch(/^[A-Za-z0-9]{2,12}$/);
       expect(t.name.length).toBeGreaterThan(0);
       expect(Number.isInteger(t.decimals)).toBe(true);
       expect(t.decimals).toBeGreaterThanOrEqual(0);
@@ -51,11 +57,31 @@ describe('TESTNET_TOKENS', () => {
     }
   });
 
-  it('offers only stocks + ETH-like tokens to baskets', () => {
-    expect(BASKET_TOKENS.every((t) => t.kind === 'stock' || t.kind === 'crypto')).toBe(true);
-    expect(BASKET_TOKENS.map((t) => t.symbol)).toEqual(['WETH', 'SPCX']);
-    expect(tokenBySymbol('SPCX')?.name).toBe('Seedify Mock Stock SPCX');
-    expect(tokenBySymbol('NOPE')).toBeUndefined();
+  it('offers only stocks, pre-IPO test assets and ETH to baskets', () => {
+    expect(BASKET_TOKENS.every((t) => ['stock', 'preipo', 'crypto'].includes(t.kind))).toBe(true);
+    expect(BASKET_TOKENS.map((t) => t.id)).toEqual(['NVDA', 'SPCX', 'AAPL', 'OPENAI', 'ANTHROPIC', 'WETH', 'SPCX·Seedify']);
+    expect(tokenById('NOPE')).toBeUndefined();
+  });
+
+  it('includes the vibe/vibe Discover test stocks with source + admin note', () => {
+    for (const id of ['NVDA', 'SPCX', 'AAPL', 'OPENAI', 'ANTHROPIC', 'USDG']) {
+      const t = tokenById(id)!;
+      expect(t.sourceUrl).toMatch(/^https:\/\/testnet\.vibevibe\.fun/);
+      expect(t.note).toContain(VIBE_ADMIN_NOTE);
+      expect(t.pool).toEqual({ fee: 3000, tickSpacing: 60, hooks: '0x0000000000000000000000000000000000000000' });
+    }
+    expect(tokenById('NVDA')!.name).toMatch(/vibe\/vibe test stock/);
+  });
+
+  it('keeps the two different SPCX tokens apart', () => {
+    const spcx = TESTNET_TOKENS.filter((t) => t.symbol === 'SPCX');
+    expect(spcx).toHaveLength(2);
+    expect(new Set(spcx.map((t) => t.address)).size).toBe(2);
+    expect(new Set(spcx.map((t) => t.id)).size).toBe(2);
+  });
+
+  it('has no Chainlink feeds on testnet', () => {
+    expect(TESTNET_TOKENS.every((t) => t.priceFeed === null)).toBe(true);
   });
 });
 
@@ -81,7 +107,7 @@ describe.runIf(process.env.RUN_RPC_TESTS === '1')('on-chain (Robinhood Chain Tes
   });
 
   for (const t of TESTNET_TOKENS) {
-    it(`${t.symbol}: name/symbol/decimals/totalSupply match`, async () => {
+    it(`${t.id}: name/symbol/decimals/totalSupply match`, async () => {
       const [name, symbol, decimals, supply] = await Promise.all([
         client.readContract({ address: t.address, abi: erc20Abi, functionName: 'name' }),
         client.readContract({ address: t.address, abi: erc20Abi, functionName: 'symbol' }),

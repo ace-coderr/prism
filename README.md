@@ -29,12 +29,18 @@ npm run dev              # http://localhost:5173
 
 ## Data: what is real
 
-- **Forge → Testnet tokens** reads `packages/core/src/tokens.ts` live from the
-  Robinhood Chain Testnet RPC (read-only, no wallet, no keys). Every address there cites
-  its source and passed on-chain `name/symbol/decimals/totalSupply` checks.
-- Robinhood's official Stock Tokens are currently deployed on **mainnet (4663) only**, and
-  Chainlink publishes Robinhood feeds for mainnet only, so on testnet every token shows
-  **"no price feed"** and renders in neutral grey. Prices are never invented.
+- **Forge → Testnet tokens** uses `packages/core/src/tokens.ts`: the vibe/vibe Discover test
+  stocks (NVDA, SPCX/SpaceX, AAPL) and pre-IPO test assets (OPENAI, ANTHROPIC), plus WETH and
+  Seedify's mock SPCX. All are test assets with no value. Each address cites its source and
+  passed on-chain `name/symbol/decimals/totalSupply` checks; the app re-checks on load.
+- **Prices** (read-only, no wallet): (a) the vibe/vibe API (`v6/pair-prices`, `market/eth-usd`),
+  else (b) the token's Uniswap V4 pool spot price. **24h change** (vs ETH) and **volatility**
+  come from the pool's real `Swap` events over the last 24h. Every row says which source it
+  used; nothing is invented. There are no Chainlink feeds on testnet.
+- The vibe/vibe API answers other websites with HTTP 403, so the app reads it through a
+  same-origin proxy (`/vibe-api` in `vite.config.ts`, dev + preview). A static deploy needs the
+  same rewrite, or prices fall back to on-chain pool spot (in ETH).
+- Robinhood's official Stock Tokens are deployed on **mainnet (4663) only** for now.
 - **Sample tokens**, My Crystals, Gallery and Agent use mock data and say so with a
   "Sample data" badge.
 

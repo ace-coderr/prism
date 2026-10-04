@@ -17,9 +17,16 @@ interface Option {
   change24h: number;
   volatility: number;
   price: number | null;
+  /** ETH per token, used when there is no USD rate */
+  eth?: number | null;
   live: boolean;
   address?: string;
   sourceUrl?: string;
+  /** where the price / 24h / volatility came from (testnet tokens only) */
+  priceSource?: string;
+  historySource?: string;
+  volKnown?: boolean;
+  swaps24h?: number;
 }
 
 type Source = 'testnet' | 'sample';
@@ -34,14 +41,20 @@ export default function Forge() {
     }
     if (live.status !== 'live') return [];
     return live.tokens.map((t) => ({
-      symbol: t.symbol,
+      symbol: t.id,
       name: t.name,
-      change24h: Number.NaN, // no 24h history without a feed — never guessed
-      volatility: DEFAULT_VOLATILITY,
-      price: t.price,
+      // real 24h move from pool swaps; NaN (grey) when there is no history — never guessed
+      change24h: t.market.change24h ?? Number.NaN,
+      volatility: t.market.volatility ?? DEFAULT_VOLATILITY,
+      price: t.market.usd,
+      eth: t.market.eth,
       live: true,
       address: t.address,
       sourceUrl: t.sourceUrl,
+      priceSource: t.market.priceSource,
+      historySource: t.market.historySource,
+      volKnown: t.market.volatility !== null,
+      swaps24h: t.market.swaps24h,
     }));
   }, [source, live]);
 
@@ -102,7 +115,7 @@ export default function Forge() {
         </div>
         {source === 'testnet' && (
           <p className="pointer-events-none absolute bottom-3 left-4 right-4 font-mono text-[10px] leading-relaxed text-mist/80">
-            Grey = no price data. Shape uses a default volatility until feeds exist on testnet.
+            Green/red = real 24h move vs ETH from Uniswap V4 swaps. Spikes = realized volatility. Grey = no history.
           </p>
         )}
       </div>
@@ -125,7 +138,7 @@ export default function Forge() {
           </div>
           <p className="mt-3 text-sm text-mist">
             {source === 'testnet'
-              ? 'Verified tokens on Robinhood Chain Testnet (46630), read live from the RPC.'
+              ? 'vibe/vibe test stocks + WETH on Robinhood Chain Testnet (46630), priced live. Test assets, no value.'
               : `Sample stock list with made-up prices, for trying bigger baskets. Up to ${MAX_PICKS} tokens.`}
           </p>
           {source === 'testnet' && live.status === 'loading' && <p className="label mt-3 text-mist">Reading chain…</p>}
@@ -153,11 +166,20 @@ export default function Forge() {
                   </span>
                   <span className="flex shrink-0 items-baseline gap-3">
                     {t.live ? (
-                      t.price !== null ? (
-                        <span className="font-mono text-xs">${t.price.toFixed(2)}</span>
-                      ) : (
-                        <span className="label rounded-sm border border-line px-1.5 py-0.5 text-[9px] text-mist">no price feed</span>
-                      )
+                      <>
+                        {t.price !== null ? (
+                          <span className="font-mono text-xs">${t.price.toFixed(2)}</span>
+                        ) : t.eth ? (
+                          <span className="font-mono text-xs">Ξ{t.eth.toPrecision(4)}</span>
+                        ) : (
+                          <span className="label rounded-sm border border-line px-1.5 py-0.5 text-[9px] text-mist">no price feed</span>
+                        )}
+                        {Number.isFinite(t.change24h) && (
+                          <span className="text-xs">
+                            <Change value={t.change24h} />
+                          </span>
+                        )}
+                      </>
                     ) : (
                       <span className="text-xs">
                         <Change value={t.change24h} />
@@ -177,7 +199,14 @@ export default function Forge() {
                   onChange={(e) => setState(picks, rebalance(weights, i, Number(e.target.value)))}
                 />
                 {t.address && (
-                  <div className="mt-1 flex gap-3 font-mono text-[10px] text-mist/70">
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[10px] text-mist/70">
+                    {t.priceSource && (
+                      <span title="Price source · 24h/volatility source">
+                        <span className="text-lime/80">{t.priceSource}</span>
+                        {t.historySource !== 'none' ? ` · 24h vs ETH: V4 pool, ${t.swaps24h} swaps` : ' · 24h: no history'}
+                        {t.volKnown ? '' : ' · vol: default'}
+                      </span>
+                    )}
                     <a href={explorerAddress(t.address)} target="_blank" rel="noreferrer" className="hover:text-lime">
                       {t.address.slice(0, 6)}…{t.address.slice(-4)} ↗
                     </a>

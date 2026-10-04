@@ -12,30 +12,15 @@
 import { readFileSync } from 'node:fs';
 import { createPublicClient, erc20Abi, getAddress, http, type Address } from 'viem';
 import { robinhoodChainTestnet } from '../src/chain';
+import { TESTNET_TOKENS } from '../src/tokens';
 
 const client = createPublicClient({
   chain: robinhoodChainTestnet,
   transport: http(robinhoodChainTestnet.rpcUrls.default.http[0], { batch: true }),
 });
 
-// Candidates whose docs/config explicitly place them on chain 46630.
-const CANDIDATES: Array<{ address: string; label: string; sourceUrl: string }> = [
-  {
-    address: '0x7943e237c7F95DA44E0301572D358911207852Fa',
-    label: 'L2 WETH (testnet column)',
-    sourceUrl: 'https://docs.robinhood.com/chain/protocol-contracts',
-  },
-  {
-    address: '0x5a5398155d98374c0e26265ea3cb9818169c2739',
-    label: 'vibe/vibe quote asset SPCX',
-    sourceUrl: 'https://testnet.vibevibe.fun/api/v1/chains/46630/config',
-  },
-  {
-    address: '0x728E721256D0708D23b00afCD32c096979259b16',
-    label: 'vibe/vibe canonical asset',
-    sourceUrl: 'https://testnet.vibevibe.fun/api/v1/chains/46630/config',
-  },
-];
+// Every token in tokens.ts is re-verified; failures are reported (and must be removed by hand).
+const CANDIDATES = TESTNET_TOKENS.map((t) => ({ address: t.address as string, label: t.id, sourceUrl: t.sourceUrl }));
 
 const aggregatorAbi = [
   { type: 'function', name: 'decimals', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] },
@@ -76,7 +61,7 @@ async function main() {
   console.log(`# chainId ${chainId}, block ${block}`);
   if (chainId !== 46630) throw new Error('not Robinhood Chain Testnet');
 
-  console.log('\n## Documented testnet candidates');
+  console.log('\n## tokens.ts entries');
   for (const c of CANDIDATES) {
     const address = getAddress(c.address);
     try {

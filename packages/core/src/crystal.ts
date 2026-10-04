@@ -118,6 +118,9 @@ export interface CrystalGeometry {
 export const CORRELATION_THRESHOLD = 0.7;
 export const CRACK_THRESHOLD = 15; // percent
 export const KINTSUGI_GOLD = '#f6c143';
+/** Half-thickness (in cubes) of a crack slice: open cracks ≈ 1–2 cubes, gold seams ≈ 3. */
+export const OPEN_CRACK_HALF_WIDTH = 0.75;
+export const GOLD_SEAM_HALF_WIDTH = 1.4;
 const CORE_RADIUS = 0.55;
 const BASE_SIZE = 1.15;
 const DEFAULT_MAX_SHARDS = 64;
@@ -438,7 +441,9 @@ function crackCells(d: Drawdown, index: number, clusters: Cluster[], cells: Map<
   // `along` lies in the crack plane; `normal` is the plane normal
   const along = normalize(add(scale(t, Math.cos(heading)), scale(b, Math.sin(heading))));
   const normal = normalize(add(scale(t, -Math.sin(heading)), scale(b, Math.cos(heading))));
-  const halfArc = 0.35 + clamp(depth / 100, 0, 1) * 1.5;
+  // healed (gold) seams are drawn wider and longer than open cracks: they are the hero
+  const halfArc = 0.35 + clamp(depth / 100, 0, 1) * 1.5 + (d.recovered ? 0.35 : 0);
+  const halfWidth = d.recovered ? GOLD_SEAM_HALF_WIDTH : OPEN_CRACK_HALF_WIDTH;
   const cosArc = Math.cos(halfArc);
   const phase = rand() * Math.PI * 2;
 
@@ -453,7 +458,7 @@ function crackCells(d: Drawdown, index: number, clusters: Cluster[], cells: Map<
     if (dot(inPlane, center) < cosArc) continue;
     // zig-zag offset so the gap reads as a crack, not a cut
     const jag = 0.9 * Math.sin(dot(p, along) * 0.9 + phase);
-    if (Math.abs(dot(p, normal) - jag) <= 0.75) out.push(p);
+    if (Math.abs(dot(p, normal) - jag) <= halfWidth) out.push(p);
   }
   return { symbol: d.symbol, depth, gold: d.recovered, cells: out };
 }

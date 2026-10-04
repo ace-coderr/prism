@@ -251,6 +251,12 @@ describe('living crystal (kintsugi)', () => {
     expect(onAapl / gold.length).toBeGreaterThan(0.4);
   });
 
+  it('gold seams are wider than open cracks of the same depth', () => {
+    const cells = (recovered: boolean) =>
+      buildCrystal(basket, { drawdowns: [{ depth: 30, recovered, symbol: 'NVDA' }] }).cracks[0]!.cells.length;
+    expect(cells(true)).toBeGreaterThan(cells(false) * 1.5);
+  });
+
   it('deeper drawdowns make longer cracks', () => {
     const size = (depth: number) =>
       buildCrystal(basket, { drawdowns: [{ depth, recovered: true }] }).cracks[0]!.cells.length;

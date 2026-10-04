@@ -3,7 +3,6 @@ import {
   add,
   clamp,
   dot,
-  fibonacciSphere,
   hashString,
   hslToHex,
   length,
@@ -11,7 +10,7 @@ import {
   normalize,
   rng,
   scale,
-  tangentBasis,
+  cross,
   tilt,
 } from './math';
 
@@ -52,7 +51,7 @@ export type CorrelationInput = number[][] | Record<string, Record<string, number
 
 export interface BuildCrystalOptions {
   correlation?: CorrelationInput;
-  /** Hard cap on spires across the whole crystal (keeps mobile cheap). */
+  /** Hard cap on volatility spikes across the whole crystal (keeps mobile cheap). */
   maxShards?: number;
   /** Crystal radius in voxels. Higher = finer and more cubes. Default 8. */
   resolution?: number;
@@ -69,7 +68,7 @@ export interface Voxel {
   /** Integer grid coordinates; one unit = one cube. */
   position: Cell;
   color: string;
-  /** core = the central gem, facet = a holding's spire, bridge = fused correlated holdings. */
+  /** core = inner gem, facet = a holding's surface sector or spike, bridge = seam between fused holdings. */
   kind: 'core' | 'facet' | 'bridge';
   /** Index into `clusters`; -1 for bridges. Core cells take the nearest cluster. */
   cluster: number;
@@ -81,7 +80,7 @@ export interface Cluster {
   symbol: string;
   weight: number;
   direction: Vec3;
-  /** Linear size of the spire group. size³ is proportional to weight. */
+  /** Relative linear size (∛weight); the holding's share of the gem grows with weight. */
   size: number;
   color: string;
   /** 0..1 strength of the color, from |change24h|. */
@@ -100,6 +99,8 @@ export interface Crack {
   gold: boolean;
   /** Grid cells the crack runs through (removed if open, gilded if gold). */
   cells: Cell[];
+  /** The crack's paths across the gem surface (grid units): main path first, then branches. */
+  paths: Vec3[][];
 }
 
 export interface CrystalGeometry {
@@ -118,10 +119,11 @@ export interface CrystalGeometry {
 export const CORRELATION_THRESHOLD = 0.7;
 export const CRACK_THRESHOLD = 15; // percent
 export const KINTSUGI_GOLD = '#f6c143';
-/** Half-thickness (in cubes) of a crack slice: open cracks ≈ 1–2 cubes, gold seams ≈ 3. */
+/** Distance (in cubes) from a crack path that is cut away (open) or gilded (recovered). */
 export const OPEN_CRACK_HALF_WIDTH = 0.75;
-export const GOLD_SEAM_HALF_WIDTH = 1.4;
-const CORE_RADIUS = 0.55;
+export const GOLD_SEAM_HALF_WIDTH = 1.15;
+/** Volatility spikes never stick out more than this fraction of the crystal radius. */
+export const MAX_SPIKE_FRACTION = 0.32;
 const BASE_SIZE = 1.15;
 const DEFAULT_MAX_SHARDS = 64;
 const DEFAULT_RESOLUTION = 8;
@@ -217,14 +219,81 @@ export function exposedVoxels(voxels: Voxel[]): Voxel[] {
 // buildCrystal
 // ---------------------------------------------------------------------------
 
-/** A spire in continuous space, later rasterized onto the voxel grid. */
-interface Spire {
-  kind: 'facet' | 'bridge';
+
+/*
+ * Shape: a gem. A pointed crown on top, a wide octagonal girdle, and a longer pointed
+ * pavilion below — about as wide as it is tall. Each holding owns a sector of the gem
+ * (bigger weight → bigger sector), volatility adds short capped spikes on its sector,
+ * correlated holdings share a mixed-color seam, and drawdowns crack the surface along
+ * meandering diagonal paths (gold when recovered).
+ */
+
+interface GemShape {
+  /** girdle half-width (octagon inradius) */
+  W: number;
+  /** half-height of the straight girdle band */
+  girdle: number;
+  crownH: number;
+  pavilionH: number;
+}
+
+function gemShape(R: number): GemShape {
+  return { W: R * 0.66, girdle: Math.max(0.5, R * 0.06), crownH: R * 0.62, pavilionH: R * 0.9 };
+}
+
+/** Octagonal "radius" in the horizontal plane — gives the voxel gem flat facets. */
+const octRadius = (x: number, z: number) =>
+  Math.max(Math.abs(x), Math.abs(z), (Math.abs(x) + Math.abs(z)) / Math.SQRT2);
+
+/** Allowed octagonal radius at height y (negative = above the crown / below the pavilion). */
+function bodyHalfWidth(s: GemShape, y: number): number {
+  if (y > s.girdle) return s.W * (1 - (y - s.girdle) / s.crownH);
+  if (y < -s.girdle) return s.W * (1 - (-y - s.girdle) / s.pavilionH);
+  return s.W;
+}
+
+/** Is point p inside the gem body scaled by `k` (k < 1 = the inner core)? */
+function inBody(s: GemShape, p: Vec3, k = 1, tipFloor = 0.45): boolean {
+  const hw = bodyHalfWidth(s, p[1] / k) * k;
+  if (hw < 0) return false;
+  return octRadius(p[0], p[2]) <= Math.max(hw, tipFloor);
+}
+
+/** Distance from the centre to the gem surface along unit direction `dir`. */
+function surfaceRadius(s: GemShape, dir: Vec3): number {
+  let r = 0;
+  while (r < s.W * 4 && inBody(s, scale(dir, r), 1, 0)) r += 0.1;
+  return Math.max(0, r - 0.05);
+}
+
+/** Directions mostly around the girdle so the gem keeps its pointed top and bottom. */
+function girdleDirections(n: number): Vec3[] {
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  return Array.from({ length: n }, (_, i) => {
+    const y = n === 1 ? 0 : 0.55 * (1 - (2 * (i + 0.5)) / n);
+    const r = Math.sqrt(1 - y * y);
+    const th = golden * i + 0.4;
+    return normalize([Math.cos(th) * r, y, Math.sin(th) * r]);
+  });
+}
+
+/** Keep a direction near the girdle (|y| ≤ maxY) so no spike points straight up or down. */
+function flatten(d: Vec3, maxY = 0.6): Vec3 {
+  const v = normalize([d[0], d[1] * 0.7, d[2]]);
+  if (Math.abs(v[1]) <= maxY) return v;
+  const h = Math.hypot(v[0], v[2]) || 1;
+  const k = Math.sqrt(1 - maxY * maxY) / h;
+  return [v[0] * k, Math.sign(v[1]) * maxY, v[2] * k];
+}
+
+interface Spike {
   cluster: number;
   dir: Vec3;
+  /** distance from the centre where the spike axis starts (just inside the body) */
+  base: number;
+  /** axis length in cells */
   len: number;
   halfWidth: number;
-  color: string;
 }
 
 export function buildCrystal(
@@ -234,17 +303,16 @@ export function buildCrystal(
 ): CrystalGeometry {
   const holdings = normalizeHoldings(holdingsIn);
   const maxShards = options.maxShards ?? DEFAULT_MAX_SHARDS;
-  const resolution = options.resolution ?? DEFAULT_RESOLUTION;
+  const R = options.resolution ?? DEFAULT_RESOLUTION;
   const { groups, edges } = groupByCorrelation(holdings, options.correlation);
   if (holdings.length === 0) return { voxels: [], clusters: [], cracks: [], fusions: [], radius: 0 };
+  const shape = gemShape(R);
+  const n = holdings.length;
 
-  // 1. Directions: one anchor per correlation group; members of a group sit
-  //    in a tight ring around their anchor so they touch / fuse.
-  const directions: Vec3[] = new Array(holdings.length);
-  const anchors = fibonacciSphere(groups.length).map((d, gi) =>
-    // a small deterministic tilt so 1–2 group crystals don't look axis-aligned
-    groups.length <= 2 ? tilt(d, 0.35, gi * 2.1) : d,
-  );
+  // 1. Directions: one anchor per correlation group around the girdle; members of a
+  //    group sit in a tight ring around their anchor so they touch / fuse.
+  const directions: Vec3[] = new Array(n);
+  const anchors = girdleDirections(groups.length);
   groups.forEach((members, gi) => {
     const anchor = anchors[gi]!;
     if (members.length === 1) {
@@ -253,150 +321,128 @@ export function buildCrystal(
     }
     const ring = 0.22 + 0.05 * members.length;
     members.forEach((m, k) => {
-      directions[m] = tilt(anchor, ring, (k / members.length) * Math.PI * 2);
+      directions[m] = flatten(tilt(anchor, ring, (k / members.length) * Math.PI * 2));
     });
   });
 
-  // 2. Spire budget, proportional to weight.
-  const rawCounts = holdings.map((h) => clamp(Math.round(2 + h.weight * 10), 2, 8));
-  const rawTotal = rawCounts.reduce((s, c) => s + c, 0);
-  const budgetScale = rawTotal > maxShards ? maxShards / rawTotal : 1;
-  const counts = rawCounts.map((c) => Math.max(1, Math.floor(c * budgetScale)));
-
   const fusedWith: string[][] = holdings.map(() => []);
+  const fusedPair = new Set<string>();
   for (const [i, j] of edges) {
     fusedWith[i]!.push(holdings[j]!.symbol);
     fusedWith[j]!.push(holdings[i]!.symbol);
+    fusedPair.add(`${i}:${j}`).add(`${j}:${i}`);
   }
 
-  // 3. Clusters + their spires (continuous space, unit ≈ crystal core radius / 0.55).
-  const clusters: Cluster[] = [];
-  const spires: Spire[] = [];
-  const mainSpire: Spire[] = [];
-
-  holdings.forEach((h, i) => {
-    const dir = directions[i]!;
-    const spikiness = clamp(h.volatility, 0, 1);
+  // 2. Clusters.
+  const clusters: Cluster[] = holdings.map((h, i) => {
     const { color, intensity } = changeColor(h.change24h);
-    const size = BASE_SIZE * Math.cbrt(h.weight);
-    // volatile holdings grow taller, thinner columns
-    const elongation = 0.95 + 1.6 * spikiness;
-    const halfWidth = size * 0.42 * (1 - 0.45 * spikiness);
-    const spread = 0.25 + 0.85 * Math.sqrt(h.weight);
-    const rand = rng(hashString(h.symbol));
-
-    clusters.push({
+    return {
       symbol: h.symbol,
       weight: h.weight,
-      direction: dir,
-      size,
+      direction: directions[i]!,
+      size: BASE_SIZE * Math.cbrt(h.weight),
       color,
       intensity,
-      spikiness,
+      spikiness: clamp(h.volatility, 0, 1),
       fusedWith: fusedWith[i]!,
-      spires: counts[i]!,
-    });
+      spires: 0,
+    };
+  });
 
-    for (let s = 0; s < counts[i]!; s++) {
+  // 3. Volatility spikes: short crystal points on each holding's sector, capped so
+  //    no single column ever dominates the gem's silhouette.
+  const rawCounts = holdings.map((h) => clamp(Math.round(1 + h.weight * 8), 1, 6));
+  const rawTotal = rawCounts.reduce((s, c) => s + c, 0);
+  const budgetScale = rawTotal > maxShards ? maxShards / rawTotal : 1;
+  const spikes: Spike[] = [];
+  clusters.forEach((c, i) => {
+    const count = Math.max(1, Math.floor(rawCounts[i]! * budgetScale));
+    c.spires = count;
+    const rand = rng(hashString(c.symbol));
+    const spread = 0.18 + 0.55 * Math.sqrt(c.weight);
+    for (let k = 0; k < count; k++) {
       const a = rand();
       const b = rand();
-      const c = rand();
-      const d = rand();
-      const sdir = s === 0 ? dir : tilt(dir, spread * (0.4 + 0.6 * a), b * Math.PI * 2);
-      const spire: Spire = {
-        kind: 'facet',
+      const len = rand();
+      const wid = rand();
+      const dir = k === 0 ? c.direction : flatten(tilt(c.direction, spread * (0.4 + 0.6 * a), b * Math.PI * 2));
+      const surf = surfaceRadius(shape, dir);
+      const out = R * Math.min(MAX_SPIKE_FRACTION, (0.1 + 0.22 * c.spikiness) * (k === 0 ? 1 : 0.55 + 0.35 * len));
+      spikes.push({
         cluster: i,
-        dir: sdir,
-        len: size * elongation * (s === 0 ? 1 : 0.5 + 0.4 * c),
-        halfWidth: halfWidth * (s === 0 ? 1 : 0.6 + 0.35 * d),
-        color,
-      };
-      spires.push(spire);
-      if (s === 0) mainSpire.push(spire);
+        dir,
+        base: surf - 1.5,
+        len: out + 1.5,
+        halfWidth: (R / 8) * (0.9 + 1.4 * Math.sqrt(c.weight)) * (1 - 0.4 * c.spikiness) * (k === 0 ? 1 : 0.6 + 0.3 * wid),
+      });
     }
   });
 
-  // Fused neighbours get a bridge spire between them so they read as one block.
-  const fusions: Array<[string, string]> = [];
-  for (const [i, j] of edges) {
-    const a = mainSpire[i]!;
-    const b = mainSpire[j]!;
-    fusions.push([clusters[i]!.symbol, clusters[j]!.symbol]);
-    spires.push({
-      kind: 'bridge',
-      cluster: -1,
-      dir: normalize(add(a.dir, b.dir)),
-      len: ((a.len + b.len) / 2) * 0.85,
-      // wide enough to span the gap between the two main spires
-      halfWidth:
-        Math.max(a.halfWidth, b.halfWidth) +
-        Math.sin(Math.acos(clamp(dot(a.dir, b.dir), -1, 1)) / 2) * (CORE_RADIUS + a.len * 0.5),
-      color: mixHex(a.color, b.color),
-    });
-  }
-
   // 4. Rasterize onto the integer grid.
-  // The gem body is a fixed fraction of the crystal; spires start inside it and
-  // are scaled so the longest one reaches `resolution` cells from the centre.
-  const coreR = resolution * 0.45;
-  const baseG = coreR * 0.5;
-  const maxLen = spires.reduce((m, s) => Math.max(m, s.len), 1e-6);
-  const g = (resolution - baseG) / maxLen; // grid cells per continuous unit
-  const n = Math.ceil(resolution) + 1;
+  const sector = (p: Vec3) => {
+    // bigger weight → bigger sector (an additively weighted partition of directions)
+    const d = normalize([p[0], p[1] * 0.75, p[2]]);
+    let best = 0;
+    let second = -1;
+    let bestS = -Infinity;
+    let secondS = -Infinity;
+    clusters.forEach((c, k) => {
+      const sc = dot(d, c.direction) + 0.9 * (c.weight - 1 / n);
+      if (sc > bestS) {
+        second = best;
+        secondS = bestS;
+        best = k;
+        bestS = sc;
+      } else if (sc > secondS) {
+        second = k;
+        secondS = sc;
+      }
+    });
+    return { best, second, margin: bestS - secondS };
+  };
+
+  const ext = Math.ceil(R * 1.15) + 1;
   const cells = new Map<string, Voxel>();
-
-  for (let x = -n; x <= n; x++) {
-    for (let y = -n; y <= n; y++) {
-      for (let z = -n; z <= n; z++) {
+  for (let x = -ext; x <= ext; x++) {
+    for (let y = -ext; y <= ext; y++) {
+      for (let z = -ext; z <= ext; z++) {
         const p: Vec3 = [x, y, z];
-        let best: Spire | null = null;
-        let bestScore = Infinity;
-        for (const s of spires) {
-          // every holding pokes out of the gem body, however small its weight
-          const lenG = Math.max(s.len * g, coreR * 0.95);
-          const t = dot(p, s.dir) - baseG;
-          if (t < 0 || t > lenG) continue;
-          const u = t / lenG;
-          // straight column, then a pointed tip over the last 40%
-          const taper = u < 0.6 ? 1 : (1 - u) / 0.4;
-          const allowed = Math.max(s.halfWidth * g * taper, u < 0.97 ? 0.55 : 0);
-          const r = length(add(p, scale(s.dir, -(t + baseG))));
-          if (r > allowed) continue;
-          const score = r / Math.max(allowed, 1e-6);
-          // facets win ties over bridges so each holding keeps its own color
-          if (score < bestScore - (s.kind === 'bridge' ? 0.05 : 0)) {
-            best = s;
-            bestScore = score;
-          }
-        }
-        const inCore = Math.abs(x) + Math.abs(y) * 0.8 + Math.abs(z) <= coreR;
-        if (!best && !inCore) continue;
-
-        if (best && !inCore) {
+        if (inBody(shape, p)) {
+          const { best, second, margin } = sector(p);
+          const core = inBody(shape, p, 0.5);
+          const seam = !core && second >= 0 && margin < 0.07 && fusedPair.has(`${best}:${second}`);
           cells.set(cellKey(x, y, z), {
-            position: [x, y, z],
-            color: best.color,
-            kind: best.kind,
-            cluster: best.cluster,
+            position: p,
+            color: seam ? mixHex(clusters[best]!.color, clusters[second]!.color) : clusters[best]!.color,
+            kind: core ? 'core' : seam ? 'bridge' : 'facet',
+            cluster: seam ? -1 : best,
             gold: false,
           });
-        } else {
-          // core cells take the color of the cluster they face
-          const dirP = normalize(p);
-          let ci = 0;
-          let bestDot = -Infinity;
-          clusters.forEach((c, k) => {
-            const d = dot(dirP, c.direction);
-            if (d > bestDot) {
-              bestDot = d;
-              ci = k;
-            }
-          });
+          continue;
+        }
+        // outside the body: part of a spike?
+        let hit: Spike | null = null;
+        let hitScore = Infinity;
+        for (const s of spikes) {
+          const t = dot(p, s.dir) - s.base;
+          if (t < 0 || t > s.len) continue;
+          const u = t / s.len;
+          const taper = u < 0.3 ? 1 : (1 - u) / 0.7; // a crystal point
+          const allowed = Math.max(s.halfWidth * taper, u < 0.95 ? 0.5 : 0);
+          const r = length(add(p, scale(s.dir, -(t + s.base))));
+          if (r > allowed) continue;
+          const score = r / Math.max(allowed, 1e-6);
+          if (score < hitScore) {
+            hit = s;
+            hitScore = score;
+          }
+        }
+        if (hit) {
           cells.set(cellKey(x, y, z), {
-            position: [x, y, z],
-            color: clusters[ci]!.color,
-            kind: 'core',
-            cluster: ci,
+            position: p,
+            color: clusters[hit.cluster]!.color,
+            kind: 'facet',
+            cluster: hit.cluster,
             gold: false,
           });
         }
@@ -404,11 +450,14 @@ export function buildCrystal(
     }
   }
 
-  // 5. Living crystal: deep drawdowns cut a gap; recovered ones are filled with gold.
+  const fusions: Array<[string, string]> = edges.map(([i, j]) => [clusters[i]!.symbol, clusters[j]!.symbol]);
+
+  // 5. Living crystal: deep drawdowns crack the surface along meandering paths; recovered
+  //    ones are traced in gold (kintsugi), open ones are cut away as dark grooves.
   const cracks: Crack[] = (history?.drawdowns ?? [])
     .filter((d) => Math.abs(d.depth) > CRACK_THRESHOLD)
     .map((d, k) => {
-      const crack = crackCells(d, k, clusters, cells);
+      const crack = crackAlongSurface(d, k, clusters, shape, cells);
       for (const c of crack.cells) {
         const key = cellKey(...c);
         if (crack.gold) {
@@ -426,39 +475,106 @@ export function buildCrystal(
   return { voxels, clusters, cracks, fusions, radius };
 }
 
+// ---------------------------------------------------------------------------
+// Cracks
+// ---------------------------------------------------------------------------
+
+/** Radians per crack-path step. */
+const CRACK_STEP = 0.07;
+/** A crack never runs steeper than this (sine of the angle from horizontal): no vertical pillars. */
+export const MAX_CRACK_SLOPE = 0.88;
+
+/** East (horizontal) and north (towards +y) unit tangents at a point on the gem. */
+function localFrame(d: Vec3): [Vec3, Vec3] {
+  const east = Math.abs(d[1]) > 0.98 ? ([1, 0, 0] as Vec3) : normalize(cross([0, 1, 0], d));
+  return [east, cross(d, east)];
+}
+
+function clampHeading(h: number): number {
+  const s = Math.sin(h);
+  const c = Math.cos(h);
+  if (Math.abs(s) <= MAX_CRACK_SLOPE) return h;
+  return Math.atan2(Math.sign(s) * MAX_CRACK_SLOPE, (c >= 0 ? 1 : -1) * Math.sqrt(1 - MAX_CRACK_SLOPE ** 2));
+}
+
+function pointSegmentDistance(p: Vec3, a: Vec3, b: Vec3): number {
+  const ab: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const ap: Vec3 = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
+  const L = dot(ab, ab);
+  const t = L === 0 ? 0 : clamp(dot(ap, ab) / L, 0, 1);
+  return length([ap[0] - ab[0] * t, ap[1] - ab[1] * t, ap[2] - ab[2] * t]);
+}
+
 /**
- * A crack is a jagged one-cube-thick slice through the crystal: a plane through
- * the origin, limited to a wedge around the affected holding. Deeper drawdowns
- * open a wider wedge (a longer crack).
+ * A crack is a meandering path across the gem surface: it starts at the affected holding,
+ * runs diagonally both ways (never steeper than MAX_CRACK_SLOPE), and deeper drawdowns
+ * run longer and branch. Cells within the half-width of a path are the crack.
  */
-function crackCells(d: Drawdown, index: number, clusters: Cluster[], cells: Map<string, Voxel>): Crack {
+function crackAlongSurface(
+  d: Drawdown,
+  index: number,
+  clusters: Cluster[],
+  shape: GemShape,
+  cells: Map<string, Voxel>,
+): Crack {
   const depth = Math.abs(d.depth);
   const target = d.symbol ? clusters.find((c) => c.symbol === d.symbol) : undefined;
   const rand = rng(hashString(`${d.symbol ?? 'basket'}:${index}:${depth}`));
-  const center: Vec3 = target ? target.direction : fibonacciSphere(7)[Math.floor(rand() * 7)]!;
-  const [t, b] = tangentBasis(center);
-  const heading = rand() * Math.PI * 2;
-  // `along` lies in the crack plane; `normal` is the plane normal
-  const along = normalize(add(scale(t, Math.cos(heading)), scale(b, Math.sin(heading))));
-  const normal = normalize(add(scale(t, -Math.sin(heading)), scale(b, Math.cos(heading))));
-  // healed (gold) seams are drawn wider and longer than open cracks: they are the hero
-  const halfArc = 0.35 + clamp(depth / 100, 0, 1) * 1.5 + (d.recovered ? 0.35 : 0);
-  const halfWidth = d.recovered ? GOLD_SEAM_HALF_WIDTH : OPEN_CRACK_HALF_WIDTH;
-  const cosArc = Math.cos(halfArc);
-  const phase = rand() * Math.PI * 2;
+  const center: Vec3 = target
+    ? target.direction
+    : normalize([Math.cos(rand() * 7), (rand() - 0.5) * 0.9, Math.sin(rand() * 7)]);
+  const halfArc = 0.45 + 1.3 * clamp(depth / 100, 0, 1) + (d.recovered ? 0.25 : 0);
+  const steps = Math.max(2, Math.round(halfArc / CRACK_STEP));
+
+  const walk = (start: Vec3, heading: number, count: number): Vec3[] => {
+    const pts: Vec3[] = [];
+    let dir = start;
+    let h = heading;
+    for (let k = 0; k <= count; k++) {
+      pts.push(scale(dir, surfaceRadius(shape, dir)));
+      const [east, north] = localFrame(dir);
+      h = clampHeading(h + (rand() - 0.5) * 0.5);
+      dir = normalize(add(dir, add(scale(east, Math.cos(h) * CRACK_STEP), scale(north, Math.sin(h) * CRACK_STEP))));
+    }
+    return pts;
+  };
+
+  // diagonal start: 30–60° from horizontal, rising to the right or to the left
+  const h0 = (Math.PI / 4 + (rand() - 0.5) * (Math.PI / 6)) * (rand() < 0.5 ? 1 : -1);
+  const forward = walk(center, h0, steps);
+  const backward = walk(center, h0 + Math.PI, steps);
+  const main = [...backward.reverse(), ...forward.slice(1)];
+  const paths: Vec3[][] = [main];
+
+  // kintsugi-style branches off the main crack
+  const branches = depth >= 30 ? 2 : depth > 15 ? 1 : 0;
+  for (let b = 0; b < branches; b++) {
+    const i = Math.min(main.length - 2, Math.floor((0.2 + 0.6 * rand()) * main.length));
+    const at = normalize(main[i]!);
+    const [east, north] = localFrame(at);
+    const t: Vec3 = [main[i + 1]![0] - main[i]![0], main[i + 1]![1] - main[i]![1], main[i + 1]![2] - main[i]![2]];
+    const along = Math.atan2(dot(t, north), dot(t, east));
+    const turn = (0.6 + 0.4 * rand()) * (b % 2 === 0 ? 1 : -1);
+    paths.push(walk(at, clampHeading(along + turn), Math.max(2, Math.round(steps * (0.35 + 0.2 * rand())))));
+  }
+
+  // open cracks are cut two cubes deep so the groove reads as a dark gap
+  const inner = d.recovered
+    ? []
+    : paths.map((path) => path.map((p) => scale(p, Math.max(0, length(p) - 1.6) / Math.max(length(p), 1e-6))));
+  const width = d.recovered ? GOLD_SEAM_HALF_WIDTH : OPEN_CRACK_HALF_WIDTH;
 
   const out: Cell[] = [];
   for (const v of cells.values()) {
     const p = v.position;
-    const r = length(p);
-    if (r < 1.5) continue;
-    const dirP: Vec3 = [p[0] / r, p[1] / r, p[2] / r];
-    // inside the wedge around the target direction (measured within the crack plane)
-    const inPlane = normalize(add(dirP, scale(normal, -dot(dirP, normal))));
-    if (dot(inPlane, center) < cosArc) continue;
-    // zig-zag offset so the gap reads as a crack, not a cut
-    const jag = 0.9 * Math.sin(dot(p, along) * 0.9 + phase);
-    if (Math.abs(dot(p, normal) - jag) <= halfWidth) out.push(p);
+    let hit = false;
+    for (const path of [...paths, ...inner]) {
+      for (let k = 1; k < path.length && !hit; k++) {
+        if (pointSegmentDistance(p, path[k - 1]!, path[k]!) <= width) hit = true;
+      }
+      if (hit) break;
+    }
+    if (hit) out.push(p);
   }
-  return { symbol: d.symbol, depth, gold: d.recovered, cells: out };
+  return { symbol: d.symbol, depth, gold: d.recovered, cells: out, paths };
 }

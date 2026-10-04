@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useState } from 'react';
+import { useThree } from '@react-three/fiber';
 import { Html, OrbitControls } from '@react-three/drei';
 import { Crystal } from '../components/Crystal';
 import { Stage } from '../components/Stage';
@@ -13,6 +14,18 @@ const POSITIONS = GALLERY.map((_, i) => {
   const y = (outer ? 0.9 : -0.9) + Math.sin(a * 3) * 0.4;
   return [Math.cos(a) * r, y, Math.sin(a) * r] as [number, number, number];
 });
+
+/** On narrow (phone) screens, start the orbit further back so the whole ring fits the width. */
+function FitRing() {
+  const camera = useThree((s) => s.camera);
+  const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
+  useLayoutEffect(() => {
+    const d = Math.min(18, Math.max(11, 11 / Math.min(1, aspect * 1.4)));
+    camera.position.set(0, (3.5 * d) / 11, d);
+    camera.lookAt(0, 0, 0);
+  }, [camera, aspect]);
+  return null;
+}
 
 function Field() {
   const [hover, setHover] = useState<number | null>(null);
@@ -58,6 +71,7 @@ export default function Gallery() {
   return (
     <div className="absolute inset-0">
       <Stage className="!absolute inset-0" camera={{ position: [0, 3.5, 11], fov: 45 }}>
+        <FitRing />
         <Field />
         <OrbitControls
           makeDefault

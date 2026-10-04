@@ -60,7 +60,9 @@ export function WalletButton({ big = false }: { big?: boolean }) {
         >
           <span className="h-1.5 w-1.5 rounded-full bg-lime shadow-[0_0_8px_#d4f000]" />
           {shortAddress(address)}
-          <span className="text-mist">{eth === null ? '…' : `${eth < 0.0001 && eth > 0 ? '<0.0001' : eth.toFixed(4)} ETH`}</span>
+          <span className={`text-mist ${big ? '' : 'hidden sm:inline'}`}>
+            {eth === null ? '…' : `${eth < 0.0001 && eth > 0 ? '<0.0001' : eth.toFixed(4)} ETH`}
+          </span>
         </button>
         {open && (
           <div className="absolute right-0 z-50 mt-2 w-56 rounded-lg border border-line bg-panel p-2 text-sm shadow-xl">
@@ -79,7 +81,17 @@ export function WalletButton({ big = false }: { big?: boolean }) {
   return (
     <div className="relative" ref={ref}>
       <button className={`btn ${big ? 'btn-secondary' : 'btn-secondary !px-3 !py-1.5 !text-[10px]'}`} disabled={isPending} onClick={() => setOpen((o) => !o)}>
-        {isPending ? 'Check your wallet…' : 'Connect Wallet'}
+        {isPending ? (
+          'Check your wallet…'
+        ) : big ? (
+          'Connect Wallet'
+        ) : (
+          <>
+            {/* compact on phones so the nav links keep their room */}
+            <span className="sm:hidden">Connect</span>
+            <span className="hidden sm:inline">Connect Wallet</span>
+          </>
+        )}
       </button>
       {open && (
         <div className={`absolute z-50 mt-2 w-64 rounded-lg border border-line bg-panel p-2 text-sm shadow-xl ${big ? 'left-1/2 -translate-x-1/2' : 'right-0'}`}>

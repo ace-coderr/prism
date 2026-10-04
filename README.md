@@ -1,5 +1,7 @@
 # PRISM
 
+**Live:** https://prism-crystal.vercel.app
+
 A stock basket you can hold. PRISM turns a basket of tokenized stocks + ETH on
 Robinhood Chain Testnet into a 3D voxel crystal: each holding is a cluster of
 cubes sized by weight, tinted by its 24h move, and spiked by its volatility.

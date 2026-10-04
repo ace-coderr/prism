@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { evenWeights, getDeployment, normalizeTo100, rebalance, totalOf, valueWeights, type Holding } from '@prism/core';
-import { Crystal } from '../components/Crystal';
+import { FittedCrystal } from '../components/Crystal';
 import { Stage } from '../components/Stage';
 import { Change, DataBadge, EthPrice, Panel } from '../components/ui';
 import { explorerAddress, useTestnetTokens } from '../data/chain';
@@ -132,7 +132,7 @@ export default function Forge() {
     <div className="mx-auto flex h-full max-w-7xl flex-col gap-4 overflow-y-auto p-4 lg:grid lg:grid-cols-[400px_1fr] lg:overflow-hidden">
       <div className="relative order-1 h-[42vh] min-h-[280px] shrink-0 overflow-hidden rounded-lg border border-line lg:order-2 lg:h-auto">
         <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
-          {holdings.length > 0 && <Crystal holdings={holdings} correlation={CORRELATIONS} size={1.6} spin={0.2} />}
+          {holdings.length > 0 && <FittedCrystal holdings={holdings} correlation={CORRELATIONS} size={1.6} spin={0.2} top={0.16} bottom={0.84} />}
         </Stage>
         <div className="pointer-events-none absolute left-4 top-4 flex flex-col items-start gap-2">
           <DataBadge live={isLive} />

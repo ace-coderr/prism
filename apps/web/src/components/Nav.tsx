@@ -42,10 +42,10 @@ export function Logo({ size = 26 }: { size?: number }) {
 export function Nav() {
   return (
     <header className="z-20 border-b border-line bg-ink/90 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-7xl items-center gap-5 px-4">
+      <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:gap-5">
         <NavLink to="/" className="flex shrink-0 items-center gap-2.5">
           <Logo />
-          <span className="headline text-xl tracking-[-0.02em]">PRISM</span>
+          <span className="headline hidden text-xl tracking-[-0.02em] min-[400px]:inline">PRISM</span>
         </NavLink>
         <nav className="no-scrollbar -mx-1 flex min-w-0 flex-1 gap-1 overflow-x-auto px-1">
           {LINKS.map((l) => (
@@ -71,11 +71,16 @@ export function Nav() {
   );
 }
 
+export const LIVE_URL = 'https://prism-crystal.vercel.app';
+
 export function Footer() {
   const d = getDeployment(TARGET_CHAIN.id);
   return (
     <footer className="label z-20 border-t border-line bg-ink px-4 py-2.5 text-center text-[10px] text-mist">
-      Built for vibe/vibe on Robinhood Chain Testnet · Testnet only, no real funds.
+      Built for vibe/vibe on Robinhood Chain Testnet · Testnet only, no real funds ·{' '}
+      <a className="text-lime/80 hover:text-lime" href={LIVE_URL} target="_blank" rel="noreferrer">
+        prism-crystal.vercel.app
+      </a>
       {d && (
         <>
           {' '}

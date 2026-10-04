@@ -10,11 +10,13 @@ import {
   type Holding,
 } from '@prism/core';
 import { glowTexture, outlinedFaceTexture, toonRamp } from './textures';
+import { useFitSphere } from './Stage';
 
 const cube = new THREE.BoxGeometry(1, 1, 1);
 const OUTLINE = 1.14; // inverted-hull scale: thickness of the silhouette outline
-// HDR gold (linear, >1) so only kintsugi cubes cross the bloom threshold; orange-heavy so the halo stays gold
-const GOLD_HDR = new THREE.Color(4.2, 2.3, 0.35);
+// HDR gold (linear, slightly >1): crosses the bloom threshold for a warm glow, but
+// stays low enough that each cube's black frame still reads through it.
+const GOLD_HDR = new THREE.Color(2.5, 1.5, 0.24);
 
 // shared materials — every crystal reuses the same two programs
 const bodyMaterial = new THREE.MeshToonMaterial({
@@ -149,4 +151,18 @@ export function Crystal({
       )}
     </group>
   );
+}
+
+/** Float moves the crystal by up to ±0.05 world units — included in the fitted sphere. */
+const FLOAT_ALLOWANCE = 0.06;
+
+/**
+ * A crystal with the camera fitted to its bounding sphere, so it always stays fully
+ * in view (desktop and phone). `top` / `bottom` are the band of the canvas height it
+ * may use, e.g. to keep clear of overlaid text.
+ */
+export function FittedCrystal({ top, bottom, ...props }: CrystalProps & { top?: number; bottom?: number }) {
+  const size = props.size ?? 1.6;
+  const cy = useFitSphere(size * (props.highlight ? 1.12 : 1) + FLOAT_ALLOWANCE, top, bottom);
+  return <Crystal {...props} size={size} position={[0, cy, 0]} />;
 }

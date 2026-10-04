@@ -4,7 +4,11 @@ import {
   changeColor,
   exposedVoxels,
   groupByCorrelation,
+  GOLD_SEAM_HALF_WIDTH,
   KINTSUGI_GOLD,
+  MAX_CRACK_SLOPE,
+  MAX_SPIKE_FRACTION,
+  OPEN_CRACK_HALF_WIDTH,
   NO_DATA_COLOR,
   normalizeHoldings,
   type CrystalGeometry,
@@ -20,6 +24,24 @@ const basket: Holding[] = [
 ];
 
 const key = (p: number[]) => p.join(',');
+const normalizeVec = (p: readonly number[]) => {
+  const l = Math.hypot(...p) || 1;
+  return [p[0]! / l, p[1]! / l, p[2]! / l] as const;
+};
+/** Dominant direction of a point cloud (power iteration on the covariance matrix). */
+const principalAxis = (pts: readonly (readonly number[])[]) => {
+  const m = [0, 1, 2].map((i) => pts.reduce((s, p) => s + p[i]!, 0) / pts.length);
+  const c = [0, 1, 2].map((i) =>
+    [0, 1, 2].map((j) => pts.reduce((s, p) => s + (p[i]! - m[i]!) * (p[j]! - m[j]!), 0) / pts.length),
+  );
+  let v = [0.3, 0.9, 0.2];
+  for (let k = 0; k < 100; k++) {
+    const w = [0, 1, 2].map((i) => c[i]![0]! * v[0]! + c[i]![1]! * v[1]! + c[i]![2]! * v[2]!);
+    const l = Math.hypot(...w) || 1;
+    v = w.map((x) => x / l);
+  }
+  return v;
+};
 const countCluster = (geo: CrystalGeometry, i: number) => geo.voxels.filter((v) => v.cluster === i).length;
 
 /** Furthest facet cube from the origin, for a cluster — how far its spire reaches. */
@@ -126,6 +148,54 @@ describe('buildCrystal (voxels)', () => {
     const geo = buildCrystal([]);
     expect(geo.voxels).toEqual([]);
     expect(geo.clusters).toEqual([]);
+  });
+});
+
+describe('gem silhouette', () => {
+  const extents = (geo: CrystalGeometry) => {
+    const xs = geo.voxels.map((v) => v.position[0]);
+    const ys = geo.voxels.map((v) => v.position[1]);
+    const zs = geo.voxels.map((v) => v.position[2]);
+    const span = (a: number[]) => Math.max(...a) - Math.min(...a) + 1;
+    return { width: Math.max(span(xs), span(zs)), height: span(ys), ys };
+  };
+
+  it('is roughly as wide as it is tall', () => {
+    for (const h of [basket, basket.map((x) => ({ ...x, volatility: 1 })), basket.map((x) => ({ ...x, volatility: 0 }))]) {
+      const { width, height } = extents(buildCrystal(h));
+      expect(width / height).toBeGreaterThan(0.75);
+      expect(width / height).toBeLessThan(1.35);
+    }
+  });
+
+  it('has a pointed top and bottom with the widest layer near the middle', () => {
+    const geo = buildCrystal(basket);
+    const { ys } = extents(geo);
+    const top = Math.max(...ys);
+    const bottom = Math.min(...ys);
+    const layer = (y: number) => geo.voxels.filter((v) => v.position[1] === y).length;
+    expect(layer(top)).toBeLessThanOrEqual(5);
+    expect(layer(bottom)).toBeLessThanOrEqual(5);
+    let widest = 0;
+    let widestY = 0;
+    for (let y = bottom; y <= top; y++) {
+      if (layer(y) > widest) {
+        widest = layer(y);
+        widestY = y;
+      }
+    }
+    expect(Math.abs(widestY)).toBeLessThanOrEqual((top - bottom) * 0.2);
+  });
+
+  it('caps volatility spikes so no column dominates', () => {
+    const wild = buildCrystal(basket.map((h) => ({ ...h, volatility: 1 })));
+    const calm = buildCrystal(basket.map((h) => ({ ...h, volatility: 0 })));
+    // spikes add reach, but never more than the cap
+    expect(wild.radius).toBeGreaterThan(calm.radius);
+    expect(wild.radius - calm.radius).toBeLessThanOrEqual(8 * MAX_SPIKE_FRACTION + 1);
+    // a single heavy, maximally volatile holding still yields a gem, not a tower
+    const solo = extents(buildCrystal([{ symbol: 'X', weight: 1, change24h: 5, volatility: 1 }]));
+    expect(solo.height / solo.width).toBeLessThan(1.35);
   });
 });
 
@@ -251,10 +321,56 @@ describe('living crystal (kintsugi)', () => {
     expect(onAapl / gold.length).toBeGreaterThan(0.4);
   });
 
-  it('gold seams are wider than open cracks of the same depth', () => {
-    const cells = (recovered: boolean) =>
-      buildCrystal(basket, { drawdowns: [{ depth: 30, recovered, symbol: 'NVDA' }] }).cracks[0]!.cells.length;
-    expect(cells(true)).toBeGreaterThan(cells(false) * 1.5);
+  it('recovered seams are wider than open cracks and plainly visible', () => {
+    expect(GOLD_SEAM_HALF_WIDTH).toBeGreaterThan(OPEN_CRACK_HALF_WIDTH);
+    const one = buildCrystal(basket, { drawdowns: [{ depth: 30, recovered: true, symbol: 'NVDA' }] });
+    expect(one.voxels.filter((v) => v.gold).length).toBeGreaterThanOrEqual(25);
+    // two healed seams (like the Home crystal): gold leads the eye without swamping the gem
+    const two = buildCrystal(basket, {
+      drawdowns: [
+        { depth: 32, recovered: true, symbol: 'NVDA' },
+        { depth: 18, recovered: true },
+      ],
+    });
+    const shell = exposedVoxels(two.voxels);
+    const share = shell.filter((v) => v.gold).length / shell.length;
+    expect(share).toBeGreaterThan(0.1);
+    expect(share).toBeLessThan(0.35);
+  });
+
+  it('gold seams follow diagonal, branching paths across the surface — never a vertical pillar', () => {
+    const geo = buildCrystal(basket, {
+      drawdowns: [
+        { depth: 32, recovered: true, symbol: 'NVDA' },
+        { depth: 18, recovered: true },
+      ],
+    });
+    // deeper drawdowns branch
+    expect(geo.cracks[0]!.paths.length).toBe(3);
+    expect(geo.cracks[1]!.paths.length).toBe(2);
+    // every path step stays within the slope limit (measured on the gem's surface directions)
+    for (const crack of geo.cracks) {
+      for (const path of crack.paths) {
+        for (let k = 1; k < path.length; k++) {
+          const a = normalizeVec(path[k - 1]!);
+          const b = normalizeVec(path[k]!);
+          const step = [b[0] - a[0], b[1] - a[1], b[2] - a[2]] as const;
+          const along = Math.hypot(...step);
+          if (along < 1e-9) continue;
+          // vertical component of the step, relative to the local up direction on the sphere
+          const up = [-a[0] * a[1], 1 - a[1] * a[1], -a[2] * a[1]] as const;
+          const upLen = Math.hypot(...up);
+          const rise = (step[0] * up[0] + step[1] * up[1] + step[2] * up[2]) / upLen / along;
+          expect(Math.abs(rise)).toBeLessThanOrEqual(MAX_CRACK_SLOPE + 0.02);
+        }
+      }
+    }
+    // the gold, taken together, is not a column: its main axis is far from vertical
+    const gold = geo.voxels.filter((v) => v.gold).map((v) => v.position);
+    expect(Math.abs(principalAxis(gold)[1]!)).toBeLessThan(0.85);
+    const ys = geo.voxels.map((v) => v.position[1]);
+    const goldYs = gold.map((p) => p[1]);
+    expect(Math.max(...goldYs) - Math.min(...goldYs)).toBeLessThan((Math.max(...ys) - Math.min(...ys)) * 0.8);
   });
 
   it('deeper drawdowns make longer cracks', () => {

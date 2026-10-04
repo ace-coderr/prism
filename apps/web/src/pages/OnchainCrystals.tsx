@@ -12,7 +12,7 @@ import {
   valueWeights,
   type Holding,
 } from '@prism/core';
-import { Crystal } from '../components/Crystal';
+import { FittedCrystal } from '../components/Crystal';
 import { Stage } from '../components/Stage';
 import { Change, DataBadge, EthPrice, Panel } from '../components/ui';
 import { useTestnetTokens, type LiveToken } from '../data/chain';
@@ -144,7 +144,7 @@ function CrystalView(props: {
     <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
       <div className="relative h-[46vh] min-h-[300px] overflow-hidden rounded-lg border border-line">
         <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
-          {holdings.length > 0 && <Crystal holdings={holdings} size={1.6} spin={0.2} />}
+          {holdings.length > 0 && <FittedCrystal holdings={holdings} size={1.6} spin={0.2} top={0.14} bottom={0.94} />}
         </Stage>
         <div className="pointer-events-none absolute left-4 top-4 space-y-1">
           <p className="headline text-2xl">Crystal #{crystal.id.toString()}</p>

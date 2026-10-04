@@ -1,4 +1,4 @@
-import { Suspense, useMemo, useState, type ReactNode } from 'react';
+import { Suspense, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { AdaptiveDpr, PerformanceMonitor } from '@react-three/drei';
 import { Bloom, EffectComposer } from '@react-three/postprocessing';
@@ -51,7 +51,8 @@ export function Stage({ children, camera, className, bloom = true, backdrop = tr
 
       {bloom && (
         <EffectComposer multisampling={isCoarse ? 0 : 4}>
-          <Bloom mipmapBlur luminanceThreshold={0.82} luminanceSmoothing={0.05} intensity={1.6} radius={0.65} />
+          {/* a warm glow on gold only — low enough that every gold cube keeps its black outline */}
+          <Bloom mipmapBlur luminanceThreshold={0.95} luminanceSmoothing={0.15} intensity={0.55} radius={0.4} />
         </EffectComposer>
       )}
     </Canvas>
@@ -97,15 +98,59 @@ function Backdrop() {
 }
 
 /**
- * Lay `n` items out in a row on wide screens and a column on tall ones,
- * returning world positions and a size that fits the current viewport.
+ * Fits the camera to a bounding sphere: moves the (perspective) camera back until a
+ * sphere of `radius` fits inside the horizontal band [top, bottom] of the canvas
+ * (fractions of its height, 0 = top edge) and inside `side` of its width, with `pad`
+ * extra room. Returns the world y to place the sphere's centre at so it sits in that band.
+ */
+export function useFitSphere(radius: number, top = 0.08, bottom = 0.92, side = 0.86, pad = 0.12) {
+  const camera = useThree((s) => s.camera);
+  const size = useThree((s) => s.size);
+  const fov = 'fov' in camera ? (camera as THREE.PerspectiveCamera).fov : 40;
+  const tanV = Math.tan(THREE.MathUtils.degToRad(fov) / 2);
+  const tanH = tanV * (size.width / Math.max(1, size.height));
+  const band = Math.max(0.05, bottom - top);
+  const r = radius * (1 + pad);
+  // perspective-correct: a sphere at distance d subtends asin(r/d), so solve with sin → tan
+  const fitV = r / Math.sin(Math.atan(band * tanV));
+  const fitH = r / Math.sin(Math.atan(side * tanH));
+  const distance = Math.max(fitV, fitH, r * 2);
+  const centerY = (0.5 - (top + bottom) / 2) * 2 * distance * tanV;
+
+  useLayoutEffect(() => {
+    camera.position.set(0, 0, distance);
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+  }, [camera, distance]);
+
+  return centerY;
+}
+
+/**
+ * Lay `n` items out in a row on wide screens and a column on tall ones, returning
+ * world positions and a radius that keeps every item fully in view — including
+ * perspective (an off-centre sphere's near side projects further out), the 1.12×
+ * selection highlight and the float.
  */
 export function useRowLayout(n: number, gapFactor = 1) {
   const viewport = useThree((s) => s.viewport);
+  const distance = useThree((s) => s.camera.position.length());
   const wide = viewport.aspect >= 1;
-  const span = wide ? viewport.width : viewport.height;
+  // stacked (phone) layouts keep a margin top and bottom for overlaid captions
+  const span = wide ? viewport.width : viewport.height * 0.86;
   const cell = span / n;
-  const size = Math.min(cell * 0.36 * gapFactor, (wide ? viewport.height : viewport.width) * 0.3);
+  const halfMain = (span / 2) * 0.95;
+  const halfCross = ((wide ? viewport.height : viewport.width) / 2) * 0.9;
+  const outer = ((n - 1) / 2) * cell;
+  // largest radius s with (offset + s)·d / (d − s) ≤ half-extent, on both axes
+  const fitMain = (distance * (halfMain - outer)) / (distance + halfMain);
+  const fitCross = (distance * halfCross) / (distance + halfCross);
+  const HIGHLIGHT = 1.12;
+  const FLOAT = 0.06;
+  const size = Math.max(
+    0.2,
+    Math.min((cell / 2) * 0.82 * gapFactor, (Math.min(fitMain, fitCross) - FLOAT) / HIGHLIGHT),
+  );
   const positions = Array.from({ length: n }, (_, i) => {
     const offset = (i - (n - 1) / 2) * cell;
     return (wide ? [offset, 0, 0] : [0, -offset, 0]) as [number, number, number];

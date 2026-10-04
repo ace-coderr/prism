@@ -1,7 +1,7 @@
 /**
  * GET /api/snapshot: the Home snapshot, read from Robinhood Chain Testnet server-side
  * (public RPC, read-only, JSON-RPC batches of at most 20) and cached by Vercel's CDN
- * for 5 minutes, then served stale for up to 10 more while it refreshes.
+ * for 5 minutes, then served stale for up to a day while it refreshes in the background.
  * Packaged as a Vercel function by scripts/vercel-output.mjs; served by Vite in dev.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -13,7 +13,7 @@ const client = createPublicClient({
   transport: http(robinhoodChainTestnet.rpcUrls.default.http[0], { batch: { batchSize: 20 }, retryCount: 3, retryDelay: 300 }),
 }) as PublicClient;
 
-export const CACHE_CONTROL = 'public, max-age=0, s-maxage=300, stale-while-revalidate=600';
+export const CACHE_CONTROL = 'public, max-age=0, s-maxage=300, stale-while-revalidate=86400';
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {

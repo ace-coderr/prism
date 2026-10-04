@@ -40,8 +40,21 @@ this repo's compiled contract byte for byte.
 ## Wallet + contract
 
 - Injected wallets (MetaMask, Rabby, …) via wagmi. PRISM never asks for or stores keys.
-- `/deploy` (not in the nav) deploys `PrismCrystal` from your wallet. The address goes in
+- `/deploy` (dev server only, not in the nav) deploys `PrismCrystal` from your wallet. The address goes in
   `packages/core/src/deployments.ts`; then Forge and My Crystals switch to real on-chain mode.
+
+## Hosting (Vercel)
+
+`vercel.json` at the repo root does the work: `npm ci` at the root (npm workspaces, so
+`@prism/core` is linked), `npm run build` (builds `apps/web`), output `apps/web/dist`, and a
+catch-all rewrite to `index.html` so routes like `/forge` survive a refresh. No environment
+variables. The one-time `/deploy` page exists only on the dev server.
+
+Check a production build locally with the same rewrite behaviour:
+
+```bash
+npm run build && npm run serve:dist -w @prism/web   # http://localhost:4173
+```
 
 ## Data: what is real
 

@@ -1,11 +1,15 @@
-import { Route, Routes } from 'react-router-dom';
+import { Suspense, lazy } from 'react';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { Footer, Nav } from './components/Nav';
 import Home from './pages/Home';
 import Forge from './pages/Forge';
 import MyCrystals from './pages/MyCrystals';
 import Gallery from './pages/Gallery';
 import Agent from './pages/Agent';
-import Deploy from './pages/Deploy';
+
+// One-time deploy tool: dev server only. In production builds `import.meta.env.DEV` is
+// `false`, so this branch (and the page + contract bytecode it imports) is dropped.
+const Deploy = import.meta.env.DEV ? lazy(() => import('./pages/Deploy')) : null;
 
 export default function App() {
   return (
@@ -15,11 +19,20 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/forge" element={<Forge />} />
-          <Route path="/crystals" element={<MyCrystals />} />
+          <Route path="/my-crystals" element={<MyCrystals />} />
+          <Route path="/crystals" element={<Navigate to="/my-crystals" replace />} />
           <Route path="/gallery" element={<Gallery />} />
           <Route path="/agent" element={<Agent />} />
-          {/* not in the nav on purpose */}
-          <Route path="/deploy" element={<Deploy />} />
+          {Deploy && (
+            <Route
+              path="/deploy"
+              element={
+                <Suspense fallback={null}>
+                  <Deploy />
+                </Suspense>
+              }
+            />
+          )}
           <Route path="*" element={<Home />} />
         </Routes>
       </main>

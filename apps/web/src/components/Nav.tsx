@@ -6,7 +6,7 @@ import { WalletButton } from '../wallet/WalletButton';
 const LINKS = [
   { to: '/', label: 'Home' },
   { to: '/forge', label: 'Forge' },
-  { to: '/crystals', label: 'My Crystals' },
+  { to: '/my-crystals', label: 'My Crystals' },
   { to: '/gallery', label: 'Gallery' },
   { to: '/agent', label: 'Agent' },
 ];

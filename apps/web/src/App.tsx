@@ -5,6 +5,7 @@ import Forge from './pages/Forge';
 import MyCrystals from './pages/MyCrystals';
 import Gallery from './pages/Gallery';
 import Agent from './pages/Agent';
+import Deploy from './pages/Deploy';
 
 export default function App() {
   return (
@@ -17,6 +18,8 @@ export default function App() {
           <Route path="/crystals" element={<MyCrystals />} />
           <Route path="/gallery" element={<Gallery />} />
           <Route path="/agent" element={<Agent />} />
+          {/* not in the nav on purpose */}
+          <Route path="/deploy" element={<Deploy />} />
           <Route path="*" element={<Home />} />
         </Routes>
       </main>

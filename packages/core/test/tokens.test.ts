@@ -59,7 +59,11 @@ describe('TESTNET_TOKENS', () => {
 
   it('offers only stocks, pre-IPO test assets and ETH to baskets', () => {
     expect(BASKET_TOKENS.every((t) => ['stock', 'preipo', 'crypto'].includes(t.kind))).toBe(true);
-    expect(BASKET_TOKENS.map((t) => t.id)).toEqual(['NVDA', 'SPCX', 'AAPL', 'OPENAI', 'ANTHROPIC', 'WETH', 'SPCX·Seedify']);
+    expect(BASKET_TOKENS.map((t) => t.id)).toEqual(['NVDA', 'SPCX', 'AAPL', 'OPENAI', 'ANTHROPIC', 'WETH']);
+    // only one SPCX in baskets: the SpaceX test stock used by Discover launches
+    expect(BASKET_TOKENS.filter((t) => t.symbol === 'SPCX').map((t) => t.address)).toEqual([
+      '0xba163e9887d54A854323B41fcA9cf64a1c275Ac9',
+    ]);
     expect(tokenById('NOPE')).toBeUndefined();
   });
 

@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom';
 import { useThree } from '@react-three/fiber';
 import { Crystal } from '../components/Crystal';
 import { Stage } from '../components/Stage';
-import { DataBadge, SoonButton } from '../components/ui';
+import { DataBadge } from '../components/ui';
+import { WalletButton } from '../wallet/WalletButton';
 import { CORRELATIONS, MY_CRYSTALS, toHoldings } from '../data/mock';
 
 const hero = MY_CRYSTALS[0]!;
@@ -43,7 +44,7 @@ export default function Home() {
             <Link to="/forge" className="btn btn-primary">
               Forge
             </Link>
-            <SoonButton>Connect Wallet</SoonButton>
+            <WalletButton big />
           </div>
           <p className="label mt-6 text-[10px] text-mist/80">
             <span className="text-gold">Gold seams</span> = drawdowns this basket survived

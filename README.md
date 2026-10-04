@@ -25,7 +25,14 @@ npm run test:rpc         # + live read-only checks against the testnet RPC
 npm run verify:tokens    # re-verify token candidates on chain 46630
 npm run check:liquidity  # probe Uniswap V4 pools for the verified tokens
 npm run dev              # http://localhost:5173
+npm run test:contracts   # Hardhat tests for the PrismCrystal contract
 ```
+
+## Wallet + contract
+
+- Injected wallets (MetaMask, Rabby, …) via wagmi. PRISM never asks for or stores keys.
+- `/deploy` (not in the nav) deploys `PrismCrystal` from your wallet. The address goes in
+  `packages/core/src/deployments.ts`; then Forge and My Crystals switch to real on-chain mode.
 
 ## Data: what is real
 

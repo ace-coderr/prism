@@ -146,10 +146,14 @@ export const TESTNET_TOKENS: readonly TestnetToken[] = [
     address: '0x5a5398155d98374C0e26265eA3cb9818169C2739',
     decimals: 18,
     priceFeed: null,
-    kind: 'stock',
+    // Not offered in baskets: the Discover tab's SPCX is the SpaceX token above. On-chain,
+    // 80 of 4,690 LaunchCreated events on the vibe/vibe v6 factory (0xe7942178…) use
+    // 0xba163e98… (SpaceX) as quote and none use this one; it only appears once, as a
+    // quote-asset registration on the older factory. Kept here for reference/pricing.
+    kind: 'launchpad',
     pool: ETH_3000,
     sourceUrl: 'https://testnet.vibevibe.fun/api/v1/chains/46630/config',
-    note: 'vibe/vibe launch quote asset (config.quoteAssets); not the SpaceX test stock above',
+    note: 'legacy vibe/vibe quote asset (config.quoteAssets); NOT the Discover SPCX (SpaceX test stock)',
   },
   {
     id: 'tSFUND',

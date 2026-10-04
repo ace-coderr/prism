@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import { WalletButton } from '../wallet/WalletButton';
 
 const LINKS = [
   { to: '/', label: 'Home' },
@@ -60,10 +61,9 @@ export function Nav() {
             </NavLink>
           ))}
         </nav>
-        <span className="label hidden shrink-0 items-center gap-2 rounded border border-line px-2.5 py-1 text-mist sm:flex">
-          <span className="h-1.5 w-1.5 rounded-full bg-lime shadow-[0_0_8px_#d4f000]" />
-          Chain 46630
-        </span>
+        <div className="shrink-0">
+          <WalletButton />
+        </div>
       </div>
     </header>
   );

@@ -493,3 +493,18 @@ describe('PrismCrystal', () => {
     });
   });
 });
+
+describe('exported ABI for the web app', () => {
+  it('packages/core/src/abi/prismCrystal.ts matches the compiled artifact (run export-abi after changes)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const path = await import('node:path');
+    const art = JSON.parse(
+      readFileSync(path.join(__dirname, '../artifacts/contracts/PrismCrystal.sol/PrismCrystal.json'), 'utf8'),
+    );
+    const src = readFileSync(path.join(__dirname, '../../packages/core/src/abi/prismCrystal.ts'), 'utf8');
+    const abiJson = src.slice(src.indexOf('prismCrystalAbi = ') + 'prismCrystalAbi = '.length, src.indexOf(' as const;'));
+    const bytecode = /prismCrystalBytecode = '(0x[0-9a-f]+)'/.exec(src)?.[1];
+    expect(bytecode).to.equal(art.bytecode);
+    expect(JSON.parse(abiJson)).to.deep.equal(art.abi);
+  });
+});

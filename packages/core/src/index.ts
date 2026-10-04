@@ -4,4 +4,7 @@ export * from './chain';
 export * from './tokens';
 export * from './pool';
 export * from './market';
+export * from './deployments';
+export * from './onchain';
+export * from './abi/prismCrystal';
 export type { Vec3, Quat } from './math';

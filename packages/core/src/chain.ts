@@ -1,8 +1,7 @@
-/**
- * Robinhood Chain Testnet configuration. Not used yet — wallet / contract
- * wiring arrives in step 2.
- */
-export const robinhoodChainTestnet = {
+/** Robinhood Chain Testnet (chainId 46630). */
+import { defineChain } from 'viem';
+
+export const robinhoodChainTestnet = defineChain({
   id: 46630,
   name: 'Robinhood Chain Testnet',
   nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
@@ -13,6 +12,10 @@ export const robinhoodChainTestnet = {
     default: { name: 'Robinhood Chain Explorer', url: 'https://explorer.testnet.chain.robinhood.com' },
   },
   testnet: true,
-} as const;
+});
+
+export const explorerTx = (hash: string) => `${robinhoodChainTestnet.blockExplorers.default.url}/tx/${hash}`;
+export const explorerAddressUrl = (address: string) =>
+  `${robinhoodChainTestnet.blockExplorers.default.url}/address/${address}`;
 
 // Verified testnet token addresses (with sources) live in ./tokens.ts.

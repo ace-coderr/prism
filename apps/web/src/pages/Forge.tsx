@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
-import { evenWeights, normalizeTo100, rebalance, totalOf, type Holding } from '@prism/core';
+import { evenWeights, getDeployment, normalizeTo100, rebalance, totalOf, valueWeights, type Holding } from '@prism/core';
 import { Crystal } from '../components/Crystal';
 import { Stage } from '../components/Stage';
 import { Change, DataBadge, EthPrice, Panel } from '../components/ui';
 import { explorerAddress, useTestnetTokens } from '../data/chain';
 import { CORRELATIONS, TOKENS } from '../data/mock';
+import { TARGET_CHAIN } from '../wallet/config';
+import { DepositForm } from '../wallet/DepositForm';
 
 const MAX_PICKS = 8;
 /** Shape-only default when there is no market data to derive volatility from. */
@@ -86,17 +88,41 @@ export default function Forge() {
   };
 
   const bySymbol = useMemo(() => Object.fromEntries(options.map((o) => [o.symbol, o])), [options]);
-  const total = totalOf(weights);
-  const holdings: Holding[] = useMemo(
-    () =>
-      picks.map((s, i) => ({
-        symbol: s,
-        weight: (weights[i] ?? 0) / 100,
-        change24h: bySymbol[s]!.change24h,
-        volatility: bySymbol[s]!.volatility,
-      })),
-    [picks, weights, bySymbol],
+
+  // On-chain mode: real amounts drive the crystal (value-weighted in ETH) instead of sliders.
+  const deployment = getDeployment(TARGET_CHAIN.id);
+  const onchain = source === 'testnet' && live.status === 'live' && !!deployment;
+  const [amountValues, setAmountValues] = useState<{ values: Array<number | null>; eth: number }>({ values: [], eth: 0 });
+  const hasAmounts = onchain && (amountValues.values.some((v) => v !== null) || amountValues.eth > 0);
+  const effWeights = useMemo(() => {
+    if (!hasAmounts) return weights;
+    const vals = picks.map((_, i) => amountValues.values[i] ?? null);
+    return normalizeTo100(valueWeights([...vals, amountValues.eth > 0 ? amountValues.eth : null]).map((w) => w * 100));
+  }, [hasAmounts, weights, picks, amountValues]);
+  const wethOption = bySymbol['WETH'];
+  const pickedLiveTokens = useMemo(
+    () => (live.status === 'live' ? picks.flatMap((id) => live.tokens.filter((t) => t.id === id)) : []),
+    [live, picks],
   );
+
+  const total = totalOf(weights);
+  const holdings: Holding[] = useMemo(() => {
+    const list = picks.map((s, i) => ({
+      symbol: s,
+      weight: (effWeights[i] ?? 0) / 100,
+      change24h: bySymbol[s]!.change24h,
+      volatility: bySymbol[s]!.volatility,
+    }));
+    if (hasAmounts && amountValues.eth > 0) {
+      list.push({
+        symbol: 'ETH',
+        weight: (effWeights[picks.length] ?? 0) / 100,
+        change24h: wethOption?.change24h ?? Number.NaN,
+        volatility: wethOption?.volatility ?? DEFAULT_VOLATILITY,
+      });
+    }
+    return list;
+  }, [picks, effWeights, bySymbol, hasAmounts, amountValues.eth, wethOption]);
   const knownChange = holdings.every((h) => Number.isFinite(h.change24h));
   const change = holdings.reduce((s, h) => s + h.weight * h.change24h, 0);
   const isLive = source === 'testnet' && live.status === 'live';
@@ -157,7 +183,7 @@ export default function Forge() {
         <div className="space-y-4 p-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
           {picks.map((symbol, i) => {
             const t = bySymbol[symbol]!;
-            const w = weights[i] ?? 0;
+            const w = effWeights[i] ?? 0;
             return (
               <div key={symbol}>
                 <div className="mb-1.5 flex items-baseline justify-between gap-2 text-sm">
@@ -186,16 +212,18 @@ export default function Forge() {
                     <span className="w-10 text-right font-mono font-bold tabular-nums">{w}%</span>
                   </span>
                 </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={w}
-                  aria-label={`${symbol} weight`}
-                  className="prism-range"
-                  style={{ ['--fill' as string]: `${w}%` }}
-                  onChange={(e) => setState(picks, rebalance(weights, i, Number(e.target.value)))}
-                />
+                {!onchain && (
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={w}
+                    aria-label={`${symbol} weight`}
+                    className="prism-range"
+                    style={{ ['--fill' as string]: `${w}%` }}
+                    onChange={(e) => setState(picks, rebalance(weights, i, Number(e.target.value)))}
+                  />
+                )}
                 {t.address && (
                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[10px] text-mist/70">
                     {t.priceSource && (
@@ -221,13 +249,29 @@ export default function Forge() {
         </div>
 
         <div className="border-t border-line p-4">
-          <div className="mb-3 flex items-center justify-between text-sm">
-            <span className="label text-mist">Total</span>
-            <span className={`font-mono font-bold tabular-nums ${total === 100 ? 'text-up' : 'text-down'}`}>{total}%</span>
-          </div>
-          <button disabled title="Minting arrives with the contracts" className="btn btn-primary w-full">
-            Forge on-chain · coming soon
-          </button>
+          {onchain && deployment ? (
+            <>
+              <p className="label mb-3 text-mist">Amounts (token units) · weights follow value in ETH</p>
+              <DepositForm
+                key={picks.join(',')}
+                crystal={deployment.prismCrystal}
+                tokens={pickedLiveTokens}
+                target={{ kind: 'forge' }}
+                ethPrice={(t) => bySymbol[t.id]?.eth ?? null}
+                onValues={(values, eth) => setAmountValues({ values, eth })}
+              />
+            </>
+          ) : (
+            <>
+              <div className="mb-3 flex items-center justify-between text-sm">
+                <span className="label text-mist">Total</span>
+                <span className={`font-mono font-bold tabular-nums ${total === 100 ? 'text-up' : 'text-down'}`}>{total}%</span>
+              </div>
+              <button disabled title={source === 'sample' ? 'Sample tokens can’t be forged' : 'Waiting for the PrismCrystal contract to be deployed'} className="btn btn-primary w-full">
+                {source === 'sample' ? 'Sample tokens · preview only' : 'Forge on-chain · contract not deployed yet'}
+              </button>
+            </>
+          )}
         </div>
       </Panel>
     </div>

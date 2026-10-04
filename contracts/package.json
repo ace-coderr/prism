@@ -5,7 +5,8 @@
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
-    "gas": "cross-env REPORT_GAS=1 hardhat test"
+    "gas": "cross-env REPORT_GAS=1 hardhat test",
+    "export-abi": "hardhat run scripts/export-abi.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",

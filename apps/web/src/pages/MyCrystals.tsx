@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { useAccount } from 'wagmi';
+import OnchainCrystals from './OnchainCrystals';
 import { Crystal } from '../components/Crystal';
 import { Stage, useRowLayout } from '../components/Stage';
 import { Change, DataBadge, Panel, formatEth } from '../components/ui';
@@ -81,11 +83,21 @@ function Details({ crystal }: { crystal: MockCrystal }) {
 }
 
 export default function MyCrystals() {
+  const { isConnected } = useAccount();
+  // real crystals when a wallet is connected; sample crystals only when it isn't
+  return isConnected ? <OnchainCrystals /> : <SampleCrystals />;
+}
+
+function SampleCrystals() {
   const [selected, setSelected] = useState(0);
   return (
     <div className="mx-auto flex h-full max-w-7xl flex-col gap-4 overflow-y-auto p-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
-        <div className="flex items-center gap-3"><h1 className="headline text-3xl">My Crystals</h1><DataBadge live={false} /></div>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="headline text-3xl">My Crystals</h1>
+          <DataBadge live={false} />
+          <span className="text-xs text-mist">Connect a wallet to see your real crystals.</span>
+        </div>
         <div className="flex gap-1.5">
           {MY_CRYSTALS.map((c, i) => (
             <button

@@ -11,8 +11,10 @@ import {
   prismCrystalAbi,
   valueWeights,
   type Holding,
+  type OwnedViber,
 } from '@prism/core';
 import { FittedCrystal } from '../components/Crystal';
+import { ViberCredit, useOwnedViber } from '../components/Viber';
 import { Stage } from '../components/Stage';
 import { Change, DataBadge, EthPrice, Panel } from '../components/ui';
 import { useTestnetTokens, type LiveToken } from '../data/chain';
@@ -34,6 +36,7 @@ export default function OnchainCrystals() {
   const { address, onTarget } = useWallet();
   const deployment = getDeployment(TARGET_CHAIN.id);
   const crystals = useMyCrystals(address);
+  const ownedViber = useOwnedViber(address);
   const live = useTestnetTokens();
   const [selectedId, setSelectedId] = useState<bigint | null>(null);
 
@@ -101,6 +104,7 @@ export default function OnchainCrystals() {
       {selected && (
         <CrystalView
           key={selected.id.toString()}
+          viber={ownedViber.data}
           crystal={selected}
           marketOf={marketOf}
           owner={address!}
@@ -113,13 +117,14 @@ export default function OnchainCrystals() {
 }
 
 function CrystalView(props: {
+  viber?: OwnedViber | null;
   crystal: OnchainCrystal;
   marketOf: (token: Address | null) => LiveToken | undefined;
   owner: Address;
   contract: Address;
   onChanged: () => void;
 }) {
-  const { crystal, marketOf } = props;
+  const { crystal, marketOf, viber } = props;
   const sealed = crystal.sealedUntil * 1000 > Date.now();
   const [tab, setTab] = useState<Tab>('withdraw');
 
@@ -144,13 +149,16 @@ function CrystalView(props: {
     <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
       <div className="relative h-[46vh] min-h-[300px] overflow-hidden rounded-lg border border-line">
         <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
-          {holdings.length > 0 && <FittedCrystal holdings={holdings} size={1.6} spin={0.2} top={0.14} bottom={0.94} />}
+          {holdings.length > 0 && (
+            <FittedCrystal holdings={holdings} size={1.6} spin={0.2} top={0.14} bottom={0.94} companion={viber} />
+          )}
         </Stage>
         <div className="pointer-events-none absolute left-4 top-4 space-y-1">
           <p className="headline text-2xl">Crystal #{crystal.id.toString()}</p>
           {totalEth > 0 && <EthPrice eth={totalEth} usd={totalUsd || null} />}
           {sealed && <p className="label text-[#bfe6ff]">❄ Sealed until {fmtDate(crystal.sealedUntil)}</p>}
         </div>
+        {viber && <ViberCredit className="pointer-events-auto absolute bottom-3 right-4" />}
       </div>
 
       <div className="space-y-4">

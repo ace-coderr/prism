@@ -14,6 +14,15 @@ export const robinhoodChainTestnet = defineChain({
   testnet: true,
 });
 
+/** Robinhood Chain mainnet (4663) — used read-only (e.g. NFTs that live only on mainnet). */
+export const robinhoodChainMainnet = defineChain({
+  id: 4663,
+  name: 'Robinhood Chain',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: { default: { http: ['https://rpc.mainnet.chain.robinhood.com'] } },
+  blockExplorers: { default: { name: 'Blockscout', url: 'https://robinhoodchain.blockscout.com' } },
+});
+
 export const explorerTx = (hash: string) => `${robinhoodChainTestnet.blockExplorers.default.url}/tx/${hash}`;
 export const explorerAddressUrl = (address: string) =>
   `${robinhoodChainTestnet.blockExplorers.default.url}/address/${address}`;

@@ -58,6 +58,19 @@ Check a production build locally with the same rewrite behaviour:
 npm run build && npm run serve:dist -w @prism/web   # http://localhost:4173
 ```
 
+## vibe vibers
+
+vibe/vibe's "vibe vibers" characters appear in PRISM **with permission** from the vibe/vibe
+team (Telegram, 2026-10-04). Only official images are used, shown as-is, loaded from vibe/vibe's
+own site (`https://testnet.vibevibe.fun/vibers/collection/<file>-480.webp`, the collection listed
+on https://testnet.vibevibe.fun/vibe-vibers). Nothing is redrawn, recoloured, cropped or generated,
+and every place they appear carries: *vibe vibers © vibe/vibe, featured with permission.*
+
+Holders' own vibers: `packages/core/src/vibers.ts` reads the wallet's viber (read-only) from the
+official NFT once `VIBERS_NFT` is set. As of 2026-10-04 no vibers NFT contract is published (none
+on Robinhood Chain Testnet; vibe/vibe doesn't support mainnet 4663 yet; the mint is announced as
+upcoming), so that slot is empty and no address is guessed.
+
 ## Data: what is real
 
 - **Forge → Testnet tokens** uses `packages/core/src/tokens.ts`: the vibe/vibe Discover test

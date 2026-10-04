@@ -6,5 +6,6 @@ export * from './pool';
 export * from './market';
 export * from './deployments';
 export * from './onchain';
+export * from './vibers';
 export * from './abi/prismCrystal';
 export type { Vec3, Quat } from './math';

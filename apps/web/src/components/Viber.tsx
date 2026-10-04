@@ -1,0 +1,155 @@
+import { Suspense, useMemo, useState, type ReactNode } from 'react';
+import { Billboard, Html, useTexture } from '@react-three/drei';
+import { useQuery } from '@tanstack/react-query';
+import * as THREE from 'three';
+import { createPublicClient, http, type Address, type PublicClient } from 'viem';
+import {
+  VIBERS_CREDIT,
+  VIBERS_NFT,
+  VIBERS_PAGE,
+  readOwnedViber,
+  robinhoodChainMainnet,
+  viberAt,
+  viberImageUrl,
+  type OfficialViber,
+  type OwnedViber,
+} from '@prism/core';
+import { testnetClient } from '../data/chain';
+import { glowTexture } from './textures';
+
+/*
+ * vibe vibers are featured with vibe/vibe's permission: official images only, shown
+ * as-is, always with the credit line. Their server sends CORP same-origin, so every
+ * image is requested in CORS mode (crossOrigin="anonymous"), which it allows.
+ */
+
+/** An official viber image, displayed as-is. */
+export function ViberImage({ viber, size = 96, className = '' }: { viber: OfficialViber; size?: number; className?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <span className={`inline-block rounded-2xl bg-white/5 ${className}`} style={{ width: size, height: size }} aria-hidden />;
+  return (
+    <img
+      src={viberImageUrl(viber.file)}
+      crossOrigin="anonymous"
+      alt={viber.description}
+      width={size}
+      height={size}
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+      className={`shrink-0 select-none ${className}`}
+      style={{ width: size, height: size }}
+      draggable={false}
+    />
+  );
+}
+
+/** "vibe vibers © vibe/vibe, featured with permission." — shown wherever vibers appear. */
+export function ViberCredit({ className = '' }: { className?: string }) {
+  return (
+    <p className={`font-mono text-[10px] tracking-wide text-mist/60 ${className}`}>
+      <a href={VIBERS_PAGE} target="_blank" rel="noreferrer" className="hover:text-mist">
+        {VIBERS_CREDIT}
+      </a>
+    </p>
+  );
+}
+
+/** A viber guide: the official image beside a short speech bubble. */
+export function ViberGuide({
+  index,
+  children,
+  size = 72,
+  className = '',
+}: {
+  /** which official viber (rotates through the collection) */
+  index: number;
+  children: ReactNode;
+  size?: number;
+  className?: string;
+}) {
+  const viber = viberAt(index);
+  return (
+    <div className={`flex items-end gap-3 ${className}`}>
+      <ViberImage viber={viber} size={size} />
+      <div className="relative mb-3 rounded-2xl rounded-bl-sm border border-white/10 bg-panel px-4 py-3 text-sm leading-relaxed text-white/90">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Holder's own viber
+// ---------------------------------------------------------------------------
+
+const mainnetClient = createPublicClient({ chain: robinhoodChainMainnet, transport: http() }) as PublicClient;
+
+/** The connected wallet's own viber (read-only, from the official NFT), or null. */
+export function useOwnedViber(owner: Address | undefined) {
+  return useQuery({
+    queryKey: ['owned-viber', VIBERS_NFT?.chainId, VIBERS_NFT?.address, owner],
+    enabled: !!owner && !!VIBERS_NFT,
+    staleTime: 5 * 60_000,
+    queryFn: () =>
+      readOwnedViber(VIBERS_NFT?.chainId === robinhoodChainMainnet.id ? mainnetClient : testnetClient, owner!, fetch).catch(
+        () => null,
+      ),
+  });
+}
+
+const shadowMaterial = new THREE.MeshBasicMaterial({
+  map: glowTexture(),
+  color: '#000000',
+  transparent: true,
+  opacity: 0.55,
+  depthWrite: false,
+});
+
+function BillboardImage({ url, height }: { url: string; height: number }) {
+  const texture = useTexture(url); // three's loaders request in CORS mode ('anonymous')
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const aspect = texture.image ? texture.image.width / texture.image.height : 1;
+  const material = useMemo(
+    // stays just under the bloom threshold so the art is shown as-is, not glowing
+    () => new THREE.MeshBasicMaterial({ map: texture, transparent: true, alphaTest: 0.02, toneMapped: false, color: new THREE.Color(0.93, 0.93, 0.93) }),
+    [texture],
+  );
+  return (
+    <mesh material={material} position-y={height / 2} raycast={() => null}>
+      <planeGeometry args={[height * aspect, height]} />
+    </mesh>
+  );
+}
+
+/**
+ * A viber standing in the 3D scene: its official 2D image on a flat billboard that
+ * always faces the camera, with a soft shadow at its feet and a small label.
+ */
+export function ViberBillboard({
+  viber,
+  position,
+  height = 1.6,
+}: {
+  viber: OwnedViber;
+  position: [number, number, number];
+  height?: number;
+}) {
+  return (
+    <group position={position}>
+      <mesh material={shadowMaterial} rotation-x={-Math.PI / 2} position-y={0.01} raycast={() => null}>
+        <planeGeometry args={[height * 0.9, height * 0.35]} />
+      </mesh>
+      <Suspense fallback={null}>
+        <Billboard lockX lockZ>
+          <BillboardImage url={viber.image} height={height} />
+        </Billboard>
+      </Suspense>
+      <Html position={[0, -0.18, 0]} center>
+        <span className="pointer-events-none whitespace-nowrap rounded-full bg-ink/85 px-2 py-0.5 font-mono text-[10px] text-lime">
+          Your viber{viber.label ? ` (${viber.label})` : ''}
+        </span>
+      </Html>
+    </group>
+  );
+}

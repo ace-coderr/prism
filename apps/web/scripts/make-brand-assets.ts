@@ -6,8 +6,9 @@
  *
  * - favicon.svg, favicon.ico (16/32/48), apple-touch-icon.png (180),
  *   icon-192.png, icon-512.png, site.webmanifest
- * - og.png (1200×630): the real Home crystal (buildCrystal) drawn as outlined
- *   isometric voxels, plus the PRISM wordmark and tagline.
+ * - og.jpg (1200×630, < 250 KB): the real Home crystal (buildCrystal) drawn as
+ *   outlined isometric voxels, plus the PRISM wordmark and tagline. JPEG (no alpha)
+ *   because WhatsApp/Telegram previews are unreliable with transparent PNGs.
  *
  * Fonts (SIL Open Font License) live in scripts/fonts and are only used here.
  */
@@ -15,6 +16,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Resvg } from '@resvg/resvg-js';
+import jpeg from 'jpeg-js';
 import { buildCrystal, exposedVoxels, type Voxel } from '@prism/core';
 import { CORRELATIONS, MY_CRYSTALS, toHoldings } from '../src/data/mock';
 
@@ -243,4 +245,11 @@ write(
     2,
   ) + '\n',
 );
-write('og.png', png(ogSvg()));
+// share card as an opaque JPEG (preview bots handle it more reliably than RGBA PNG)
+const card = new Resvg(ogSvg(), {
+  fitTo: { mode: 'original' },
+  font: { fontFiles: fonts, loadSystemFonts: false, defaultFontFamily: 'Space Mono' },
+}).render();
+const og = jpeg.encode({ data: Buffer.from(card.pixels), width: card.width, height: card.height }, 88).data;
+if (og.length > 250_000) throw new Error(`og.jpg is ${og.length} bytes — keep it under 250 KB`);
+write('og.jpg', og);

@@ -3,6 +3,8 @@ import { formatEther } from 'viem';
 import { useAccount, useBalance, useConnect, useDisconnect, useSwitchChain } from 'wagmi';
 import { explorerAddressUrl, friendlyError } from '@prism/core';
 import { TARGET_CHAIN } from './config';
+import { UsernameForm } from './UsernameForm';
+import { useName } from '../data/names';
 
 export const shortAddress = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
@@ -68,6 +70,7 @@ export function WalletButton({ variant = 'nav' }: { variant?: 'nav' | 'hero' }) 
   const balance = useBalance({ address, chainId: TARGET_CHAIN.id, query: { enabled: !!address, refetchInterval: 15_000 } });
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const { name } = useName(address);
   const ref = useDismiss(open, () => setOpen(false));
   const size = SIZE[variant];
   const align = variant === 'hero' ? 'left-1/2 -translate-x-1/2' : 'right-0';
@@ -110,13 +113,16 @@ export function WalletButton({ variant = 'nav' }: { variant?: 'nav' | 'hero' }) 
           aria-expanded={open}
         >
           <span className="h-1.5 w-1.5 rounded-full bg-lime shadow-[0_0_8px_#d4f000]" />
-          <span className="normal-case tracking-[0.06em]">{shortAddress(address)}</span>
+          <span className="normal-case tracking-[0.06em]">{name ? `@${name}` : shortAddress(address)}</span>
           <span className={`text-mist ${variant === 'hero' ? '' : 'hidden md:inline'}`}>
             {eth === null ? '…' : `${eth < 0.0001 && eth > 0 ? '<0.0001' : eth.toFixed(4)} ETH`}
           </span>
         </button>
         {open && (
-          <div role="menu" className={`${MENU} ${align} w-56`}>
+          <div role="menu" className={`${MENU} ${align} w-72`}>
+            <p className="section-label px-3 pb-1 pt-2 text-[10px]">Set username</p>
+            <UsernameForm address={address} />
+            <div className="my-1 border-t border-white/[0.06]" />
             <button role="menuitem" className="block w-full rounded-xl px-3 py-2 text-left text-mist hover:bg-white/5 hover:text-white" onClick={copy}>
               {copied ? 'Copied ✓' : 'Copy address'}
             </button>

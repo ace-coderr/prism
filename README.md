@@ -47,12 +47,22 @@ npm run test:contracts                     # unit tests (mock PoolManager)
 npm run test:fork -w @prism/contracts      # real swaps on a fork of the testnet's latest block
 ```
 
-In the app, Forge → **Start with ETH** (the default when you hold no test stocks): one ETH
+In the app, Forge → **Start with ETH** (the default once the router is deployed): one ETH
 amount, a slider per stock (plus "keep as ETH"), live V4Quoter quotes, price impact with a
 plain warning above 3%, slippage 1% by default. The button stays off until `forgeRouter` is set
 in `packages/core/src/deployments.ts`; deploy it from your wallet on the dev-only `/deploy` page.
 V4 addresses (PoolManager, V4Quoter, Universal Router, Permit2) come from vibe/vibe's published
 config for chain 46630 and were checked on-chain.
+
+## Usernames (PrismNames)
+
+`contracts/contracts/PrismNames.sol`: one optional username per address, 3–20 characters of
+`a–z 0–9 _`, unique, first come first served; setting a new one frees the old one. No owner,
+admin, fees or upgrades. Wallet menu → **Set username** (live availability check); the Gallery,
+My Crystals and Agent then show `@name` instead of the short address (the address stays in the
+tooltip). The app also refuses names containing `vibevibe`, `vibe_vibe`, `prism`, `admin`,
+`official` or `robinhood` (a UI check only, see `contracts/SECURITY.md`). It stays off until
+`prismNames` is set in `packages/core/src/deployments.ts`; deploy it on the `/deploy` page.
 
 ## Explainer video
 

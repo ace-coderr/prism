@@ -1,145 +1,52 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { formatUnits, type Address } from 'viem';
 import { simulateContract, writeContract } from 'wagmi/actions';
 import {
   BASKET_TOKENS,
-  explorerAddressUrl,
   getDeployment,
   localDateTimeToUnix,
   parseTokenAmount,
   prismCrystalAbi,
   valueWeights,
+  type CrystalHistory,
   type Holding,
-  type OwnedViber,
 } from '@prism/core';
 import { FittedCrystal } from '../components/Crystal';
-import { ViberGuide, useOwnedViber } from '../components/Viber';
+import { CrystalThumb } from '../components/CrystalThumb';
+import { GuideNote } from '../components/Viber';
 import { PageHeader, PageScroll } from '../components/PageHeader';
 import { Stage } from '../components/Stage';
-import { Change, EthPrice, LiveBadge, Panel } from '../components/ui';
+import { Change, EthPrice, formatEth } from '../components/ui';
 import { LoadingStage } from '../components/LoadingStage';
-import { useTestnetTokens, type LiveToken, type LiveTokens } from '../data/chain';
+import { useTestnetTokens, type LiveToken } from '../data/chain';
 import { realCrystalHistory } from '../data/crystalHoldings';
 import { earliestForge, useMyCrystals, type OnchainCrystal } from '../data/crystals';
+import { Owner, useName } from '../data/names';
 import { TARGET_CHAIN, wagmiConfig } from '../wallet/config';
 import { DepositForm } from '../wallet/DepositForm';
 import { StepList, useTxSteps } from '../wallet/steps';
 import { SwitchNetworkButton, useWallet } from '../wallet/WalletButton';
 
 const DEFAULT_VOLATILITY = 0.4;
-type Tab = 'withdraw' | 'add' | 'seal' | 'burn';
+type Tab = 'holdings' | 'withdraw' | 'add' | 'seal' | 'burn';
+const TABS: Array<{ id: Tab; label: string }> = [
+  { id: 'holdings', label: 'Holdings' },
+  { id: 'withdraw', label: 'Withdraw' },
+  { id: 'add', label: 'Add' },
+  { id: 'seal', label: 'Seal' },
+  { id: 'burn', label: 'Burn' },
+];
 
 const fmtAmount = (v: bigint, d: number) =>
   Number(formatUnits(v, d)).toLocaleString('en-US', { maximumFractionDigits: 6 });
 const fmtDate = (unix: number) => new Date(unix * 1000).toLocaleString();
+const isSealed = (c: OnchainCrystal) => c.sealedUntil * 1000 > Date.now();
 
-/** Real crystals of the connected wallet, read from the PrismCrystal contract. */
-export default function OnchainCrystals() {
-  const { address, onTarget } = useWallet();
-  const deployment = getDeployment(TARGET_CHAIN.id);
-  const crystals = useMyCrystals(address);
-  const ownedViber = useOwnedViber(address);
-  // price history must reach back to the oldest crystal's forge block
-  const live = useTestnetTokens(earliestForge(crystals.data));
-  const [selectedId, setSelectedId] = useState<bigint | null>(null);
+type MarketOf = (token: Address | null) => LiveToken | undefined;
 
-  const market = useMemo(() => {
-    const m = new Map<string, LiveToken>();
-    if (live.status === 'live') for (const t of live.tokens) m.set(t.address.toLowerCase(), t);
-    return m;
-  }, [live]);
-  const weth = live.status === 'live' ? live.tokens.find((t) => t.id === 'WETH') : undefined;
-  const marketOf = useMemo(() => (token: Address | null) => (token ? market.get(token.toLowerCase()) : weth), [market, weth]);
-
-  const list = crystals.data ?? [];
-  const selected = list.find((c) => c.id === selectedId) ?? list[0];
-
-  const header = (
-    <PageHeader
-      label="My crystals"
-      lead="Your"
-      accent="crystals."
-      subtitle="The crystals in your wallet and what is inside each one. Take things out, add more, or seal one as a gift."
-    >
-      <LiveBadge />
-      {deployment && (
-        <a className="font-mono text-[10px] text-mist hover:text-lime" href={explorerAddressUrl(deployment.prismCrystal)} target="_blank" rel="noreferrer">
-          contract {deployment.prismCrystal.slice(0, 6)}…{deployment.prismCrystal.slice(-4)} ↗
-        </a>
-      )}
-    </PageHeader>
-  );
-
-  if (!deployment) {
-    return (
-      <PageScroll>
-        {header}
-        <Panel className="p-6 text-sm text-mist">
-          The PrismCrystal contract isn’t deployed on Robinhood Chain Testnet yet, so there are no crystals to show.
-        </Panel>
-      </PageScroll>
-    );
-  }
-
-  return (
-    <PageScroll>
-      {header}
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div className="flex flex-wrap gap-1.5">
-          {list.map((c) => (
-            <button key={c.id.toString()} onClick={() => setSelectedId(c.id)} className={`chip ${selected?.id === c.id ? 'chip-on' : ''}`}>
-              #{c.id.toString()}
-              {c.sealedUntil * 1000 > Date.now() ? ' ❄' : ''}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {!onTarget && <SwitchNetworkButton />}
-      {crystals.isLoading && <LoadingStage label="Reading your crystals from the chain…" />}
-      {crystals.isError && <p className="text-sm text-down">Couldn’t read crystals: {(crystals.error as Error).message.split('\n')[0]}</p>}
-      {crystals.isSuccess && list.length === 0 && (
-        <div className="card flex flex-col gap-6 p-8 sm:flex-row sm:items-center sm:justify-between md:p-10">
-          <ViberGuide index={7} size={88}>
-            No crystals in this wallet yet. Forge one: you can start with just ETH.
-          </ViberGuide>
-          <Link to="/forge" className="btn btn-primary btn-lg">
-            Forge your first crystal
-          </Link>
-        </div>
-      )}
-
-      {selected && (
-        <CrystalView
-          key={selected.id.toString()}
-          viber={ownedViber.data}
-          live={live}
-          crystal={selected}
-          marketOf={marketOf}
-          owner={address!}
-          contract={deployment.prismCrystal}
-          onChanged={() => crystals.refetch()}
-        />
-      )}
-    </PageScroll>
-  );
-}
-
-function CrystalView(props: {
-  viber?: OwnedViber | null;
-  live: LiveTokens;
-  crystal: OnchainCrystal;
-  marketOf: (token: Address | null) => LiveToken | undefined;
-  owner: Address;
-  contract: Address;
-  onChanged: () => void;
-}) {
-  const { crystal, marketOf, viber, live } = props;
-  const history = useMemo(() => realCrystalHistory(live, crystal), [live, crystal, marketOf]);
-  const sealed = crystal.sealedUntil * 1000 > Date.now();
-  const [tab, setTab] = useState<Tab>('withdraw');
-
+/** One crystal's contents valued at live prices: rows, 3D holdings, total and its 24h move. */
+function valueCrystal(crystal: OnchainCrystal, marketOf: MarketOf) {
   const rows = crystal.assets.map((a) => {
     const m = marketOf(a.token);
     const qty = Number(formatUnits(a.amount, a.decimals));
@@ -156,86 +63,338 @@ function CrystalView(props: {
   }));
   const totalEth = rows.reduce((s, r) => s + (r.ethValue ?? 0), 0);
   const totalUsd = rows.reduce((s, r) => s + (r.usdValue ?? 0), 0);
+  // value-weighted 24h move of what is inside (null until prices are in)
+  const priced = rows
+    .map((r, i) => ({ w: weights[i]!, c: r.m?.market.change24h }))
+    .filter((x): x is { w: number; c: number } => x.c != null && Number.isFinite(x.c));
+  const wsum = priced.reduce((s, x) => s + x.w, 0);
+  const change24h = priced.length && wsum > 0 ? priced.reduce((s, x) => s + x.w * x.c, 0) / wsum : null;
+  return { rows, holdings, totalEth, totalUsd, change24h };
+}
+type Valued = ReturnType<typeof valueCrystal>;
+
+/** What the page lets you do, shown while there is nothing of yours to show yet. */
+export function WhatYouCanDo() {
+  const items = [
+    { t: 'Holdings', d: 'See every token inside each crystal and what it is worth in ETH.' },
+    { t: 'Withdraw & add', d: 'Take tokens out to your wallet, or put more in. Only you can.' },
+    { t: 'Seal', d: 'Lock a crystal until a date, like a wrapped gift you can still send.' },
+    { t: 'Burn', d: 'Empty everything back to your wallet and retire the crystal.' },
+  ];
+  return (
+    <section aria-label="What you can do here" className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      {items.map((i) => (
+        <div key={i.t} className="card p-6">
+          <p className="font-display text-xl font-bold">{i.t}</p>
+          <p className="mt-2 text-[15px] leading-relaxed text-mist">{i.d}</p>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+/** Real crystals of the connected wallet, read from the PrismCrystal contract. */
+export default function OnchainCrystals() {
+  const { address, onTarget } = useWallet();
+  const deployment = getDeployment(TARGET_CHAIN.id);
+  const crystals = useMyCrystals(address);
+  const { name } = useName(address);
+  // price history must reach back to the oldest crystal's forge block
+  const live = useTestnetTokens(earliestForge(crystals.data));
+  const [selectedId, setSelectedId] = useState<bigint | null>(null);
+
+  const market = useMemo(() => {
+    const m = new Map<string, LiveToken>();
+    if (live.status === 'live') for (const t of live.tokens) m.set(t.address.toLowerCase(), t);
+    return m;
+  }, [live]);
+  const weth = live.status === 'live' ? live.tokens.find((t) => t.id === 'WETH') : undefined;
+  const marketOf = useMemo<MarketOf>(() => (token) => (token ? market.get(token.toLowerCase()) : weth), [market, weth]);
+
+  const list = useMemo(() => crystals.data ?? [], [crystals.data]);
+  const selected = list.find((c) => c.id === selectedId) ?? list[0];
+  const valued = useMemo(() => new Map(list.map((c) => [c.id, valueCrystal(c, marketOf)])), [list, marketOf]);
+  const histories = useMemo(() => new Map(list.map((c) => [c.id, realCrystalHistory(live, c)])), [list, live]);
+
+  const empty = crystals.isSuccess && list.length === 0;
+  const guide = !deployment ? (
+    <GuideNote index={7}>The PRISM contract isn’t deployed on Robinhood Chain Testnet yet, so there are no crystals to show.</GuideNote>
+  ) : empty ? (
+    <GuideNote
+      index={7}
+      action={
+        <Link to="/forge" className="btn btn-primary">
+          Forge your first crystal
+        </Link>
+      }
+    >
+      No crystals in this wallet yet. Forge one: you can start with just ETH.
+    </GuideNote>
+  ) : undefined;
+
+  const header = (
+    <PageHeader
+      label="My crystals"
+      lead="Your"
+      accent="crystals."
+      subtitle="The crystals in your wallet and what is inside each one. Take things out, add more, or seal one as a gift."
+      guide={guide}
+    />
+  );
+
+  if (!deployment) return <PageScroll>{header}</PageScroll>;
+
+  const totalEth = [...valued.values()].reduce((s, v) => s + v.totalEth, 0);
+  const best = list
+    .map((c) => ({ c, ch: valued.get(c.id)!.change24h }))
+    .filter((x): x is { c: OnchainCrystal; ch: number } => x.ch != null)
+    .sort((a, b) => b.ch - a.ch)[0];
+  const priced = live.status === 'live';
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[1fr_440px] lg:gap-10">
-      <div className="relative h-[52vh] min-h-[360px] overflow-hidden rounded-[32px] border border-white/[0.08] lg:sticky lg:top-28 lg:h-[620px]">
+    <PageScroll>
+      {header}
+      {!onTarget && <SwitchNetworkButton />}
+      {crystals.isLoading && <LoadingStage label="Reading your crystals from the chain…" />}
+      {crystals.isError && <p className="text-sm text-down">Couldn’t read crystals: {(crystals.error as Error).message.split('\n')[0]}</p>}
+      {empty && <WhatYouCanDo />}
+
+      {list.length > 0 && (
+        <>
+          <section aria-label="Summary" className="grid grid-cols-3 gap-3 sm:gap-6">
+            <Stat label={list.length === 1 ? 'Crystal' : 'Crystals'} value={String(list.length)} />
+            <Stat
+              label={
+                <>
+                  <span className="sm:hidden">Value</span>
+                  <span className="hidden sm:inline">Total value</span>
+                </>
+              }
+              value={
+                priced ? (
+                  <>
+                    {formatEth(totalEth).replace(' ETH', '')}
+                    <span className="ml-1 font-mono text-[10px] font-normal text-mist sm:text-xs">ETH</span>
+                  </>
+                ) : (
+                  '…'
+                )
+              }
+            />
+            <Stat
+              label="Best 24h"
+              value={
+                best ? (
+                  <>
+                    <Change value={best.ch} /> <span className="font-mono text-xs text-mist">#{best.c.id.toString()}</span>
+                  </>
+                ) : (
+                  '…'
+                )
+              }
+            />
+          </section>
+
+          <div className="grid grid-cols-12 gap-6">
+            <aside className="col-span-12 min-w-0 lg:col-span-4">
+              {/* phones: a horizontal scroller; desktop: a vertical list that stays in view */}
+              <ul className="no-scrollbar -mx-5 flex snap-x gap-3 overflow-x-auto px-5 pb-1 lg:sticky lg:top-28 lg:mx-0 lg:max-h-[calc(100vh-8rem)] lg:flex-col lg:overflow-y-auto lg:overflow-x-visible lg:px-0">
+                {list.map((c) => (
+                  <li key={c.id.toString()} className="w-[240px] shrink-0 snap-start lg:w-auto">
+                    <CrystalCard
+                      crystal={c}
+                      valued={valued.get(c.id)!}
+                      history={histories.get(c.id)}
+                      priced={priced}
+                      active={selected?.id === c.id}
+                      onSelect={() => setSelectedId(c.id)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </aside>
+            <div className="col-span-12 min-w-0 lg:col-span-8">
+              {selected && (
+                <CrystalView
+                  key={selected.id.toString()}
+                  crystal={selected}
+                  valued={valued.get(selected.id)!}
+                  history={histories.get(selected.id)}
+                  owner={address!}
+                  ownerName={name}
+                  contract={deployment.prismCrystal}
+                  onChanged={() => crystals.refetch()}
+                />
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </PageScroll>
+  );
+}
+
+function Stat({ label, value }: { label: ReactNode; value: ReactNode }) {
+  return (
+    <div className="card min-w-0 px-4 py-4 sm:px-6 sm:py-5">
+      <p className="section-label truncate text-[10px] sm:text-[11px]">{label}</p>
+      <p className="mt-2 truncate font-display text-base font-bold tracking-[-0.02em] sm:text-2xl">{value}</p>
+    </div>
+  );
+}
+
+function CrystalCard(props: { crystal: OnchainCrystal; valued: Valued; history?: CrystalHistory; priced: boolean; active: boolean; onSelect: () => void }) {
+  const { crystal, valued, history, priced, active, onSelect } = props;
+  const sealed = isSealed(crystal);
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={active}
+      className={`flex w-full items-center gap-4 rounded-[20px] border p-3 text-left transition-colors ${
+        active ? 'border-lime/50 bg-lime/[0.05]' : 'border-white/[0.08] bg-panel hover:border-white/20'
+      }`}
+    >
+      <span className="grid h-[72px] w-[72px] shrink-0 place-items-center rounded-2xl bg-ink">
+        <CrystalThumb holdings={valued.holdings} history={history} sealed={sealed} size={64} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className="font-display text-lg font-bold">#{crystal.id.toString()}</span>
+          {sealed && (
+            <span title={`Sealed until ${fmtDate(crystal.sealedUntil)}`} className="text-[#bfe6ff]" aria-label="Sealed">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                <rect x="5" y="10.5" width="14" height="10" rx="2" />
+                <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+              </svg>
+            </span>
+          )}
+        </span>
+        <span className="mt-1 block font-mono text-xs text-white">{priced ? formatEth(valued.totalEth) : '…'}</span>
+        <span className="mt-0.5 block text-xs">
+          {valued.change24h != null ? (
+            <>
+              <Change value={valued.change24h} /> <span className="text-mist">24h</span>
+            </>
+          ) : (
+            <span className="text-mist">
+              {crystal.assets.length} asset{crystal.assets.length === 1 ? '' : 's'}
+            </span>
+          )}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function CrystalView(props: {
+  crystal: OnchainCrystal;
+  valued: Valued;
+  history?: CrystalHistory;
+  owner: Address;
+  ownerName: string | null;
+  contract: Address;
+  onChanged: () => void;
+}) {
+  const { crystal, valued, history } = props;
+  const sealed = isSealed(crystal);
+  const [tab, setTab] = useState<Tab>('holdings');
+  const form = { crystal, owner: props.owner, ownerName: props.ownerName, contract: props.contract, onChanged: props.onChanged };
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <div>
+          <h2 className="font-display text-3xl font-bold tracking-[-0.03em]">Crystal #{crystal.id.toString()}</h2>
+          {sealed && <p className="label mt-2 text-[#bfe6ff]">Sealed until {fmtDate(crystal.sealedUntil)}</p>}
+        </div>
+        {valued.totalEth > 0 && <EthPrice eth={valued.totalEth} usd={valued.totalUsd || null} />}
+      </div>
+      <div className="relative h-[320px] overflow-hidden rounded-[24px] border border-white/[0.08] sm:h-[420px]">
         <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
-          {holdings.length > 0 && (
-            <FittedCrystal holdings={holdings} history={history} sealed={sealed} size={1.6} spin={0.2} top={0.14} bottom={0.94} companion={viber} />
+          {valued.holdings.length > 0 && (
+            <FittedCrystal holdings={valued.holdings} history={history} sealed={sealed} size={1.6} spin={0.2} top={0.08} bottom={0.92} />
           )}
         </Stage>
-        <div className="pointer-events-none absolute left-6 top-6 space-y-1.5">
-          <p className="font-display text-3xl font-bold tracking-[-0.03em]">Crystal #{crystal.id.toString()}</p>
-          {totalEth > 0 && <EthPrice eth={totalEth} usd={totalUsd || null} />}
-          {sealed && <p className="label text-[#bfe6ff]">❄ Sealed until {fmtDate(crystal.sealedUntil)}</p>}
-        </div>
       </div>
 
-      <div className="space-y-6">
-        <Panel className="rounded-3xl p-6">
-          <p className="section-label mb-2 text-[11px]">Inside</p>
-          <ul className="divide-y divide-white/[0.06]">
-            {rows.map(({ a, m, ethValue, usdValue }) => (
-              <li key={a.token ?? 'eth'} className="flex items-start justify-between gap-4 py-4">
-                <div className="min-w-0">
-                  <p className="font-display text-lg font-bold">{a.symbol}</p>
-                  <p className="font-mono text-xs text-mist">{fmtAmount(a.amount, a.decimals)}</p>
-                </div>
-                <div className="flex flex-col items-end gap-1 text-right">
-                  {ethValue !== null ? <EthPrice eth={ethValue} usd={usdValue} /> : <span className="text-xs text-mist">no price</span>}
-                  <span className="text-xs">
-                    {m?.market.change24h != null ? (
-                      <>
-                        <Change value={m.market.change24h} /> <span className="text-mist">today</span>
-                      </>
-                    ) : (
-                      <span className="text-mist">—</span>
-                    )}
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-
-        <Panel className="rounded-3xl p-6">
-          <div className="mb-5 flex flex-wrap gap-2">
-            {(['withdraw', 'add', 'seal', 'burn'] as const).map((t) => (
-              <button key={t} className={`chip ${tab === t ? 'chip-on' : ''}`} onClick={() => setTab(t)}>
-                {t === 'burn' ? 'Empty & burn' : t[0]!.toUpperCase() + t.slice(1)}
-              </button>
-            ))}
-          </div>
-          <p className="mb-4 text-sm text-mist">{TAB_HELP[tab]}</p>
-          {tab === 'withdraw' && <WithdrawForm {...props} sealed={sealed} />}
-          {tab === 'add' && <AddForm {...props} />}
-          {tab === 'seal' && <SealForm {...props} />}
-          {tab === 'burn' && <BurnForm {...props} sealed={sealed} />}
-        </Panel>
+      <div className="card p-5 sm:p-6">
+        <div role="tablist" aria-label="Crystal actions" className="no-scrollbar -mx-1 flex gap-1 overflow-x-auto px-1">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              className={`label shrink-0 rounded-full px-2.5 py-2 text-[10px] !tracking-[0.08em] transition-colors sm:px-4 sm:text-[11px] sm:!tracking-[0.16em] ${
+                tab === t.id ? 'bg-lime text-ink' : 'text-mist hover:bg-white/5 hover:text-white'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-4 text-sm text-mist">{TAB_HELP[tab]}</p>
+        <div className="mt-5" role="tabpanel">
+          {tab === 'holdings' && <HoldingsList valued={valued} />}
+          {tab === 'withdraw' && <WithdrawForm {...form} sealed={sealed} />}
+          {tab === 'add' && <AddForm {...form} />}
+          {tab === 'seal' && <SealForm {...form} />}
+          {tab === 'burn' && <BurnForm {...form} sealed={sealed} />}
+        </div>
       </div>
     </div>
   );
 }
 
+function HoldingsList({ valued }: { valued: Valued }) {
+  return (
+    <ul className="divide-y divide-white/[0.06]">
+      {valued.rows.map(({ a, m, ethValue, usdValue }, i) => (
+        <li key={a.token ?? 'eth'} className="flex items-start justify-between gap-4 py-3">
+          <div className="min-w-0">
+            <p className="font-display text-lg font-bold">
+              {a.symbol} <span className="font-mono text-xs font-normal text-mist">{Math.round((valued.holdings[i]?.weight ?? 0) * 100)}%</span>
+            </p>
+            <p className="font-mono text-xs text-mist">{fmtAmount(a.amount, a.decimals)}</p>
+          </div>
+          <div className="flex flex-col items-end gap-1 text-right">
+            {ethValue !== null ? <EthPrice eth={ethValue} usd={usdValue} /> : <span className="text-xs text-mist">no price</span>}
+            <span className="text-xs">
+              {m?.market.change24h != null ? (
+                <>
+                  <Change value={m.market.change24h} /> <span className="text-mist">24h</span>
+                </>
+              ) : (
+                <span className="text-mist">—</span>
+              )}
+            </span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 const TAB_HELP: Record<Tab, string> = {
+  holdings: 'Everything inside this crystal, valued at live testnet prices.',
   withdraw: 'Take some or all of the tokens out of this crystal and back into your wallet.',
   add: 'Put more tokens or ETH into this crystal. It keeps everything it already holds.',
   seal: 'Lock this crystal until a date, like a wrapped gift. You can still send it to someone.',
   burn: 'Take everything out and destroy the crystal. Use this when you are done with it.',
 };
 
-type FormProps = { crystal: OnchainCrystal; owner: Address; contract: Address; onChanged: () => void };
+type FormProps = { crystal: OnchainCrystal; owner: Address; ownerName?: string | null; contract: Address; onChanged: () => void };
 
 function SealedNotice({ crystal }: { crystal: OnchainCrystal }) {
   return (
     <p className="rounded border border-[#bfe6ff]/40 bg-[#bfe6ff]/10 p-3 text-sm text-[#d9f1ff]">
-      ❄ Sealed until {fmtDate(crystal.sealedUntil)}. Nothing can be withdrawn before then — not even by you.
+      Sealed until {fmtDate(crystal.sealedUntil)}. Nothing can be withdrawn before then — not even by you.
     </p>
   );
 }
 
-function WithdrawForm({ crystal, owner, contract, onChanged, sealed }: FormProps & { sealed: boolean }) {
+function WithdrawForm({ crystal, owner, ownerName, contract, onChanged, sealed }: FormProps & { sealed: boolean }) {
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const { steps, running, run } = useTxSteps();
   if (sealed) return <SealedNotice crystal={crystal} />;
@@ -302,7 +461,9 @@ function WithdrawForm({ crystal, owner, contract, onChanged, sealed }: FormProps
       {problems.map((p) => (
         <p key={p} className="text-xs text-down">· {p}</p>
       ))}
-      <p className="text-xs text-mist">Sends to your connected wallet ({owner.slice(0, 6)}…{owner.slice(-4)}).</p>
+      <p className="text-xs text-mist">
+        Sends to your connected wallet (<Owner address={owner} name={ownerName} />).
+      </p>
       <button className="btn btn-primary w-full" disabled={running || chosen.length === 0 || problems.length > 0} onClick={go}>
         {running ? 'Working…' : 'Withdraw'}
       </button>

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useQueries } from '@tanstack/react-query';
 import { formatUnits, parseEventLogs, type Address } from 'viem';
 import { simulateContract, writeContract } from 'wagmi/actions';
@@ -18,11 +17,9 @@ import {
   type TestnetToken,
 } from '@prism/core';
 import { Panel } from '../../components/ui';
-import { ViberGuide } from '../../components/Viber';
 import { testnetClient, type LiveToken } from '../../data/chain';
 import { TARGET_CHAIN, wagmiConfig } from '../../wallet/config';
-import { StepList, useTxSteps } from '../../wallet/steps';
-import { SwitchNetworkButton, WalletButton } from '../../wallet/WalletButton';
+import { useTxSteps } from '../../wallet/steps';
 
 /*
  * "Start with ETH": one ETH amount, a slider per picked stock (plus "keep as ETH"),
@@ -241,34 +238,29 @@ export function EthAmounts({ mix, balance, connected }: { mix: EthMix; balance?:
   );
 }
 
-export function EthReview({
+/**
+ * The one forgeFromETH transaction: swap the ETH and forge, through PrismForgeRouter.
+ * The Review step shows `EthReview`; the wizard's action bar holds the button.
+ */
+export function useEthForge({
   mix,
   router,
   account,
-  connected,
-  onTarget,
   problems,
-  onBack,
+  onForged,
   onDone,
 }: {
   mix: EthMix;
   router: Address | undefined;
   account: Address | undefined;
-  connected: boolean;
-  onTarget: boolean;
   problems: string[];
-  onBack: () => void;
+  onForged: (id: bigint) => void;
   onDone: () => void;
 }) {
   const tx = useTxSteps();
-  const [forgedId, setForgedId] = useState<bigint | null>(null);
-  const names = mix.rows.map((r) => r.t.id);
-  const list = names.length <= 2 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
   const ready = !!router && !!account && mix.quotesReady && problems.length === 0 && mix.total !== null && mix.total > 0n;
-
   const forge = async () => {
     if (!router || !account || !mix.total) return;
-    setForgedId(null);
     const swaps = mix.rows.map((r) => ({ token: r.t.address, ethIn: r.ethIn }));
     const mins = mix.rows.map((r) => r.min!);
     await tx.run([
@@ -288,80 +280,56 @@ export function EthReview({
         },
         after: (receipt) => {
           const [ev] = parseEventLogs({ abi: prismForgeRouterAbi, eventName: 'ForgedFromETH', logs: receipt.logs });
-          if (ev) setForgedId(ev.args.id);
+          if (ev) onForged(ev.args.id);
         },
       },
     ]);
     onDone();
   };
+  return { tx, ready, forge };
+}
 
+/** Review step for "Start with ETH": what goes in and what will happen. */
+export function EthReview({ mix, problems }: { mix: EthMix; problems: string[] }) {
+  const names = mix.rows.map((r) => r.t.id);
+  const list = names.length <= 2 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
   return (
-    <>
-      <Panel className="space-y-6 rounded-3xl p-6">
-        <div>
-          <p className="section-label text-[11px]">What goes in</p>
-          <ul className="mt-3 space-y-2">
-            {mix.rows.map((r) => (
-              <li key={r.t.id} className="flex flex-wrap items-baseline justify-between gap-3 text-sm">
-                <span>
-                  <span className="font-mono">{fmt(r.ethIn, 18, 5)} ETH</span> <span className="text-mist">→ about</span>{' '}
-                  <span className="font-mono">{r.quote !== null ? fmt(r.quote, r.t.decimals) : '…'}</span> <span className="font-bold">{r.t.id}</span>
-                </span>
-                <span className="font-mono text-xs text-mist">at least {r.min !== null ? fmt(r.min, r.t.decimals) : '…'}</span>
-              </li>
-            ))}
-            {mix.kept > 0n && (
-              <li className="flex items-baseline justify-between gap-3 text-sm">
-                <span>
-                  <span className="font-mono">{fmt(mix.kept, 18, 5)}</span> <span className="font-bold">ETH</span> <span className="text-mist">kept as ETH</span>
-                </span>
-              </li>
-            )}
-          </ul>
-        </div>
-        <div>
-          <p className="section-label text-[11px]">What will happen</p>
-          <p className="mt-2 text-sm leading-relaxed text-white/90">
-            1 transaction: swap your ETH into {list} and forge your crystal. Your wallet asks you to confirm it once.
-          </p>
-        </div>
-        <p className="rounded-2xl bg-lime/5 px-4 py-3 text-sm font-medium text-lime">Only you can withdraw. No admin can touch it.</p>
-        {problems.length > 0 && (
-          <ul className="space-y-0.5 text-sm text-down">
-            {problems.map((p) => (
-              <li key={p}>· {p}</li>
-            ))}
-          </ul>
-        )}
-      </Panel>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <button className="btn btn-secondary" disabled={tx.running} onClick={onBack}>
-          ← Back
-        </button>
-        {!router ? (
-          <button className="btn btn-primary btn-lg" disabled title="The forge-from-ETH router isn't deployed yet">
-            Forge from ETH (soon)
-          </button>
-        ) : !connected ? (
-          <WalletButton variant="hero" />
-        ) : !onTarget ? (
-          <SwitchNetworkButton />
-        ) : (
-          <button className="btn btn-primary btn-lg" disabled={!ready || tx.running || forgedId !== null} onClick={forge}>
-            {tx.running ? 'Working…' : forgedId !== null ? 'Forged ✓' : 'Swap & forge'}
-          </button>
-        )}
+    <Panel className="space-y-6 rounded-3xl p-6">
+      <div>
+        <p className="section-label text-[11px]">What goes in</p>
+        <ul className="mt-3 space-y-2">
+          {mix.rows.map((r) => (
+            <li key={r.t.id} className="flex flex-wrap items-baseline justify-between gap-3 text-sm">
+              <span>
+                <span className="font-mono">{fmt(r.ethIn, 18, 5)} ETH</span> <span className="text-mist">→ about</span>{' '}
+                <span className="font-mono">{r.quote !== null ? fmt(r.quote, r.t.decimals) : '…'}</span> <span className="font-bold">{r.t.id}</span>
+              </span>
+              <span className="font-mono text-xs text-mist">at least {r.min !== null ? fmt(r.min, r.t.decimals) : '…'}</span>
+            </li>
+          ))}
+          {mix.kept > 0n && (
+            <li className="flex items-baseline justify-between gap-3 text-sm">
+              <span>
+                <span className="font-mono">{fmt(mix.kept, 18, 5)}</span> <span className="font-bold">ETH</span> <span className="text-mist">kept as ETH</span>
+              </span>
+            </li>
+          )}
+        </ul>
       </div>
-      {!router && <p className="text-sm text-mist">Forging straight from ETH turns on once its router contract is deployed. Quotes above are live.</p>}
-      <StepList steps={tx.steps} />
-      {forgedId !== null && (
-        <ViberGuide index={7}>
-          Done! Crystal #{forgedId.toString()} is in your wallet.{' '}
-          <Link to="/my-crystals" className="text-lime underline">
-            See it in My Crystals →
-          </Link>
-        </ViberGuide>
+      <div>
+        <p className="section-label text-[11px]">What will happen</p>
+        <p className="mt-2 text-sm leading-relaxed text-white/90">
+          1 transaction: swap your ETH into {list} and forge your crystal. Your wallet asks you to confirm it once.
+        </p>
+      </div>
+      <p className="rounded-2xl bg-lime/5 px-4 py-3 text-sm font-medium text-lime">Only you can withdraw. No admin can touch it.</p>
+      {problems.length > 0 && (
+        <ul className="space-y-0.5 text-sm text-down">
+          {problems.map((p) => (
+            <li key={p}>· {p}</li>
+          ))}
+        </ul>
       )}
-    </>
+    </Panel>
   );
 }

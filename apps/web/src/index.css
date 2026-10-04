@@ -80,8 +80,8 @@ body {
   /* ---- design system ---- */
   .container-x { width: 100%; max-width: 1200px; margin-inline: auto; padding-inline: 20px; }
   @media (min-width: 768px) { .container-x { padding-inline: 32px; } }
-  .section-y { padding-block: 88px; }
-  @media (min-width: 768px) { .section-y { padding-block: 160px; } }
+  .section-y { padding-block: 64px; }
+  @media (min-width: 768px) { .section-y { padding-block: 96px; } }
   .section-label {
     font-family: var(--font-mono);
     text-transform: uppercase;

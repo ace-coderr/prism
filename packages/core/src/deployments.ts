@@ -14,6 +14,8 @@ export interface PrismDeployment {
    * the owner's wallet via /deploy; the Forge page's "Start with ETH" stays off until then.
    */
   forgeRouter?: Address;
+  /** PrismNames (usernames). Empty until deployed via /deploy; the username UI stays off until then. */
+  prismNames?: Address;
 }
 
 export const DEPLOYMENTS: Partial<Record<number, PrismDeployment>> = {

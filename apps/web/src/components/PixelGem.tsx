@@ -49,7 +49,8 @@ const CELL = 10;
 function FlyingCell({ c, progress }: { c: Cell; progress: MotionValue<number> }) {
   const x = useTransform(progress, (p) => c.dx * (1 - p));
   const y = useTransform(progress, (p) => c.dy * (1 - p));
-  const opacity = useTransform(progress, [0, 0.6, 1], [0, 0.85, 1]);
+  // scattered cubes stay faintly visible, so the station never reads as empty
+  const opacity = useTransform(progress, [0, 0.6, 1], [0.35, 0.85, 1]);
   return <motion.rect x={c.x * CELL} y={c.y * CELL} width={CELL} height={CELL} fill={c.color} stroke="#000" strokeWidth={1.2} style={{ x, y, opacity }} />;
 }
 

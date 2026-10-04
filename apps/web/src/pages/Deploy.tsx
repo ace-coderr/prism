@@ -9,6 +9,8 @@ import {
   prismCrystalBytecode,
   prismForgeRouterAbi,
   prismForgeRouterBytecode,
+  prismNamesAbi,
+  prismNamesBytecode,
   routerDeployArgs,
 } from '@prism/core';
 import { Panel } from '../components/ui';
@@ -100,6 +102,7 @@ export default function Deploy() {
       )}
 
       <RouterDeploy />
+      <NamesDeploy />
     </PageScroll>
   );
 }
@@ -193,6 +196,73 @@ function RouterDeploy() {
             <b>Next:</b> paste this address back to Claude in chat. It goes into <code className="font-mono text-lime">forgeRouter</code> in{' '}
             <code className="font-mono text-lime">packages/core/src/deployments.ts</code>, which switches on “Start with ETH”, and the
             source gets verified on the explorer.
+          </p>
+        </Panel>
+      )}
+    </>
+  );
+}
+
+/** Deploys PrismNames (on-chain usernames) from the connected wallet. No constructor arguments. */
+function NamesDeploy() {
+  const { address, isConnected, onTarget } = useWallet();
+  const { steps, running, run } = useTxSteps();
+  const [deployed, setDeployed] = useState<{ address: Address; block: bigint } | null>(null);
+  const existing = getDeployment(TARGET_CHAIN.id)?.prismNames;
+
+  const deploy = () =>
+    run([
+      {
+        label: 'Deploy PrismNames',
+        send: () => deployContract(wagmiConfig, { abi: prismNamesAbi, bytecode: prismNamesBytecode, chainId: TARGET_CHAIN.id }),
+        after: (r) => r.contractAddress && setDeployed({ address: r.contractAddress, block: r.blockNumber }),
+      },
+    ]);
+
+  return (
+    <>
+      <h2 className="headline mt-10 text-2xl">Deploy PrismNames</h2>
+      <p className="text-sm text-mist">
+        On-chain usernames: one name per address, 3–20 characters of a–z, 0–9 and _, first come first served. No owner, no
+        admin, no fees, no upgrades, so nobody can take or reassign a name. Tested but not audited.
+      </p>
+      {existing && (
+        <Panel className="border-lime/40 p-4 text-sm">
+          Already deployed at{' '}
+          <a className="font-mono text-lime" href={explorerAddressUrl(existing)} target="_blank" rel="noreferrer">
+            {existing} ↗
+          </a>
+          .
+        </Panel>
+      )}
+      <Panel className="space-y-4 p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <button className="btn btn-primary" disabled={!onTarget || running || !!deployed || !!existing} onClick={deploy}>
+            {running ? 'Deploying…' : deployed ? 'Deployed' : 'Deploy PrismNames'}
+          </button>
+          {!isConnected && <span className="text-xs text-mist">Connect a wallet first.</span>}
+          {isConnected && !onTarget && <span className="text-xs text-mist">Switch to Robinhood Chain Testnet first.</span>}
+        </div>
+        <p className="text-xs text-mist/80">A contract-creation transaction of about 580k gas (a little test ETH). Deployer: {address ?? '—'}</p>
+        <StepList steps={steps} />
+      </Panel>
+      {deployed && (
+        <Panel className="space-y-2 border-lime/50 p-4">
+          <p className="label text-lime">PrismNames deployed</p>
+          <p className="break-all font-mono text-sm text-white">{deployed.address}</p>
+          <p className="text-xs text-mist">Block {deployed.block.toString()}</p>
+          <div className="flex flex-wrap gap-3 pt-1">
+            <a className="btn btn-secondary" href={explorerAddressUrl(deployed.address)} target="_blank" rel="noreferrer">
+              View on explorer ↗
+            </a>
+            <button className="btn btn-secondary" onClick={() => navigator.clipboard?.writeText(`${deployed.address} (block ${deployed.block})`)}>
+              Copy address
+            </button>
+          </div>
+          <p className="pt-2 text-sm">
+            <b>Next:</b> paste this address back to Claude in chat. It goes into <code className="font-mono text-lime">prismNames</code> in{' '}
+            <code className="font-mono text-lime">packages/core/src/deployments.ts</code>, which switches on “Set username”, and the source
+            gets verified on the explorer.
           </p>
         </Panel>
       )}

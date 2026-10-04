@@ -8,8 +8,7 @@ import { Faq } from '../components/Faq';
 import { ForgeMachine } from '../components/ForgeMachine';
 import { CountUp, EASE, Headline, Reveal, Section } from '../components/design';
 import { Stage } from '../components/Stage';
-import { LiveBadge } from '../components/ui';
-import { ViberGuide } from '../components/Viber';
+import { GuideNote } from '../components/Viber';
 import { useTestnetTokens } from '../data/chain';
 import { LIVE_BASKET, liveBasket } from '../data/crystalHoldings';
 import { useChainStats } from '../data/crystals';
@@ -54,11 +53,9 @@ function Hero() {
       <div className="container-x grid min-h-[100svh] items-center gap-4 pb-16 pt-24 md:pt-32 lg:grid-cols-[1.05fr_1fr] lg:gap-10 lg:pb-20">
         <div className="order-2 lg:order-1">
           <motion.div initial={reduce ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: EASE }}>
-            {basket ? (
-              <LiveBadge>Built from live testnet prices</LiveBadge>
-            ) : (
-              <span className="section-label text-[11px]">{failed ? 'Couldn’t reach the chain right now' : 'Reading live prices from the chain…'}</span>
-            )}
+            <span className="section-label text-[11px]">
+              {basket ? 'Built from live testnet prices' : failed ? 'Couldn’t reach the chain right now' : 'Reading live prices from the chain…'}
+            </span>
           </motion.div>
           <Headline as="h1" lead="A stock basket" accent="you can hold" className="mt-6" />
           <Reveal delay={0.35}>
@@ -98,9 +95,9 @@ function Hero() {
 function Idea() {
   return (
     <Section n="01" label="The idea">
-      <div className="grid gap-10 lg:grid-cols-[1.3fr_1fr] lg:items-end">
-        <Headline lead="Your basket." accent="One crystal." />
-        <Reveal delay={0.2}>
+      <div className="grid grid-cols-12 gap-6 lg:items-end">
+        <Headline lead="Your basket." accent="One crystal." className="col-span-12 lg:col-span-7" />
+        <Reveal delay={0.2} className="col-span-12 lg:col-span-5">
           <p className="body-copy">
             Most baskets are rows in an app. PRISM puts the real tokens inside one crystal that you own, and its shape shows
             how they are doing.
@@ -124,10 +121,10 @@ function Machine() {
   return (
     <Section n="02" label="The forge machine">
       <Headline lead="Four steps," accent="one machine." />
-      <Reveal className="mt-14 md:mt-20">
+      <Reveal className="mt-10 md:mt-14">
         <ForgeMachine />
       </Reveal>
-      <ol className="mt-14 grid gap-10 sm:grid-cols-2 md:mt-20 lg:grid-cols-4 lg:gap-8">
+      <ol className="mt-10 grid gap-6 sm:grid-cols-2 md:mt-14 lg:grid-cols-4">
         {STEPS.map((s, i) => (
           <Reveal key={s.n} delay={i * 0.08}>
             <li className="border-t border-white/[0.1] pt-6">
@@ -152,21 +149,22 @@ const LEGEND: Array<{ focus: CrystalFocus; label: string; text: string }> = [
   { focus: 'frost', label: 'Frost', text: 'A sealed gift. Nothing comes out until the date it opens.' },
 ];
 
+/** "This is the live basket over the last 48h." (plain text, not a floating badge) */
+const basketNote = (basket: { hours: number } | null) => (basket ? `This is the live basket over the last ${basket.hours}h.` : 'Reading the chain…');
+
 function ReadYourCrystal() {
   const [focus, setFocus] = useState<CrystalFocus | null>(null);
   const { basket } = useLiveBasket();
   const active = LEGEND.find((l) => l.focus === focus);
-  const guide = (
-    <ViberGuide index={4} size={64}>
-      Gold seams are my favourite. Each one is a real drop this basket climbed back from.
-    </ViberGuide>
-  );
   return (
     <Section n="03" label="Read your crystal">
       <Headline lead="Every cube" accent="means something." />
-      <div className="mt-14 grid gap-10 md:mt-20 lg:grid-cols-[1.15fr_1fr] lg:gap-16">
-        <Reveal>
-          <div className="relative h-[360px] overflow-hidden rounded-[32px] border border-white/[0.08] bg-panel sm:h-[520px] lg:h-[600px]">
+      <GuideNote index={4} className="mt-8">
+        Gold seams are my favourite. Each one is a real drop this basket climbed back from.
+      </GuideNote>
+      <div className="mt-10 grid grid-cols-12 gap-6 md:mt-14">
+        <Reveal className="col-span-12 lg:col-span-7">
+          <div className="relative h-[360px] overflow-hidden rounded-[24px] border border-white/[0.08] bg-panel sm:h-[480px] lg:h-[560px]">
             <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
               {basket ? (
                 <FittedCrystal holdings={basket.holdings} history={basket.history} size={1.6} sway top={0.1} bottom={0.9} focus={focus} />
@@ -174,14 +172,11 @@ function ReadYourCrystal() {
                 <FittedLoadingCrystal size={1.6} top={0.1} bottom={0.9} />
               )}
             </Stage>
-            <span className="absolute left-5 top-5">
-              <LiveBadge>{basket ? `Live basket · last ${basket.hours}h` : 'Reading the chain…'}</LiveBadge>
-            </span>
           </div>
         </Reveal>
 
         {/* phones: chips right under the crystal so the lit part stays in view */}
-        <div className="lg:hidden">
+        <div className="col-span-12 lg:hidden">
           <div className="flex flex-wrap gap-2">
             {LEGEND.map((l) => (
               <button
@@ -203,14 +198,13 @@ function ReadYourCrystal() {
                 <span className={`font-bold ${active.focus === 'gold' ? 'text-gold' : 'text-white'}`}>{active.label}</span> = {active.text}
               </>
             ) : (
-              'Tap a word to light up that part of the crystal.'
+              `Tap a word to light up that part of the crystal. ${basketNote(basket)}`
             )}
           </p>
-          <div className="mt-8">{guide}</div>
         </div>
 
-        <div className="hidden flex-col justify-center gap-3 lg:flex" onMouseLeave={() => setFocus(null)}>
-          <p className="mb-3 text-sm text-mist">Point at a line to light up that part of the crystal.</p>
+        <div className="col-span-5 hidden flex-col justify-center gap-3 lg:flex" onMouseLeave={() => setFocus(null)}>
+          <p className="mb-3 text-sm text-mist">Point at a line to light up that part of the crystal. {basketNote(basket)}</p>
           {LEGEND.map((l, i) => {
             const on = focus === l.focus;
             return (
@@ -232,7 +226,6 @@ function ReadYourCrystal() {
               </Reveal>
             );
           })}
-          <div className="mt-6">{guide}</div>
         </div>
       </div>
     </Section>
@@ -245,9 +238,10 @@ function Video() {
   return (
     <Section id="video" n="04" label="PRISM in 40 seconds">
       <Headline lead="The whole idea," accent="in 40 seconds." />
-      <Reveal className="mt-14 md:mt-20">
+      {/* no reveal wrapper: the video must never sit at opacity 0 or under a transform */}
+      <div className="mt-10 md:mt-14">
         <ExplainerVideo />
-      </Reveal>
+      </div>
     </Section>
   );
 }
@@ -282,7 +276,7 @@ function Trust() {
   return (
     <Section n="05" label="Built to be trusted">
       <Headline lead="Your crystal," accent="your rules." />
-      <div className="mt-14 grid gap-6 md:mt-20 md:grid-cols-3 md:gap-8">
+      <div className="mt-10 grid gap-6 md:mt-14 md:grid-cols-3">
         {cards.map((c, i) => (
           <Reveal key={c.title} delay={i * 0.08}>
             <div className="card card-hover flex h-full flex-col p-8">
@@ -318,20 +312,15 @@ function Stats() {
   ];
   return (
     <Section n="06" label="Live on Robinhood Chain">
-      <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-        <Headline lead="Read straight" accent="from the chain." />
-        <Reveal delay={0.2}>
-          <LiveBadge>Robinhood Chain Testnet</LiveBadge>
-        </Reveal>
-      </div>
-      <div className="mt-14 grid gap-6 sm:grid-cols-2 md:mt-20 lg:grid-cols-4 lg:gap-8">
+      <Headline lead="Read straight" accent="from the chain." />
+      <div className="mt-10 grid grid-cols-2 gap-3 sm:gap-6 md:mt-14 lg:grid-cols-4">
         {items.map((it, i) => (
           <Reveal key={it.label} delay={i * 0.08}>
-            <div className="card h-full p-8">
-              <p className="font-display text-5xl font-bold tracking-[-0.04em] text-white md:text-6xl">
+            <div className="card h-full p-5 sm:p-8">
+              <p className="font-display text-4xl font-bold tracking-[-0.04em] text-white sm:text-5xl md:text-6xl">
                 <CountUp value={it.value} format={it.format} />
               </p>
-              <p className="section-label mt-5 text-[11px]">{it.label}</p>
+              <p className="section-label mt-4 text-[10px] sm:mt-5 sm:text-[11px]">{it.label}</p>
             </div>
           </Reveal>
         ))}
@@ -380,8 +369,8 @@ const FAQ: Array<{ q: string; a: ReactNode }> = [
 function Questions() {
   return (
     <Section n="07" label="Questions you might have">
-      <div className="grid gap-12 lg:grid-cols-[1fr_1.4fr] lg:gap-20">
-        <div>
+      <div className="grid grid-cols-12 gap-6">
+        <div className="col-span-12 lg:col-span-5">
           <Headline lead="Good" accent="questions." />
           <Reveal delay={0.2}>
             <div className="mt-10 hidden lg:block">
@@ -389,7 +378,7 @@ function Questions() {
             </div>
           </Reveal>
         </div>
-        <Reveal>
+        <Reveal className="col-span-12 lg:col-span-7">
           <Faq items={FAQ} />
         </Reveal>
       </div>

@@ -4,21 +4,22 @@ import { useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { formatUnits } from 'viem';
-import { getDeployment, type CrystalHistory, type Holding, type OwnedViber } from '@prism/core';
+import { atName, getDeployment, type CrystalHistory, type Holding } from '@prism/core';
 import { Crystal } from '../components/Crystal';
 import { PageHeader, PageScroll } from '../components/PageHeader';
 import { SceneLabel, Stage } from '../components/Stage';
-import { EthPrice, LiveBadge } from '../components/ui';
+import { EthPrice } from '../components/ui';
 import { LoadingStage } from '../components/LoadingStage';
 import { Reveal, SectionLabel } from '../components/design';
-import { ViberBillboard, ViberGuide, useOwnersVibers } from '../components/Viber';
+import { GuideNote } from '../components/Viber';
+import { Owner, useNames } from '../data/names';
 import { holdingsFromAssets, marketLookup, realCrystalHistory } from '../data/crystalHoldings';
 import { useTestnetTokens } from '../data/chain';
 import { earliestForge, useGalleryCrystals, type PublicCrystal } from '../data/crystals';
 import { TARGET_CHAIN } from '../wallet/config';
 import { shortAddress } from '../wallet/WalletButton';
 
-/** Below this many crystals, a viber invites people to forge one. */
+/** Below this many crystals, the page's GuideNote invites people to forge one. */
 const FEW = 6;
 const SPACING = 3.9;
 const ROW_SPACING = 3.7;
@@ -32,7 +33,6 @@ interface SceneItem {
   label: string;
   sublabel?: string;
   sealed?: boolean;
-  companion?: OwnedViber | null;
 }
 
 /**
@@ -94,24 +94,18 @@ function FitScene({ points }: { points: THREE.Vector3[] }) {
   return null;
 }
 
-/** Corners of the space one crystal (and its label, and its viber) takes up. */
-function boundsAt([x, y, z]: [number, number, number], companion: boolean): THREE.Vector3[] {
-  const left = x - 1;
-  const right = x + (companion ? 1.6 : 1);
+/** Corners of the space one crystal (and its label) takes up. */
+function boundsAt([x, y, z]: [number, number, number]): THREE.Vector3[] {
   const out: THREE.Vector3[] = [];
-  for (const bx of [left, right]) for (const by of [y + 1, y - 1.65]) for (const bz of [z - 1, z + 1]) out.push(new THREE.Vector3(bx, by, bz));
+  for (const bx of [x - 1, x + 1]) for (const by of [y + 1, y - 1.65]) for (const bz of [z - 1, z + 1]) out.push(new THREE.Vector3(bx, by, bz));
   return out;
 }
 
 function CrystalScene({ items, interactive }: { items: SceneItem[]; interactive: boolean }) {
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
   const positions = useMemo(() => layout(items.length, aspect), [items.length, aspect]);
-  // items is a fresh array every render; only re-fit when the layout or a viber changes
-  const companionKey = items.map((i) => (i.companion ? 1 : 0)).join('');
-  const points = useMemo(
-    () => positions.flatMap((p, i) => boundsAt(p, companionKey[i] === '1')),
-    [positions, companionKey],
-  );
+  // items is a fresh array every render; only re-fit when the layout changes
+  const points = useMemo(() => positions.flatMap((p) => boundsAt(p)), [positions]);
   return (
     <>
       <FitScene points={points} />
@@ -123,11 +117,10 @@ function CrystalScene({ items, interactive }: { items: SceneItem[]; interactive:
               holdings={it.holdings}
               history={it.history}
               sealed={it.sealed}
-              position={it.companion ? [p[0] - 0.5, p[1], p[2]] : p}
+              position={p}
               size={1.05}
               spin={0.12 + (i % 3) * 0.05}
             />
-            {it.companion && <ViberBillboard viber={it.companion} position={[p[0] + 0.85, p[1] - 1.05, p[2] + 0.2]} height={1.25} />}
             <SceneLabel position={[p[0], p[1] - 1.45, p[2]]} center>
               <div className="pointer-events-none whitespace-nowrap rounded-full border border-white/15 bg-ink/90 px-4 py-1.5 text-center shadow-[0_8px_24px_-8px_rgba(0,0,0,0.8)]">
                 <span className="font-display text-base font-bold text-white">{it.label}</span>
@@ -147,7 +140,7 @@ function CrystalScene({ items, interactive }: { items: SceneItem[]; interactive:
 const fmtQty = (v: bigint, d: number) =>
   Number(formatUnits(v, d)).toLocaleString('en-US', { maximumFractionDigits: 4 });
 
-function RealCrystalCard({ c, totalEth }: { c: PublicCrystal; totalEth: number }) {
+function RealCrystalCard({ c, totalEth, name }: { c: PublicCrystal; totalEth: number; name?: string }) {
   const sealed = c.sealedUntil * 1000 > Date.now();
   return (
     <div className="card card-hover h-full p-7">
@@ -156,7 +149,7 @@ function RealCrystalCard({ c, totalEth }: { c: PublicCrystal; totalEth: number }
         {totalEth > 0 && <EthPrice eth={totalEth} />}
       </div>
       <p className="mt-2 font-mono text-[11px] text-mist">
-        owner {shortAddress(c.owner)}
+        owner <Owner address={c.owner} name={name} className={name ? 'text-white' : ''} />
         {sealed ? ' · ❄ sealed gift' : ''}
       </p>
       <ul className="mt-6 flex flex-wrap gap-2">
@@ -178,7 +171,8 @@ export default function Gallery() {
   const live = useTestnetTokens(earliestForge(gallery.crystals ?? undefined));
   const marketOf = useMemo(() => marketLookup(live.status === 'live' ? live.tokens : undefined), [live]);
   const real = useMemo(() => gallery.crystals ?? [], [gallery.crystals]);
-  const vibers = useOwnersVibers(real.map((c) => c.owner));
+  const names = useNames(real.map((c) => c.owner));
+  const nameOf = (owner: string) => names.get(owner.toLowerCase());
   // stable per crystal, so each 3D crystal is only rebuilt when its data changes
   const shapes = useMemo(
     () =>
@@ -199,9 +193,8 @@ export default function Gallery() {
     holdings: shapes.get(c.id)!.holdings,
     history: shapes.get(c.id)!.history,
     label: `#${c.id}`,
-    sublabel: shortAddress(c.owner),
+    sublabel: nameOf(c.owner) ? atName(nameOf(c.owner)!) : shortAddress(c.owner),
     sealed: c.sealedUntil * 1000 > Date.now(),
-    companion: vibers.get(c.owner.toLowerCase()) ?? null,
   }));
   return (
     <PageScroll>
@@ -210,11 +203,25 @@ export default function Gallery() {
         lead="Every crystal,"
         accent="on-chain."
         subtitle="Every crystal ever forged on PRISM: who owns it and what is inside. Drag the scene to look around."
-      >
-        {!!deployment && gallery.crystals && <LiveBadge>{gallery.live ? 'Live testnet data' : 'Testnet data · refreshing'}</LiveBadge>}
-      </PageHeader>
+        guide={
+          !!deployment &&
+          gallery.crystals &&
+          real.length < FEW && (
+            <GuideNote
+              index={8}
+              action={
+                <Link to="/forge" className="btn btn-primary">
+                  Forge a crystal
+                </Link>
+              }
+            >
+              {real.length === 0 ? 'No crystals yet. Be the first: forge one.' : 'Be one of the first. Forge a crystal.'}
+            </GuideNote>
+          )
+        }
+      />
 
-      <section className="flex flex-col gap-10">
+      <section className="flex flex-col gap-6">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <SectionLabel>Forged on PRISM</SectionLabel>
           <p className="font-mono text-xs text-mist">
@@ -225,7 +232,7 @@ export default function Gallery() {
         {gallery.error && <p className="text-sm text-down">Couldn’t read crystals from the chain right now. Try again in a moment.</p>}
         {real.length > 0 && (
           <Reveal>
-            <div className="relative h-[420px] overflow-hidden rounded-[32px] border border-white/[0.08] sm:h-[520px]">
+            <div className="relative h-[420px] overflow-hidden rounded-[24px] border border-white/[0.08] sm:h-[520px]">
               <Stage className="!absolute inset-0" camera={{ position: [0, 3, 11], fov: 45 }}>
                 <CrystalScene items={realItems} interactive />
               </Stage>
@@ -233,25 +240,13 @@ export default function Gallery() {
           </Reveal>
         )}
         {real.length > 0 && (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {real.map((c, i) => (
               <Reveal key={c.id.toString()} delay={Math.min(i, 6) * 0.06}>
-                <RealCrystalCard c={c} totalEth={holdingsFromAssets(c.assets, marketOf).totalEth} />
+                <RealCrystalCard c={c} totalEth={holdingsFromAssets(c.assets, marketOf).totalEth} name={nameOf(c.owner)} />
               </Reveal>
             ))}
           </div>
-        )}
-        {gallery.crystals && real.length < FEW && (
-          <Reveal>
-            <div className="card flex flex-col gap-6 p-8 sm:flex-row sm:items-center sm:justify-between">
-              <ViberGuide index={8} size={80}>
-                Be one of the first. Forge a crystal.
-              </ViberGuide>
-              <Link to="/forge" className="btn btn-primary btn-lg">
-                Forge a crystal
-              </Link>
-            </div>
-          </Reveal>
         )}
       </section>
     </PageScroll>

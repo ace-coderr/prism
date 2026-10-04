@@ -22,19 +22,9 @@ export function SoonButton({ children }: { children: ReactNode }) {
   );
 }
 
-/** Marks numbers read live from Robinhood Chain Testnet. */
-export function LiveBadge({ children = 'Live testnet data' }: { children?: ReactNode }) {
-  return (
-    <span className="label inline-flex items-center gap-1.5 whitespace-nowrap rounded border border-lime/50 bg-lime/10 px-2 py-0.5 text-[10px] text-lime">
-      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-lime motion-reduce:animate-none" />
-      {children}
-    </span>
-  );
-}
-
-/** ETH amount, e.g. "0.1187 ETH" / "4.62 ETH". */
+/** ETH amount, e.g. "0.1187 ETH" / "0.001 ETH" / "4.620 ETH". */
 export const formatEth = (v: number) =>
-  `${v >= 100 ? v.toFixed(1) : v >= 1 ? v.toFixed(3) : v.toPrecision(4)} ETH`;
+  `${v >= 100 ? v.toFixed(1) : v >= 1 ? v.toFixed(3) : String(Number(v.toPrecision(4)))} ETH`;
 
 export const TESTNET_USD_NOTE = 'Testnet USD from the ETH/USDG test pool, not a market price.';
 

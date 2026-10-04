@@ -39,7 +39,10 @@ async function video(id, file, codec, crfs) {
       crf,
       outputLocation,
       muted: true,
-      pixelFormat: codec === 'h264' ? 'yuv420p' : undefined,
+      // standard limited-range BT.709 (the default came out full-range "yuvj420p", which
+      // some browsers' hardware decoders show as a black picture)
+      colorSpace: 'bt709',
+      pixelFormat: 'yuv420p',
       x264Preset: codec === 'h264' ? 'slow' : undefined,
       chromiumOptions,
       onProgress: ({ progress }) => process.stdout.write(`\r${file} crf ${crf}: ${Math.round(progress * 100)}%   `),

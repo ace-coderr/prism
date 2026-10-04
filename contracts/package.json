@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "compile": "hardhat compile",
-    "test": "hardhat test test/PrismCrystal.test.ts test/PrismForgeRouter.test.ts test/gas.test.ts",
+    "test": "hardhat test test/PrismCrystal.test.ts test/PrismForgeRouter.test.ts test/PrismNames.test.ts test/gas.test.ts",
     "gas": "cross-env REPORT_GAS=1 hardhat test",
     "export-abi": "hardhat run scripts/export-abi.ts",
     "test:fork": "cross-env FORK=1 hardhat test test/fork/PrismForgeRouter.fork.test.ts"

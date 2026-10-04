@@ -4,7 +4,6 @@ import { Float } from '@react-three/drei';
 import { useReducedMotion } from 'motion/react';
 import * as THREE from 'three';
 import {
-  type OwnedViber,
   LIVE_CRACK_THRESHOLD,
   buildCrystal,
   exposedVoxels,
@@ -15,7 +14,6 @@ import {
 } from '@prism/core';
 import { glowTexture, outlinedFaceTexture, toonRamp } from './textures';
 import { useFitSphere } from './Stage';
-import { ViberBillboard } from './Viber';
 
 const cube = new THREE.BoxGeometry(1, 1, 1);
 const OUTLINE = 1.14; // inverted-hull scale: thickness of the silhouette outline
@@ -263,26 +261,13 @@ const FLOAT_ALLOWANCE = 0.06;
 /**
  * A crystal with the camera fitted to its bounding sphere, so it always stays fully
  * in view (desktop and phone). `top` / `bottom` are the band of the canvas height it
- * may use, e.g. to keep clear of overlaid text. With a `companion` (the holder's own
- * vibe viber), the crystal steps left and the viber stands on the ground beside it,
- * and the fit widens to include both.
+ * may use, e.g. to keep clear of overlaid text.
  */
-export function FittedCrystal({
-  top,
-  bottom,
-  companion,
-  ...props
-}: CrystalProps & { top?: number; bottom?: number; companion?: OwnedViber | null }) {
+export function FittedCrystal({ top, bottom, ...props }: CrystalProps & { top?: number; bottom?: number }) {
   const size = props.size ?? 1.6;
   const reach = size * (props.highlight ? 1.12 : 1) + FLOAT_ALLOWANCE;
-  const cy = useFitSphere(companion ? reach * 1.75 : reach, top, bottom);
-  if (!companion) return <Crystal {...props} size={size} position={[0, cy, 0]} />;
-  return (
-    <>
-      <Crystal {...props} size={size} position={[-size * 0.6, cy, 0]} />
-      <ViberBillboard viber={companion} position={[size * 1.35, cy - size, 0.2]} height={size * 1.25} />
-    </>
-  );
+  const cy = useFitSphere(reach, top, bottom);
+  return <Crystal {...props} size={size} position={[0, cy, 0]} />;
 }
 
 // ---------------------------------------------------------------------------

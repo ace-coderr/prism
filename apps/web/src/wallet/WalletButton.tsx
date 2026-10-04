@@ -12,6 +12,7 @@ export function useWallet() {
   return { address, isConnected, onTarget: isConnected && chainId === TARGET_CHAIN.id, wrongChain: isConnected && chainId !== TARGET_CHAIN.id };
 }
 
+/** Full-width "switch network" action for page content (forms, deploy page). */
 export function SwitchNetworkButton({ className = '' }: { className?: string }) {
   const { switchChain, isPending, error } = useSwitchChain();
   return (
@@ -29,47 +30,107 @@ export function SwitchNetworkButton({ className = '' }: { className?: string }) 
   );
 }
 
-/** Connect / account / wrong-network control. `big` = hero-sized button. */
-export function WalletButton({ big = false }: { big?: boolean }) {
+const PILL =
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full font-mono font-bold uppercase tracking-[0.14em] transition disabled:cursor-not-allowed disabled:opacity-60';
+const SIZE = { nav: 'h-9 px-4 text-[11px]', hero: 'h-11 px-6 text-xs' } as const;
+const MENU = 'absolute z-50 mt-2 rounded-2xl border border-white/10 bg-panel p-2 text-sm shadow-[0_16px_40px_-12px_rgba(0,0,0,0.8)]';
+
+/** Closes a popover when clicking outside `ref` or pressing Escape. */
+function useDismiss(open: boolean, close: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && close();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, close]);
+  return ref;
+}
+
+/**
+ * The one pill CTA: lime CONNECT → dark lime-bordered address pill (with copy /
+ * explorer / disconnect) → amber SWITCH NETWORK when on the wrong chain.
+ * `variant="hero"` is the larger version used in the Home call-to-action.
+ */
+export function WalletButton({ variant = 'nav' }: { variant?: 'nav' | 'hero' }) {
   const { address, isConnected, wrongChain } = useWallet();
   const { connectors: all, connect, isPending, error } = useConnect();
   // EIP-6963 wallets (MetaMask, Rabby, …) list themselves; hide the generic entry when any exist
   const named = all.filter((c) => c.id !== 'injected');
   const connectors = named.length > 0 ? named : all;
   const { disconnect } = useDisconnect();
+  const { switchChain, isPending: switching, error: switchError } = useSwitchChain();
   const balance = useBalance({ address, chainId: TARGET_CHAIN.id, query: { enabled: !!address, refetchInterval: 15_000 } });
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [copied, setCopied] = useState(false);
+  const ref = useDismiss(open, () => setOpen(false));
+  const size = SIZE[variant];
+  const align = variant === 'hero' ? 'left-1/2 -translate-x-1/2' : 'right-0';
 
-  useEffect(() => {
-    const close = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, []);
-
-  if (isConnected && wrongChain) return <SwitchNetworkButton className={big ? '' : '!px-3 !py-1.5 !text-[10px]'} />;
+  if (isConnected && wrongChain) {
+    return (
+      <div className="relative">
+        <button
+          className={`${PILL} ${size} bg-amber-400 text-ink hover:bg-amber-300`}
+          disabled={switching}
+          title="Switch your wallet to Robinhood Chain Testnet (chain 46630)"
+          // wagmi asks the wallet to add chain 46630 (RPC + explorer from config) if it doesn't know it
+          onClick={() => switchChain({ chainId: TARGET_CHAIN.id })}
+        >
+          {switching ? 'Check wallet…' : 'Switch network'}
+        </button>
+        {switchError && <p className={`${MENU} ${align} w-64 text-xs text-down`}>{friendlyError(switchError)}</p>}
+      </div>
+    );
+  }
 
   if (isConnected && address) {
     const eth = balance.data ? Number(formatEther(balance.data.value)) : null;
+    const copy = async () => {
+      try {
+        await navigator.clipboard.writeText(address);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      } catch {
+        /* clipboard blocked — the address is still visible in the title */
+      }
+    };
     return (
       <div className="relative" ref={ref}>
         <button
           onClick={() => setOpen((o) => !o)}
-          className={`btn btn-secondary ${big ? '' : '!px-3 !py-1.5 !text-[10px]'}`}
+          className={`${PILL} ${size} border border-lime/70 bg-ink text-white hover:border-lime`}
           title={address}
+          aria-haspopup="menu"
+          aria-expanded={open}
         >
           <span className="h-1.5 w-1.5 rounded-full bg-lime shadow-[0_0_8px_#d4f000]" />
-          {shortAddress(address)}
-          <span className={`text-mist ${big ? '' : 'hidden sm:inline'}`}>
+          <span className="normal-case tracking-[0.06em]">{shortAddress(address)}</span>
+          <span className={`text-mist ${variant === 'hero' ? '' : 'hidden md:inline'}`}>
             {eth === null ? '…' : `${eth < 0.0001 && eth > 0 ? '<0.0001' : eth.toFixed(4)} ETH`}
           </span>
         </button>
         {open && (
-          <div className="absolute right-0 z-50 mt-2 w-56 rounded-lg border border-line bg-panel p-2 text-sm shadow-xl">
-            <a className="block rounded px-2 py-1.5 text-mist hover:bg-white/5 hover:text-white" href={explorerAddressUrl(address)} target="_blank" rel="noreferrer">
+          <div role="menu" className={`${MENU} ${align} w-56`}>
+            <button role="menuitem" className="block w-full rounded-xl px-3 py-2 text-left text-mist hover:bg-white/5 hover:text-white" onClick={copy}>
+              {copied ? 'Copied ✓' : 'Copy address'}
+            </button>
+            <a role="menuitem" className="block rounded-xl px-3 py-2 text-mist hover:bg-white/5 hover:text-white" href={explorerAddressUrl(address)} target="_blank" rel="noreferrer">
               View on explorer ↗
             </a>
-            <button className="block w-full rounded px-2 py-1.5 text-left text-mist hover:bg-white/5 hover:text-white" onClick={() => disconnect()}>
+            <button
+              role="menuitem"
+              className="block w-full rounded-xl px-3 py-2 text-left text-mist hover:bg-white/5 hover:text-white"
+              onClick={() => {
+                setOpen(false);
+                disconnect();
+              }}
+            >
               Disconnect
             </button>
           </div>
@@ -80,26 +141,27 @@ export function WalletButton({ big = false }: { big?: boolean }) {
 
   return (
     <div className="relative" ref={ref}>
-      <button className={`btn ${big ? 'btn-secondary' : 'btn-secondary !px-3 !py-1.5 !text-[10px]'}`} disabled={isPending} onClick={() => setOpen((o) => !o)}>
-        {isPending ? (
-          'Check your wallet…'
-        ) : big ? (
-          'Connect Wallet'
-        ) : (
-          <>
-            {/* compact on phones so the nav links keep their room */}
-            <span className="sm:hidden">Connect</span>
-            <span className="hidden sm:inline">Connect Wallet</span>
-          </>
-        )}
+      <button
+        className={`${PILL} ${size} ${
+          variant === 'hero'
+            ? 'border border-lime/70 bg-ink text-lime hover:bg-lime/10'
+            : 'bg-lime text-ink hover:shadow-[0_0_24px_rgba(212,240,0,0.35)]'
+        }`}
+        disabled={isPending}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {isPending ? 'Check wallet…' : variant === 'hero' ? 'Connect wallet' : 'Connect'}
       </button>
       {open && (
-        <div className={`absolute z-50 mt-2 w-64 rounded-lg border border-line bg-panel p-2 text-sm shadow-xl ${big ? 'left-1/2 -translate-x-1/2' : 'right-0'}`}>
-          {connectors.length === 0 && <p className="px-2 py-1.5 text-mist">No browser wallet found. Install MetaMask or Rabby.</p>}
+        <div role="menu" className={`${MENU} ${align} w-64`}>
+          {connectors.length === 0 && <p className="px-3 py-2 text-mist">No browser wallet found. Install MetaMask or Rabby.</p>}
           {connectors.map((c) => (
             <button
               key={c.uid}
-              className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-white/5"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-white/5"
               onClick={() => {
                 setOpen(false);
                 connect({ connector: c, chainId: TARGET_CHAIN.id });
@@ -109,10 +171,10 @@ export function WalletButton({ big = false }: { big?: boolean }) {
               {c.name === 'Injected' ? 'Browser wallet' : c.name}
             </button>
           ))}
-          <p className="px-2 pt-1 text-[11px] text-mist/70">Testnet only. PRISM never asks for your seed phrase or keys.</p>
+          <p className="px-3 pt-1 text-[11px] text-mist/70">Testnet only. PRISM never asks for your seed phrase or keys.</p>
         </div>
       )}
-      {error && <p className="absolute mt-1 w-64 text-xs text-down">{friendlyError(error)}</p>}
+      {error && <p className={`${MENU} ${align} w-64 text-xs text-down`}>{friendlyError(error)}</p>}
     </div>
   );
 }

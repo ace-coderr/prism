@@ -53,10 +53,6 @@ export default function Home() {
         <Hero textTop={textTop} />
       </Stage>
 
-      <div className="absolute left-4 top-4">
-        <DataBadge live={false} />
-      </div>
-
       <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/80 to-transparent px-4 pt-24 pb-8 sm:pb-12">
         <div ref={textRef} className="pointer-events-auto mx-auto flex max-w-3xl flex-col items-center text-center">
           <p className="label mb-4 text-lime">Tokenized stocks + ETH → one crystal</p>
@@ -65,11 +61,14 @@ export default function Home() {
             <Link to="/forge" className="btn btn-primary">
               Forge
             </Link>
-            <WalletButton big />
+            <WalletButton variant="hero" />
           </div>
-          <p className="label mt-6 text-[10px] text-mist/80">
-            <span className="text-gold">Gold seams</span> = drawdowns this basket survived
-          </p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <DataBadge live={false} />
+            <p className="label text-[10px] text-mist/80">
+              <span className="text-gold">Gold seams</span> = drawdowns this basket survived
+            </p>
+          </div>
         </div>
       </div>
     </div>

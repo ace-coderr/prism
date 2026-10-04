@@ -33,6 +33,27 @@ npm run video:studio     # edit the explainer in Remotion Studio
 npm run video:render     # re-render the explainer videos + poster (each video < 6 MB)
 ```
 
+## Forge from ETH (PrismForgeRouter)
+
+`contracts/contracts/PrismForgeRouter.sol` turns ETH into a crystal in **one transaction**: it
+swaps ETH into the chosen test stocks through their Uniswap V4 pools (ETH-paired, 0.3%, no hooks,
+straight through the PoolManager), checks every output against the caller's minimum, forges a
+PrismCrystal with exactly those amounts (plus any ETH kept as ETH) and hands the NFT to the
+caller. No owner, no fees, no pause, no upgrades, no storage; it only accepts the five test
+stocks fixed at deploy and ends every call holding nothing. See `contracts/SECURITY.md`.
+
+```bash
+npm run test:contracts                     # unit tests (mock PoolManager)
+npm run test:fork -w @prism/contracts      # real swaps on a fork of the testnet's latest block
+```
+
+In the app, Forge → **Start with ETH** (the default when you hold no test stocks): one ETH
+amount, a slider per stock (plus "keep as ETH"), live V4Quoter quotes, price impact with a
+plain warning above 3%, slippage 1% by default. The button stays off until `forgeRouter` is set
+in `packages/core/src/deployments.ts`; deploy it from your wallet on the dev-only `/deploy` page.
+V4 addresses (PoolManager, V4Quoter, Universal Router, Permit2) come from vibe/vibe's published
+config for chain 46630 and were checked on-chain.
+
 ## Explainer video
 
 `apps/video` is a Remotion project (React + TypeScript) that reuses `buildCrystal` from

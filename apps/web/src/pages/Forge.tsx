@@ -5,6 +5,7 @@ import { useBalance, useReadContracts } from 'wagmi';
 import {
   BASKET_TOKENS,
   GAS_RESERVE_WEI,
+  ROUTER_TOKENS,
   getDeployment,
   normalizeTo100,
   parseTokenAmount,
@@ -27,6 +28,7 @@ import { TARGET_CHAIN } from '../wallet/config';
 import { depositSteps } from '../wallet/deposit';
 import { StepList, useTxSteps } from '../wallet/steps';
 import { SwitchNetworkButton, WalletButton, useWallet } from '../wallet/WalletButton';
+import { EthAmounts, EthReview, ethMixProblems, useEthMix } from './forge/EthMode';
 
 const MAX_ASSETS = 8;
 
@@ -37,6 +39,23 @@ const GROUPS: Array<{ label: string; ids: string[] }> = [
   { label: 'Crypto', ids: ['WETH'] },
 ];
 const STEPS = ['Pick', 'Amounts', 'Review'] as const;
+/** Tokens "Start with ETH" can swap into (the router's fixed list). */
+const ROUTER_IDS = new Set(ROUTER_TOKENS.map((t) => t.id));
+
+/** A big either/or card for the Pick step. */
+function ModeCard({ on, title, text, onClick }: { on: boolean; title: string; text: string; onClick: () => void }) {
+  return (
+    <button type="button" aria-pressed={on} onClick={onClick} className={`card card-hover min-w-0 p-6 text-left ${on ? '!border-lime/70 !bg-lime/[0.05]' : ''}`}>
+      <span className="flex items-start justify-between gap-3">
+        <span className="font-display text-xl font-bold tracking-[-0.02em]">{title}</span>
+        <span className={`mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-full border ${on ? 'border-lime' : 'border-white/25'}`}>
+          {on && <span className="h-2.5 w-2.5 rounded-full bg-lime" />}
+        </span>
+      </span>
+      <span className="mt-2 block text-sm leading-relaxed text-mist">{text}</span>
+    </button>
+  );
+}
 
 /** Every basket token in Pick-step order (grouped first, anything else after). */
 const ORDERED = [
@@ -130,7 +149,14 @@ export default function Forge() {
   const balancesKnown = isConnected && reads.isSuccess;
   const ownsAnyStock = balancesKnown && BASKET_TOKENS.some((t) => t.kind !== 'crypto' && (balanceOf(t) ?? 0n) > 0n);
 
-  const picked = ORDERED.filter((t) => picks.includes(t.id));
+  // "Start with ETH" unless the wallet already holds test stocks (either can be chosen)
+  const [modeChoice, setModeChoice] = useState<'eth' | 'tokens' | null>(null);
+  const mode = modeChoice ?? (ownsAnyStock ? 'tokens' : 'eth');
+  const router = deployment?.forgeRouter;
+
+  const picked = ORDERED.filter((t) => picks.includes(t.id) && (mode === 'tokens' || ROUTER_IDS.has(t.id)));
+  const mix = useEthMix(mode === 'eth' ? picked : [], marketById);
+  const ethProblems = ethMixProblems(mix, ethBal.data?.value, isConnected);
   const rows = picked.map((t) => {
     const raw = amounts[t.id] ?? '';
     const amount = raw === '' ? 0n : parseTokenAmount(raw, t.decimals);
@@ -181,8 +207,26 @@ export default function Forge() {
     },
   ].filter((h) => h.weight > 0);
 
+  // ETH mode previews the slider mix: each stock's share of the ETH, plus ETH kept
+  const ethHoldings: Holding[] = [
+    ...picked.map((t, i) => ({
+      symbol: t.id,
+      weight: (mix.percents[i] ?? 0) / 100,
+      change24h: marketById.get(t.id)?.market.change24h ?? Number.NaN,
+      volatility: marketById.get(t.id)?.market.volatility ?? DEFAULT_VOLATILITY,
+    })),
+    {
+      symbol: 'ETH',
+      weight: (mix.percents[picked.length] ?? 0) / 100,
+      change24h: weth?.market.change24h ?? Number.NaN,
+      volatility: weth?.market.volatility ?? DEFAULT_VOLATILITY,
+    },
+  ].filter((h) => h.weight > 0);
+  const preview = mode === 'eth' ? (picked.length > 0 ? ethHoldings : []) : holdings;
+
+  const pickLimit = mode === 'eth' ? ROUTER_TOKENS.length : MAX_ASSETS;
   const toggle = (id: string) =>
-    setPicks((p) => (p.includes(id) ? p.filter((x) => x !== id) : p.length < MAX_ASSETS ? [...p, id] : p));
+    setPicks((p) => (p.includes(id) ? p.filter((x) => x !== id) : p.length < pickLimit ? [...p, id] : p));
 
   const amountsReady = (filled.length > 0 || ethWei > 0n) && problems.length === 0;
 
@@ -254,9 +298,24 @@ export default function Forge() {
         <div className="order-2 flex min-w-0 flex-col gap-8 lg:order-1">
           {step === 0 && (
             <>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <ModeCard
+                  on={mode === 'eth'}
+                  title="Start with ETH"
+                  text="Choose stocks and how much of each. One transaction swaps your ETH and forges the crystal."
+                  onClick={() => setModeChoice('eth')}
+                />
+                <ModeCard
+                  on={mode === 'tokens'}
+                  title="I have test stocks"
+                  text="Put test stocks you already own (and some ETH, if you like) into a crystal."
+                  onClick={() => setModeChoice('tokens')}
+                />
+              </div>
               <p className="body-copy">
-                Tap the tokens you want inside: up to {MAX_ASSETS} (adding ETH counts as one). They are vibe/vibe test tokens
-                with no real value.
+                {mode === 'eth'
+                  ? `Tap the stocks you want: up to ${ROUTER_TOKENS.length}. You can also keep part of your ETH as ETH. They are vibe/vibe test tokens with no real value.`
+                  : `Tap the tokens you want inside: up to ${MAX_ASSETS} (adding ETH counts as one). They are vibe/vibe test tokens with no real value.`}
               </p>
               {!isConnected && (
                 <div className="card flex flex-col items-start gap-5 p-6 xl:flex-row xl:items-center xl:justify-between">
@@ -266,23 +325,20 @@ export default function Forge() {
                   <WalletButton variant="hero" />
                 </div>
               )}
-              {balancesKnown && !ownsAnyStock && (
+              {mode === 'tokens' && balancesKnown && !ownsAnyStock && (
                 <div className="card flex flex-col items-start gap-5 p-6 xl:flex-row xl:items-center xl:justify-between">
                   <ViberGuide index={6} size={72}>
-                    You don’t own test stocks yet. You can forge with ETH now.
+                    You don’t own test stocks yet. Start with ETH: one transaction buys them and forges your crystal.
                   </ViberGuide>
-                  <div className="flex flex-wrap gap-2">
-                    <button className="btn btn-primary" onClick={() => setStep(1)}>
-                      Use ETH only
-                    </button>
-                    <button className="btn btn-secondary" disabled title="Buying test stocks with ETH inside PRISM is coming soon">
-                      Forge from ETH (soon)
-                    </button>
-                  </div>
+                  <button className="btn btn-primary" onClick={() => setModeChoice('eth')}>
+                    Start with ETH
+                  </button>
                 </div>
               )}
               {GROUPS.map((g) => {
-                const tokens = g.ids.map((id) => BASKET_TOKENS.find((t) => t.id === id)).filter((t): t is TestnetToken => !!t);
+                const tokens = g.ids
+                  .map((id) => BASKET_TOKENS.find((t) => t.id === id))
+                  .filter((t): t is TestnetToken => !!t && (mode === 'tokens' || ROUTER_IDS.has(t.id)));
                 if (tokens.length === 0) return null;
                 return (
                   <section key={g.label} className="flex flex-col gap-4">
@@ -295,7 +351,7 @@ export default function Forge() {
                           market={marketById.get(t.id)?.market}
                           loading={live.status === 'loading'}
                           on={picks.includes(t.id)}
-                          balance={isConnected ? balanceOf(t) : undefined}
+                          balance={isConnected && mode === 'tokens' ? balanceOf(t) : undefined}
                           onToggle={() => toggle(t.id)}
                         />
                       ))}
@@ -304,15 +360,43 @@ export default function Forge() {
                 );
               })}
               <div className="flex flex-wrap items-center justify-between gap-4 border-t border-white/[0.08] pt-8">
-                <p className="text-sm text-mist">{picks.length === 0 ? 'Nothing picked yet. You can also go on with ETH only.' : `${picks.length} picked.`}</p>
-                <button className="btn btn-primary btn-lg" onClick={() => setStep(1)}>
+                <p className="text-sm text-mist">
+                  {picked.length > 0
+                    ? `${picked.length} picked.`
+                    : mode === 'eth'
+                      ? 'Pick at least one stock.'
+                      : 'Nothing picked yet. You can also go on with ETH only.'}
+                </p>
+                <button className="btn btn-primary btn-lg" disabled={mode === 'eth' && picked.length === 0} onClick={() => setStep(1)}>
                   Next: amounts →
                 </button>
               </div>
             </>
           )}
 
-          {step === 1 && (
+          {step === 1 && mode === 'eth' && (
+            <>
+              <p className="body-copy">How much ETH, and how should it be split? Quotes come live from the Uniswap pools.</p>
+              <EthAmounts mix={mix} balance={ethBal.data?.value} connected={isConnected} />
+              {ethProblems.length > 0 && mix.ethInput !== '' && (
+                <ul className="space-y-0.5 text-sm text-down">
+                  {ethProblems.map((p) => (
+                    <li key={p}>· {p}</li>
+                  ))}
+                </ul>
+              )}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <button className="btn btn-secondary" onClick={() => setStep(0)}>
+                  ← Back
+                </button>
+                <button className="btn btn-primary" disabled={ethProblems.length > 0} onClick={() => setStep(2)}>
+                  Next: review →
+                </button>
+              </div>
+            </>
+          )}
+
+          {step === 1 && mode === 'tokens' && (
             <>
               <p className="text-sm text-mist">How much of each should go in? Amounts are in token units. ETH is optional.</p>
               <Panel className="divide-y divide-white/10">
@@ -388,7 +472,20 @@ export default function Forge() {
             </>
           )}
 
-          {step === 2 && (
+          {step === 2 && mode === 'eth' && (
+            <EthReview
+              mix={mix}
+              router={router}
+              account={address}
+              connected={isConnected}
+              onTarget={onTarget}
+              problems={ethProblems}
+              onBack={() => setStep(1)}
+              onDone={() => ethBal.refetch()}
+            />
+          )}
+
+          {step === 2 && mode === 'tokens' && (
             <>
               <Panel className="space-y-5 p-5">
                 <div>
@@ -455,12 +552,12 @@ export default function Forge() {
 
         {/* ------------------------------------------------------------ preview */}
         {/* on phones the preview sits above the steps, so it only appears once there is something to show */}
-        <div className={`order-1 lg:order-2 ${holdings.length === 0 ? 'hidden lg:block' : ''}`}>
+        <div className={`order-1 lg:order-2 ${preview.length === 0 ? 'hidden lg:block' : ''}`}>
           <div className="relative h-[300px] overflow-hidden rounded-[32px] border border-white/[0.08] lg:sticky lg:top-28 lg:h-[560px]">
             <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
-              {holdings.length > 0 && <FittedCrystal holdings={holdings} size={1.6} spin={0.2} top={0.12} bottom={0.86} />}
+              {preview.length > 0 && <FittedCrystal holdings={preview} size={1.6} spin={0.2} top={0.12} bottom={0.86} />}
             </Stage>
-            {holdings.length === 0 && (
+            {preview.length === 0 && (
               <p className="absolute inset-0 grid place-items-center px-8 text-center text-sm text-mist">Pick a token to see your crystal take shape.</p>
             )}
             <p className="section-label pointer-events-none absolute left-6 top-6 text-[11px]">Live preview</p>

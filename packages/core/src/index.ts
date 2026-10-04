@@ -11,4 +11,6 @@ export * from './deployments';
 export * from './onchain';
 export * from './vibers';
 export * from './abi/prismCrystal';
+export * from './abi/prismForgeRouter';
+export * from './forgeFromEth';
 export type { Vec3, Quat } from './math';

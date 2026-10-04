@@ -10,6 +10,12 @@ const config: HardhatUserConfig = {
     settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: 'cancun' },
   },
   networks: {
+    // FORK=1 runs the local network as a fork of Robinhood Chain Testnet at its latest
+    // block (the public RPC isn't archival; it keeps recent state only), so fork tests can
+    // swap through the real Uniswap V4 pools and forge into the real PrismCrystal.
+    hardhat: process.env.FORK === '1'
+      ? { forking: { url: 'https://rpc.testnet.chain.robinhood.com' }, chainId: 46630, hardfork: 'cancun' }
+      : {},
     robinhoodTestnet: {
       url: 'https://rpc.testnet.chain.robinhood.com',
       chainId: 46630,

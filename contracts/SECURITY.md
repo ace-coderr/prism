@@ -70,3 +70,67 @@ state before making external calls.
     before deploying, or recompile for an older EVM version.
 11. **Unaudited.** Tests cover the cases listed in `test/PrismCrystal.test.ts`, but this is not a
     substitute for a review. Testnet only, no real funds.
+
+---
+
+# PrismForgeRouter — security notes
+
+`contracts/PrismForgeRouter.sol` forges a crystal from ETH in one transaction: it swaps ETH
+into the chosen test stocks through their Uniswap V4 pools, checks each output against the
+caller's minimum, forges a PrismCrystal holding exactly those outputs (plus any ETH the caller
+keeps as ETH), and transfers the NFT to the caller.
+
+## Trust model, in plain words
+
+- **No admin, no state.** No owner, no fees, no pause, no upgrades, and no storage variables.
+  Everything it depends on is fixed at deploy as an immutable: the PoolManager, the
+  PrismCrystal, the pool fee (3000) and tick spacing (60), and up to five allowed tokens.
+- **Only the known test stocks.** `forgeFromETH` rejects any token that isn't one of the
+  deploy-time tokens (`UnknownToken`), so it can't be pointed at an arbitrary contract.
+  Hooks are always `address(0)`, and ETH is always `currency0`.
+- **All or nothing.** If any swap returns less than its `minAmountsOut` entry, the whole call
+  reverts (`InsufficientOutput`): no swap, no crystal, the ETH stays with the caller. Minimums
+  must be above zero (`ZeroMinimum`), so every call has slippage protection.
+- **Ends empty, every time.** After forging, the router sends any leftover ETH (unused swap
+  input, overpayment, ETH someone force-sent) and any balance of the swapped tokens back to the
+  caller, then asserts it holds zero ETH and zero of those tokens (`NotEmpty`). Sweeping strays
+  to the caller (instead of failing) means nobody can block forges by sending dust to it.
+- **The NFT ends with the caller.** The crystal is minted to the router, transferred with
+  `safeTransferFrom` to `msg.sender`, and `ownerOf(id) == msg.sender` is checked
+  (`NotDelivered`).
+- **Reentrancy.** `forgeFromETH` uses OpenZeppelin's `ReentrancyGuardTransient` (EIP-1153,
+  cleared at the end of the call). `unlockCallback` only runs when called by the PoolManager
+  *and* while a forge is in progress (`NotPoolManager`, `NotForging`). `onERC721Received` only
+  accepts a fresh mint from the PrismCrystal during a forge (`UnexpectedNFT`), so stray NFTs
+  can't get stuck in it. It has no `receive`, so plain ETH sends revert.
+- **Swaps go straight through the PoolManager** (`unlock` → `swap` → `settle` → `take`), with no
+  Universal Router or Permit2 approvals involved; the router never holds token approvals beyond
+  the exact amounts the PrismCrystal pulls during `forge` (reset to zero afterwards if anything
+  were left).
+
+## Tested
+
+- `test/PrismForgeRouter.test.ts` (mock PoolManager with V4-style settlement checks): happy
+  path, single token, slippage revert, ETH refund, partial fills, stray dust swept, unknown /
+  zero tokens, input validation, a caller re-entering on the NFT and on the refund, a caller
+  refusing ETH, a token re-entering mid-swap, stray `unlockCallback` calls, stray NFTs and ETH,
+  constructor validation, ABI export drift.
+- `test/fork/PrismForgeRouter.fork.test.ts` (`npm run test:fork`): a fork of Robinhood Chain
+  Testnet at the latest block. Real swaps through the real pools into the real PrismCrystal;
+  outputs match the V4Quoter exactly; slippage revert; refund; all five stocks; USDG (a real
+  token with a pool, but not allowed) rejected; reentrancy on the NFT stopped; the router is
+  empty after every call.
+
+## Known limitations
+
+1. **Price impact is the caller's problem.** The router enforces the minimums it is given; the
+   app quotes with the V4Quoter and applies the chosen slippage (default 1%). Thin pools
+   (OPENAI, ANTHROPIC) move quickly with size; the app warns above 3% impact.
+2. **Forged event owner.** PrismCrystal's `Forged` event records the router as `owner` (it is
+   the minter). The real owner is in the `Transfer` to the caller and `ownerOf`; the router also
+   emits `ForgedFromETH(id, owner, …)`.
+3. **Contract callers** must implement `onERC721Received` and accept ETH if they overpay;
+   otherwise the call reverts (nothing is lost).
+4. **Fixed list.** New test stocks need a new router deployment (it's stateless, so that is
+   cheap and safe).
+5. **Unaudited.** Testnet only, no real funds.

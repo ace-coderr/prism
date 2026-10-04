@@ -9,6 +9,11 @@ export interface PrismDeployment {
   prismCrystal: Address;
   fromBlock: bigint;
   txHash?: `0x${string}`;
+  /**
+   * PrismForgeRouter (forge from ETH in one transaction). Empty until it's deployed from
+   * the owner's wallet via /deploy; the Forge page's "Start with ETH" stays off until then.
+   */
+  forgeRouter?: Address;
 }
 
 export const DEPLOYMENTS: Partial<Record<number, PrismDeployment>> = {

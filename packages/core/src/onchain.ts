@@ -99,6 +99,16 @@ const REVERT_MESSAGES: Record<string, string> = {
   ERC20InsufficientBalance: 'Not enough tokens in your wallet.',
   ERC20InsufficientAllowance: 'Token approval is too low — approve again.',
   ERC721NonexistentToken: 'That crystal doesn’t exist (or was burned).',
+  // PrismProfiles
+  InvalidName: 'Usernames are 3–20 characters: lowercase letters, numbers and _.',
+  NameTaken: 'Someone else just took that username. Try another.',
+  AlreadyYours: 'That username is already yours.',
+  NoName: 'You don’t have a username to remove.',
+  NoAvatar: 'You don’t have an avatar to remove.',
+  InvalidBio: 'Bios are one line of up to 120 bytes.',
+  NoBio: 'You don’t have a bio to remove.',
+  InvalidX: 'X handles are up to 15 letters, numbers or _ (no @, no link).',
+  NoX: 'You don’t have an X handle to remove.',
 };
 
 /** Turn any wallet / RPC / revert error into one readable sentence. */

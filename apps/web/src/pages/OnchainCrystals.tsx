@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { formatUnits, type Address } from 'viem';
 import { simulateContract, writeContract } from 'wagmi/actions';
 import {
@@ -21,14 +21,15 @@ import { Change, EthPrice, formatEth } from '../components/ui';
 import { LoadingStage } from '../components/LoadingStage';
 import { useTestnetTokens, type LiveToken } from '../data/chain';
 import { realCrystalHistory } from '../data/crystalHoldings';
+import { valueCrystal, type MarketOf, type Valued } from '../data/crystalValue';
 import { earliestForge, useMyCrystals, type OnchainCrystal } from '../data/crystals';
-import { Owner, useName } from '../data/names';
+import { OwnerChip, useProfile, type Profile } from '../data/profiles';
+import { ClaimBanner } from '../components/ClaimBanner';
 import { TARGET_CHAIN, wagmiConfig } from '../wallet/config';
 import { DepositForm } from '../wallet/DepositForm';
 import { StepList, useTxSteps } from '../wallet/steps';
 import { SwitchNetworkButton, useWallet } from '../wallet/WalletButton';
 
-const DEFAULT_VOLATILITY = 0.4;
 type Tab = 'holdings' | 'withdraw' | 'add' | 'seal' | 'burn';
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'holdings', label: 'Holdings' },
@@ -43,35 +44,6 @@ const fmtAmount = (v: bigint, d: number) =>
 const fmtDate = (unix: number) => new Date(unix * 1000).toLocaleString();
 const isSealed = (c: OnchainCrystal) => c.sealedUntil * 1000 > Date.now();
 
-type MarketOf = (token: Address | null) => LiveToken | undefined;
-
-/** One crystal's contents valued at live prices: rows, 3D holdings, total and its 24h move. */
-function valueCrystal(crystal: OnchainCrystal, marketOf: MarketOf) {
-  const rows = crystal.assets.map((a) => {
-    const m = marketOf(a.token);
-    const qty = Number(formatUnits(a.amount, a.decimals));
-    const ethValue = m?.market.eth != null ? qty * m.market.eth : null;
-    const usdValue = m?.market.usd != null ? qty * m.market.usd : null;
-    return { a, m, ethValue, usdValue };
-  });
-  const weights = valueWeights(rows.map((r) => r.ethValue));
-  const holdings: Holding[] = rows.map((r, i) => ({
-    symbol: r.a.symbol,
-    weight: weights[i]!,
-    change24h: r.m?.market.change24h ?? Number.NaN,
-    volatility: r.m?.market.volatility ?? DEFAULT_VOLATILITY,
-  }));
-  const totalEth = rows.reduce((s, r) => s + (r.ethValue ?? 0), 0);
-  const totalUsd = rows.reduce((s, r) => s + (r.usdValue ?? 0), 0);
-  // value-weighted 24h move of what is inside (null until prices are in)
-  const priced = rows
-    .map((r, i) => ({ w: weights[i]!, c: r.m?.market.change24h }))
-    .filter((x): x is { w: number; c: number } => x.c != null && Number.isFinite(x.c));
-  const wsum = priced.reduce((s, x) => s + x.w, 0);
-  const change24h = priced.length && wsum > 0 ? priced.reduce((s, x) => s + x.w * x.c, 0) / wsum : null;
-  return { rows, holdings, totalEth, totalUsd, change24h };
-}
-type Valued = ReturnType<typeof valueCrystal>;
 
 /** What the page lets you do, shown while there is nothing of yours to show yet. */
 export function WhatYouCanDo() {
@@ -98,10 +70,12 @@ export default function OnchainCrystals() {
   const { address, onTarget } = useWallet();
   const deployment = getDeployment(TARGET_CHAIN.id);
   const crystals = useMyCrystals(address);
-  const { name } = useName(address);
+  const { profile } = useProfile(address);
   // price history must reach back to the oldest crystal's forge block
   const live = useTestnetTokens(earliestForge(crystals.data));
-  const [selectedId, setSelectedId] = useState<bigint | null>(null);
+  // ?id=N (from a profile's crystal grid) opens that crystal
+  const [params] = useSearchParams();
+  const [selectedId, setSelectedId] = useState<bigint | null>(() => (/^\d+$/.test(params.get('id') ?? '') ? BigInt(params.get('id')!) : null));
 
   const market = useMemo(() => {
     const m = new Map<string, LiveToken>();
@@ -155,6 +129,7 @@ export default function OnchainCrystals() {
     <PageScroll>
       {header}
       {!onTarget && <SwitchNetworkButton />}
+      {list.length > 0 && address && <ClaimBanner address={address} />}
       {crystals.isLoading && <LoadingStage label="Reading your crystals from the chain…" />}
       {crystals.isError && <p className="text-sm text-down">Couldn’t read crystals: {(crystals.error as Error).message.split('\n')[0]}</p>}
       {empty && <WhatYouCanDo />}
@@ -221,7 +196,7 @@ export default function OnchainCrystals() {
                   valued={valued.get(selected.id)!}
                   history={histories.get(selected.id)}
                   owner={address!}
-                  ownerName={name}
+                  ownerProfile={profile}
                   contract={deployment.prismCrystal}
                   onChanged={() => crystals.refetch()}
                 />
@@ -292,20 +267,23 @@ function CrystalView(props: {
   valued: Valued;
   history?: CrystalHistory;
   owner: Address;
-  ownerName: string | null;
+  ownerProfile: Profile;
   contract: Address;
   onChanged: () => void;
 }) {
   const { crystal, valued, history } = props;
   const sealed = isSealed(crystal);
   const [tab, setTab] = useState<Tab>('holdings');
-  const form = { crystal, owner: props.owner, ownerName: props.ownerName, contract: props.contract, onChanged: props.onChanged };
+  const form = { crystal, owner: props.owner, ownerProfile: props.ownerProfile, contract: props.contract, onChanged: props.onChanged };
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <h2 className="font-display text-3xl font-bold tracking-[-0.03em]">Crystal #{crystal.id.toString()}</h2>
+          <p className="mt-2 flex items-center gap-1.5 text-xs text-mist">
+            owner <OwnerChip address={props.owner} profile={props.ownerProfile} size={18} className="text-white" />
+          </p>
           {sealed && <p className="label mt-2 text-[#bfe6ff]">Sealed until {fmtDate(crystal.sealedUntil)}</p>}
         </div>
         {valued.totalEth > 0 && <EthPrice eth={valued.totalEth} usd={valued.totalUsd || null} />}
@@ -384,7 +362,7 @@ const TAB_HELP: Record<Tab, string> = {
   burn: 'Take everything out and destroy the crystal. Use this when you are done with it.',
 };
 
-type FormProps = { crystal: OnchainCrystal; owner: Address; ownerName?: string | null; contract: Address; onChanged: () => void };
+type FormProps = { crystal: OnchainCrystal; owner: Address; ownerProfile?: Profile; contract: Address; onChanged: () => void };
 
 function SealedNotice({ crystal }: { crystal: OnchainCrystal }) {
   return (
@@ -394,7 +372,7 @@ function SealedNotice({ crystal }: { crystal: OnchainCrystal }) {
   );
 }
 
-function WithdrawForm({ crystal, owner, ownerName, contract, onChanged, sealed }: FormProps & { sealed: boolean }) {
+function WithdrawForm({ crystal, owner, ownerProfile, contract, onChanged, sealed }: FormProps & { sealed: boolean }) {
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const { steps, running, run } = useTxSteps();
   if (sealed) return <SealedNotice crystal={crystal} />;
@@ -462,7 +440,7 @@ function WithdrawForm({ crystal, owner, ownerName, contract, onChanged, sealed }
         <p key={p} className="text-xs text-down">· {p}</p>
       ))}
       <p className="text-xs text-mist">
-        Sends to your connected wallet (<Owner address={owner} name={ownerName} />).
+        Sends to your connected wallet: <OwnerChip address={owner} profile={ownerProfile} size={16} className="text-white" />
       </p>
       <button className="btn btn-primary w-full" disabled={running || chosen.length === 0 || problems.length > 0} onClick={go}>
         {running ? 'Working…' : 'Withdraw'}

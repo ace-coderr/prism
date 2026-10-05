@@ -9,8 +9,8 @@ import {
   prismCrystalBytecode,
   prismForgeRouterAbi,
   prismForgeRouterBytecode,
-  prismNamesAbi,
-  prismNamesBytecode,
+  prismProfilesAbi,
+  prismProfilesBytecode,
   routerDeployArgs,
 } from '@prism/core';
 import { Panel } from '../components/ui';
@@ -102,7 +102,7 @@ export default function Deploy() {
       )}
 
       <RouterDeploy />
-      <NamesDeploy />
+      <ProfilesDeploy />
     </PageScroll>
   );
 }
@@ -203,28 +203,32 @@ function RouterDeploy() {
   );
 }
 
-/** Deploys PrismNames (on-chain usernames) from the connected wallet. No constructor arguments. */
-function NamesDeploy() {
+/** Deploys PrismProfiles (usernames, crystal avatars, bios, X handles) from the connected wallet. */
+function ProfilesDeploy() {
   const { address, isConnected, onTarget } = useWallet();
   const { steps, running, run } = useTxSteps();
   const [deployed, setDeployed] = useState<{ address: Address; block: bigint } | null>(null);
-  const existing = getDeployment(TARGET_CHAIN.id)?.prismNames;
+  const d = getDeployment(TARGET_CHAIN.id);
+  const crystal = d?.prismCrystal;
+  const existing = d?.prismProfiles;
 
   const deploy = () =>
+    crystal &&
     run([
       {
-        label: 'Deploy PrismNames',
-        send: () => deployContract(wagmiConfig, { abi: prismNamesAbi, bytecode: prismNamesBytecode, chainId: TARGET_CHAIN.id }),
+        label: 'Deploy PrismProfiles',
+        send: () => deployContract(wagmiConfig, { abi: prismProfilesAbi, bytecode: prismProfilesBytecode, args: [crystal], chainId: TARGET_CHAIN.id }),
         after: (r) => r.contractAddress && setDeployed({ address: r.contractAddress, block: r.blockNumber }),
       },
     ]);
 
   return (
     <>
-      <h2 className="headline mt-10 text-2xl">Deploy PrismNames</h2>
+      <h2 className="headline mt-10 text-2xl">Deploy PrismProfiles</h2>
       <p className="text-sm text-mist">
-        On-chain usernames: one name per address, 3–20 characters of a–z, 0–9 and _, first come first served. No owner, no
-        admin, no fees, no upgrades, so nobody can take or reassign a name. Tested but not audited.
+        Public profiles: a unique username (3–20 characters of a–z, 0–9 and _, first come first served), one of your crystals
+        as avatar (only while you own it), a one-line bio and an X handle. No owner, no admin, no fees, no upgrades: only an
+        address can change its own profile. Tested but not audited.
       </p>
       {existing && (
         <Panel className="border-lime/40 p-4 text-sm">
@@ -236,19 +240,25 @@ function NamesDeploy() {
         </Panel>
       )}
       <Panel className="space-y-4 p-4">
+        <p className="label text-mist">Fixed at deploy (can never change)</p>
+        {crystal ? (
+          <p className="font-mono text-[11px] text-white/90">PrismCrystal (avatars come from here): {crystal}</p>
+        ) : (
+          <p className="text-sm text-down">Deploy PrismCrystal first.</p>
+        )}
         <div className="flex flex-wrap items-center gap-3">
-          <button className="btn btn-primary" disabled={!onTarget || running || !!deployed || !!existing} onClick={deploy}>
-            {running ? 'Deploying…' : deployed ? 'Deployed' : 'Deploy PrismNames'}
+          <button className="btn btn-primary" disabled={!crystal || !onTarget || running || !!deployed || !!existing} onClick={deploy}>
+            {running ? 'Deploying…' : deployed ? 'Deployed' : 'Deploy PrismProfiles'}
           </button>
           {!isConnected && <span className="text-xs text-mist">Connect a wallet first.</span>}
           {isConnected && !onTarget && <span className="text-xs text-mist">Switch to Robinhood Chain Testnet first.</span>}
         </div>
-        <p className="text-xs text-mist/80">A contract-creation transaction of about 580k gas (a little test ETH). Deployer: {address ?? '—'}</p>
+        <p className="text-xs text-mist/80">A contract-creation transaction of about 1.35M gas (a little test ETH). Deployer: {address ?? '—'}</p>
         <StepList steps={steps} />
       </Panel>
       {deployed && (
         <Panel className="space-y-2 border-lime/50 p-4">
-          <p className="label text-lime">PrismNames deployed</p>
+          <p className="label text-lime">PrismProfiles deployed</p>
           <p className="break-all font-mono text-sm text-white">{deployed.address}</p>
           <p className="text-xs text-mist">Block {deployed.block.toString()}</p>
           <div className="flex flex-wrap gap-3 pt-1">
@@ -260,9 +270,9 @@ function NamesDeploy() {
             </button>
           </div>
           <p className="pt-2 text-sm">
-            <b>Next:</b> paste this address back to Claude in chat. It goes into <code className="font-mono text-lime">prismNames</code> in{' '}
-            <code className="font-mono text-lime">packages/core/src/deployments.ts</code>, which switches on “Set username”, and the source
-            gets verified on the explorer.
+            <b>Next:</b> paste this address back to Claude in chat. It goes into <code className="font-mono text-lime">prismProfiles</code> in{' '}
+            <code className="font-mono text-lime">packages/core/src/deployments.ts</code>, which switches on profiles (names, avatars, bios,
+            Edit profile), and the source gets verified on the explorer.
           </p>
         </Panel>
       )}

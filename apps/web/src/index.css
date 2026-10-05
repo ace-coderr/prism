@@ -66,7 +66,15 @@ body {
     border: 1px solid rgba(212, 240, 0, 0.6);
   }
   .btn-secondary:hover { background: rgba(212, 240, 0, 0.06); }
-  .btn:disabled { cursor: not-allowed; opacity: 0.55; box-shadow: none; }
+  /* disabled looks disabled: grey, no lime, no glow */
+  .btn:disabled,
+  .btn:disabled:hover {
+    cursor: not-allowed;
+    background: #1c2024;
+    color: #6b737a;
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: none;
+  }
   .btn { transition: background-color 0.15s, box-shadow 0.15s, color 0.15s, transform 0.12s; }
   .btn:not(:disabled):active { transform: scale(0.97); }
   .btn-outline {
@@ -139,6 +147,8 @@ body {
   .chip:hover { color: #fff; border-color: #3a4046; }
   .chip-on { color: #101214; background: var(--color-lime); border-color: var(--color-lime); }
   .chip-on:hover { color: #101214; border-color: var(--color-lime); }
+  .chip:disabled,
+  .chip:disabled:hover { cursor: not-allowed; color: #4f565c; border-color: var(--color-line); background: transparent; }
 }
 
 /* slider styling */

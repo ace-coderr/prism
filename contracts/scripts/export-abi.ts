@@ -10,7 +10,7 @@ import path from 'node:path';
 const CONTRACTS = [
   { name: 'PrismCrystal', file: 'prismCrystal.ts', id: 'prismCrystal' },
   { name: 'PrismForgeRouter', file: 'prismForgeRouter.ts', id: 'prismForgeRouter' },
-  { name: 'PrismNames', file: 'prismNames.ts', id: 'prismNames' },
+  { name: 'PrismProfiles', file: 'prismProfiles.ts', id: 'prismProfiles' },
 ];
 
 const outDir = path.join(__dirname, '../../packages/core/src/abi');

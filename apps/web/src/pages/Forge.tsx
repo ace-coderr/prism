@@ -22,6 +22,7 @@ import { PageHeader, PageScroll } from '../components/PageHeader';
 import { Stage } from '../components/Stage';
 import { Change, EthPrice, formatEth } from '../components/ui';
 import { GuideNote } from '../components/Viber';
+import { ClaimBanner } from '../components/ClaimBanner';
 import { Logo } from '../components/Nav';
 import { DEFAULT_VOLATILITY } from '../data/crystalHoldings';
 import { useTestnetTokens, type LiveToken } from '../data/chain';
@@ -496,6 +497,8 @@ export default function Forge() {
         subtitle="Put test stocks and ETH into one crystal that lives in your wallet. Four short steps."
         guide={guide}
       />
+      {/* right after a first forge: invite them to claim a name (hidden until profiles exist) */}
+      {forgedId !== null && address && <ClaimBanner address={address} />}
 
       <div className="grid grid-cols-12 gap-6">
         {/* ------------------------------------------------------------ wizard (7/12) */}

@@ -22,7 +22,7 @@ interface StageProps {
  * gold (instance colors > 1) glows, and a market-screen backdrop that is
  * dropped on touch devices and whenever the frame rate dips.
  */
-export function Stage({ children, camera, className, bloom = true, backdrop = true }: StageProps) {
+export function Stage({ children, camera, className, bloom = true, backdrop = false }: StageProps) {
   const [dprMax, setDprMax] = useState(isCoarse ? 1.25 : 1.75);
   const [fx, setFx] = useState(!isCoarse);
   // canvases scrolled out of view stop rendering (no wasted frames on long pages)

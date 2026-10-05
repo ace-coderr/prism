@@ -8,6 +8,19 @@ const hex = (c: string) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16))
 const shade = ([r, g, b]: number[], k: number) => `rgb(${Math.min(255, r! * k) | 0},${Math.min(255, g! * k) | 0},${Math.min(255, b! * k) | 0})`;
 const mix = (a: number[], b: number[], t: number) => a.map((v, i) => v + (b[i]! - v) * t);
 
+/** Same lightness, new hue (0..1): the address identicon's tint. */
+function tint([r, g, b]: number[], hue: number): number[] {
+  const [R, G, B] = [r! / 255, g! / 255, b! / 255];
+  const max = Math.max(R, G, B);
+  const min = Math.min(R, G, B);
+  const l = (max + min) / 2;
+  const s = Math.max(0.55, max === min ? 0 : (max - min) / (1 - Math.abs(2 * l - 1)));
+  const k = (n: number) => (n + hue * 12) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return [f(0) * 255, f(8) * 255, f(4) * 255];
+}
+
 /** Isometric projection: looking down at the crystal from the front-right. */
 const iso = (x: number, y: number, z: number): [number, number] => [(x - z) * C30, (x + z) * 0.5 - y];
 
@@ -15,7 +28,20 @@ const iso = (x: number, y: number, z: number): [number, number] => [(x - z) * C3
  * A small static crystal: the same voxel geometry as the 3D one, drawn isometrically on
  * a 2D canvas (no WebGL context per card, so a long list stays cheap).
  */
-export function CrystalThumb({ holdings, history, sealed = false, size = 72 }: { holdings: Holding[]; history?: CrystalHistory; sealed?: boolean; size?: number }) {
+export function CrystalThumb({
+  holdings,
+  history,
+  sealed = false,
+  hue,
+  size = 72,
+}: {
+  holdings: Holding[];
+  history?: CrystalHistory;
+  sealed?: boolean;
+  /** tint (0..1) for the address identicon */
+  hue?: number;
+  size?: number;
+}) {
   const ref = useRef<HTMLCanvasElement>(null);
   const voxels = useMemo(() => {
     if (!holdings.length) return [];
@@ -65,6 +91,7 @@ export function CrystalThumb({ holdings, history, sealed = false, size = 72 }: {
     for (const v of voxels) {
       const [x, y, z] = v.position;
       let rgb = hex(v.gold ? KINTSUGI_GOLD : v.color);
+      if (hue !== undefined && !v.gold) rgb = tint(rgb, hue);
       if (sealed) rgb = mix(rgb, FROST, v.gold ? 0.35 : 0.62);
       const h = 0.5;
       // top (+y), right (+x), left (+z)
@@ -72,7 +99,7 @@ export function CrystalThumb({ holdings, history, sealed = false, size = 72 }: {
       face([P(x + h, y + h, z - h), P(x + h, y + h, z + h), P(x + h, y - h, z + h), P(x + h, y - h, z - h)], shade(rgb, 0.92));
       face([P(x - h, y + h, z + h), P(x + h, y + h, z + h), P(x + h, y - h, z + h), P(x - h, y - h, z + h)], shade(rgb, 0.7));
     }
-  }, [voxels, sealed, size]);
+  }, [voxels, sealed, size, hue]);
 
   return <canvas ref={ref} aria-hidden className="shrink-0" style={{ width: size, height: size }} />;
 }

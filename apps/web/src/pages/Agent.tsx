@@ -11,14 +11,14 @@ import { analyzeCrystal, type Analysis } from '../data/agent';
 import { useTestnetTokens, type LiveTokens } from '../data/chain';
 import { forgeWeights, holdingsFromAssets, marketLookup } from '../data/crystalHoldings';
 import { earliestForge, useMyCrystals, type OnchainCrystal } from '../data/crystals';
-import { Owner, useName } from '../data/names';
+import { OwnerChip, useProfile, type Profile } from '../data/profiles';
 import { WalletButton, useWallet } from '../wallet/WalletButton';
 
 export default function Agent() {
   const { address, isConnected } = useWallet();
   const crystals = useMyCrystals(address);
   const live = useTestnetTokens(earliestForge(crystals.data));
-  const { name } = useName(address);
+  const { profile } = useProfile(address);
   const list = crystals.data ?? [];
   const [selectedId, setSelectedId] = useState<bigint | null>(null);
   const selected = list.find((c) => c.id === selectedId) ?? list[0];
@@ -79,7 +79,7 @@ export default function Agent() {
         </div>
       )}
       {selected && address && view && (
-        <CrystalAnalysis key={selected.id.toString()} crystal={selected} view={view} owner={address} ownerName={name} />
+        <CrystalAnalysis key={selected.id.toString()} crystal={selected} view={view} owner={address} ownerProfile={profile} />
       )}
     </PageScroll>
   );
@@ -126,12 +126,12 @@ function CrystalAnalysis({
   crystal,
   view,
   owner,
-  ownerName,
+  ownerProfile,
 }: {
   crystal: OnchainCrystal;
   view: NonNullable<ReturnType<typeof useAnalysis>>;
   owner: Address;
-  ownerName: string | null;
+  ownerProfile: Profile;
 }) {
   const { analysis, holdings, after } = view;
   if (!analysis) return <LoadingStage label="Reading live prices…" />;
@@ -140,7 +140,7 @@ function CrystalAnalysis({
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <h2 className="font-display text-3xl font-bold tracking-[-0.03em]">Crystal #{crystal.id.toString()}</h2>
         <p className="font-mono text-xs text-mist">
-          owned by <Owner address={owner} name={ownerName} className="text-white" />
+          owned by <OwnerChip address={owner} profile={ownerProfile} size={18} className="text-white" />
         </p>
       </div>
       <div className="grid grid-cols-12 gap-6">

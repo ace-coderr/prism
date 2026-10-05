@@ -12,7 +12,7 @@ import { EthPrice } from '../components/ui';
 import { LoadingStage } from '../components/LoadingStage';
 import { Reveal, SectionLabel } from '../components/design';
 import { GuideNote } from '../components/Viber';
-import { Owner, useNames } from '../data/names';
+import { OwnerChip, useProfiles, type Profile } from '../data/profiles';
 import { holdingsFromAssets, marketLookup, realCrystalHistory } from '../data/crystalHoldings';
 import { useTestnetTokens } from '../data/chain';
 import { earliestForge, useGalleryCrystals, type PublicCrystal } from '../data/crystals';
@@ -140,7 +140,7 @@ function CrystalScene({ items, interactive }: { items: SceneItem[]; interactive:
 const fmtQty = (v: bigint, d: number) =>
   Number(formatUnits(v, d)).toLocaleString('en-US', { maximumFractionDigits: 4 });
 
-function RealCrystalCard({ c, totalEth, name }: { c: PublicCrystal; totalEth: number; name?: string }) {
+function RealCrystalCard({ c, totalEth, profile }: { c: PublicCrystal; totalEth: number; profile?: Profile }) {
   const sealed = c.sealedUntil * 1000 > Date.now();
   return (
     <div className="card card-hover h-full p-7">
@@ -149,7 +149,8 @@ function RealCrystalCard({ c, totalEth, name }: { c: PublicCrystal; totalEth: nu
         {totalEth > 0 && <EthPrice eth={totalEth} />}
       </div>
       <p className="mt-2 font-mono text-[11px] text-mist">
-        owner <Owner address={c.owner} name={name} className={name ? 'text-white' : ''} />
+        <span className="mr-1.5">owner</span>
+        <OwnerChip address={c.owner} profile={profile} size={18} className="text-white" />
         {sealed ? ' · ❄ sealed gift' : ''}
       </p>
       <ul className="mt-6 flex flex-wrap gap-2">
@@ -171,8 +172,8 @@ export default function Gallery() {
   const live = useTestnetTokens(earliestForge(gallery.crystals ?? undefined));
   const marketOf = useMemo(() => marketLookup(live.status === 'live' ? live.tokens : undefined), [live]);
   const real = useMemo(() => gallery.crystals ?? [], [gallery.crystals]);
-  const names = useNames(real.map((c) => c.owner));
-  const nameOf = (owner: string) => names.get(owner.toLowerCase());
+  const profiles = useProfiles(real.map((c) => c.owner));
+  const profileOf = (owner: string) => profiles.get(owner.toLowerCase());
   // stable per crystal, so each 3D crystal is only rebuilt when its data changes
   const shapes = useMemo(
     () =>
@@ -193,7 +194,7 @@ export default function Gallery() {
     holdings: shapes.get(c.id)!.holdings,
     history: shapes.get(c.id)!.history,
     label: `#${c.id}`,
-    sublabel: nameOf(c.owner) ? atName(nameOf(c.owner)!) : shortAddress(c.owner),
+    sublabel: profileOf(c.owner)?.name ? atName(profileOf(c.owner)!.name!) : shortAddress(c.owner),
     sealed: c.sealedUntil * 1000 > Date.now(),
   }));
   return (
@@ -243,7 +244,7 @@ export default function Gallery() {
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {real.map((c, i) => (
               <Reveal key={c.id.toString()} delay={Math.min(i, 6) * 0.06}>
-                <RealCrystalCard c={c} totalEth={holdingsFromAssets(c.assets, marketOf).totalEth} name={nameOf(c.owner)} />
+                <RealCrystalCard c={c} totalEth={holdingsFromAssets(c.assets, marketOf).totalEth} profile={profileOf(c.owner)} />
               </Reveal>
             ))}
           </div>

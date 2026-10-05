@@ -23,6 +23,7 @@ const GOLD_HDR = new THREE.Color(2.5, 1.5, 0.24);
 /** Sealed-gift frost tint and the grey used to dim parts the legend isn't pointing at. */
 const FROST = new THREE.Color('#d6f1ff');
 const DIM = new THREE.Color('#23282c');
+const hsl = { h: 0, s: 0, l: 0 };
 
 export type CrystalFocus = 'size' | 'color' | 'spikes' | 'gold' | 'frost';
 
@@ -71,6 +72,8 @@ export interface CrystalProps {
   assemble?: boolean;
   /** Sway gently around the gold seam (kept facing the camera) instead of spinning. */
   sway?: boolean;
+  /** Tint every cube with this hue (0..1), keeping its lightness: the address identicon. */
+  hue?: number;
   onClick?: (e: ThreeEvent<MouseEvent>) => void;
   onPointerOver?: (e: ThreeEvent<PointerEvent>) => void;
   onPointerOut?: (e: ThreeEvent<PointerEvent>) => void;
@@ -90,6 +93,7 @@ export function Crystal({
   sealed = false,
   assemble = false,
   sway = false,
+  hue,
   onClick,
   onPointerOver,
   onPointerOut,
@@ -129,6 +133,10 @@ export function Crystal({
       h.setMatrixAt(i, m);
       if (v.gold) col.copy(GOLD_HDR);
       else col.set(v.color);
+      if (hue !== undefined && !v.gold) {
+        col.getHSL(hsl);
+        col.setHSL(hue, Math.max(0.55, hsl.s), hsl.l);
+      }
       const frost = sealed || focus === 'frost';
       if (frost) col.lerp(FROST, v.gold ? 0.35 : 0.62);
       if (focus && focus !== 'frost') {
@@ -149,7 +157,7 @@ export function Crystal({
     if (b.instanceColor) b.instanceColor.needsUpdate = true;
     b.computeBoundingSphere();
     h.computeBoundingSphere();
-  }, [voxels, capacity, focus, sealed, biggest]);
+  }, [voxels, capacity, focus, sealed, biggest, hue]);
 
   // start at the fitted size; later changes ease in from useFrame
   useLayoutEffect(() => {

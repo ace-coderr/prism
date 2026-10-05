@@ -54,15 +54,26 @@ in `packages/core/src/deployments.ts`; deploy it from your wallet on the dev-onl
 V4 addresses (PoolManager, V4Quoter, Universal Router, Permit2) come from vibe/vibe's published
 config for chain 46630 and were checked on-chain.
 
-## Usernames (PrismNames)
+## Profiles (PrismProfiles)
 
-`contracts/contracts/PrismNames.sol`: one optional username per address, 3–20 characters of
-`a–z 0–9 _`, unique, first come first served; setting a new one frees the old one. No owner,
-admin, fees or upgrades. Wallet menu → **Set username** (live availability check); the Gallery,
-My Crystals and Agent then show `@name` instead of the short address (the address stays in the
-tooltip). The app also refuses names containing `vibevibe`, `vibe_vibe`, `prism`, `admin`,
-`official` or `robinhood` (a UI check only, see `contracts/SECURITY.md`). It stays off until
-`prismNames` is set in `packages/core/src/deployments.ts`; deploy it on the `/deploy` page.
+`contracts/contracts/PrismProfiles.sol`: one optional public profile per address, with:
+
+- a username: 3–20 characters of `a–z 0–9 _`, unique, first come first served; renaming frees the old one;
+- one of your crystals as avatar: checked when set, and only shown while you still own it;
+- a one-line bio of up to 120 bytes;
+- an X handle, which is unverified.
+
+`setProfile` saves several fields in one transaction, and `multicall` also clears removed ones.
+No owner, admin, fees or upgrades.
+
+In the app:
+
+- `/profile` is your profile; `/u/<name>` and `/u/<address>` are shareable public ones.
+- Each profile has a 3D avatar (your crystal, or a voxel gem generated from your address), stats, badges, your crystals and an activity feed.
+- Stats, badges and activity all come from PrismCrystal's own events; no extra contract is needed for them.
+- **Edit profile** is in the wallet menu, and owners appear as avatar + `@name` across Gallery, My Crystals and Agent.
+- The app refuses impersonation-prone words and basic profanity in names and bios. That is a UI check only (see `contracts/SECURITY.md`).
+- Everything that needs the contract stays off until `prismProfiles` is set in `packages/core/src/deployments.ts`; deploy it on the `/deploy` page.
 
 ## Explainer video
 
@@ -79,6 +90,15 @@ vibe/vibe's site, with a small credit. `npm run video:render` writes:
 | `prism-explainer.webm` | 1920×1080, VP9 (Home section 04) |
 | `prism-explainer-poster.jpg` | poster frame |
 | `prism-explainer-square.mp4` | 1080×1080, H.264 (for X) |
+
+On Home the player autoplays muted while in view (not under reduced motion) and has its own
+control bar. It has play/pause, a progress bar you can click or drag, scene markers
+(Hook, Pick, Forge, Read it, Gold seams, Gift, Trust, Start) that show their name on hover
+and jump on click, the time, and fullscreen. With a mouse the bar fades in on hover and
+while paused; on touch screens it is always shown. Keyboard: Space plays and pauses,
+←/→ skip 5 s and F toggles fullscreen. The scene times live in
+`apps/web/src/components/ExplainerVideo.tsx` (`SCENES`); keep them in step with
+`apps/video/src/Explainer.tsx`.
 
 ## Deployed contract
 

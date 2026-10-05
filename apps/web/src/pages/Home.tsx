@@ -74,7 +74,8 @@ function Hero() {
           </Reveal>
         </div>
         <div className="relative order-1 h-[34svh] min-h-[240px] lg:order-2 lg:h-[72vh] lg:max-h-[720px]">
-          <Stage className="!absolute inset-0" camera={{ position: [0, 0, 7], fov: 40 }}>
+          {/* the market-screen backdrop lives here only (never behind crystals in cards) */}
+          <Stage className="!absolute inset-0" camera={{ position: [0, 0, 7], fov: 40 }} backdrop>
             {basket ? (
               <FittedCrystal holdings={basket.holdings} history={basket.history} size={1.75} assemble sway top={0.04} bottom={0.9} />
             ) : (
@@ -391,7 +392,7 @@ function Crystalette() {
   const { basket } = useLiveBasket();
   return (
     <div className="relative h-[280px] w-[280px]">
-      <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }} backdrop={false}>
+      <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
         {basket ? (
           <FittedCrystal holdings={basket.holdings} history={basket.history} size={1.5} sway top={0.06} bottom={0.94} />
         ) : (

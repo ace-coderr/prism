@@ -137,31 +137,48 @@ keeps as ETH), and transfers the NFT to the caller.
 
 ---
 
-# PrismNames — security notes
+# PrismProfiles — security notes
 
-`contracts/PrismNames.sol` stores optional usernames: one name per address and one address per
-name, first come first served.
+`contracts/PrismProfiles.sol` stores optional public profiles, one per address: a username,
+a PrismCrystal as avatar, a one-line bio and an X handle.
 
 ## Trust model, in plain words
 
-- **No admin.** No owner, no fees, no pause, no upgrades, no reserved names. Nobody (not even
-  the deployer) can take, assign or free someone else's name. Only `msg.sender` can set or
-  clear its own name.
-- **Strict rules on-chain.** Names are 3–20 bytes, each `a–z`, `0–9` or `_` (`isValid`).
-  Uppercase, spaces, symbols and any non-ASCII byte are rejected, so look-alike Unicode names
-  (homoglyphs) can't be registered.
-- **Changing releases.** Setting a new name frees the old one in the same call (`NameCleared`
-  then `NameSet`); `clearName` frees it too. Lookups go both ways (`nameOf`, `ownerOfName`).
+- **No admin.** No owner, no fees, no pause, no upgrades, no reserved names. Only
+  `msg.sender` can set or clear its own fields; nobody (not even the deployer) can change,
+  take or free someone else's. The only thing fixed at deploy is the PrismCrystal address
+  (an immutable) that avatars come from.
+- **Names: strict rules on-chain.** 3–20 bytes, each `a–z`, `0–9` or `_` (`isValidName`),
+  unique, first come first served. Uppercase, spaces, symbols and any non-ASCII byte are
+  rejected, so look-alike Unicode names (homoglyphs) can't be registered. Renaming releases the
+  old name in the same call (`NameCleared` then `NameSet`).
+- **Avatars only count while owned.** `setAvatar` checks `ownerOf` at set time (a crystal you
+  don't own, never minted or burned reverts with `NotCrystalOwner`), and `avatarOf` /
+  `profileOf` check ownership again on every read, returning 0 once the crystal is sold,
+  gifted or burned. The stored choice is kept, so it shows again if the crystal comes back.
+  `ownerOf` is called with try/catch; it's a view call into the fixed PrismCrystal.
+- **Bios and handles are bounded.** Bio: 1–120 bytes with no control characters
+  (`isValidBio`); the contract doesn't check that the bytes are valid UTF-8, so the app decodes
+  defensively and React escapes it on display. X handle: 1–15 of `a–z A–Z 0–9 _` — a handle,
+  never a URL, so it can't smuggle a link.
+- **`setProfile` and `multicall`.** `setProfile` updates several fields at once (empty values
+  leave a field unchanged) and reverts as a whole if any value is invalid. `multicall` is
+  OpenZeppelin's (delegatecall to itself only, `msg.sender` preserved, not payable), so the
+  app can save new values and clear removed ones in one transaction.
 
 ## Known limitations
 
-1. **The blocklist is UI-only.** The app refuses names containing `vibevibe`, `vibe_vibe`,
-   `prism`, `admin`, `official` or `robinhood` before sending (`packages/core/src/names.ts`),
-   to discourage impersonation. The contract has no blocklist (that would need an admin or a
-   hard-coded list), so anyone calling it directly can still register such a name. Treat a
-   username as a nickname, never as proof of identity; the app always shows the address in the
-   tooltip.
-2. **Squatting.** First come, first served, with no fee or expiry: a name can be held forever.
-3. **Front-running.** A pending `setName` is visible in the mempool; someone could claim the
-   same name first. The transaction then reverts with `NameTaken` and nothing is lost but gas.
-4. **Unaudited.** Tests in `test/PrismNames.test.ts`. Testnet only.
+1. **The blocklist is UI-only.** The app refuses names and bios containing `vibevibe`,
+   `vibe_vibe`, `prism`, `admin`, `official` or `robinhood` (ignoring case and separators),
+   plus a basic profanity list (`packages/core/src/profiles.ts`), before sending. The contract
+   has no blocklist (that would need an admin or a hard-coded list), so anyone calling it
+   directly can still set such a name or bio. Treat a username as a nickname, never as proof of
+   identity; the app always shows the address in the tooltip and on the profile page.
+2. **X handles are unverified.** Anyone can type any handle, including a famous account's.
+   The app labels it "unverified" and links to `x.com/<handle>` with `rel="nofollow noopener"`.
+3. **Squatting.** Names are first come, first served, with no fee or expiry.
+4. **Front-running.** A pending `setName` / `setProfile` is visible in the mempool; someone
+   could claim the same name first. The transaction then reverts with `NameTaken` and nothing
+   is lost but gas.
+5. **Avatar reads cost a call.** `profileOf` makes one `ownerOf` call per read; fine for a view.
+6. **Unaudited.** Tests in `test/PrismProfiles.test.ts`. Testnet only.

@@ -7,7 +7,7 @@
     "test": "hardhat test test/PrismCrystal.test.ts test/PrismForgeRouter.test.ts test/PrismProfiles.test.ts test/gas.test.ts",
     "gas": "cross-env REPORT_GAS=1 hardhat test",
     "export-abi": "hardhat run scripts/export-abi.ts",
-    "test:fork": "cross-env FORK=1 hardhat test test/fork/PrismForgeRouter.fork.test.ts"
+    "test:fork": "cross-env FORK=1 hardhat test test/fork/PrismForgeRouter.fork.test.ts test/fork/PrismGift.fork.test.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",

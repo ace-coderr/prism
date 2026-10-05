@@ -91,6 +91,15 @@ describe('friendlyError', () => {
     expect(revertMessage('TooManyAssets')).toMatch(/at most 8/);
   });
 
+  it('still reads the error when only its selector is known (a send that reverts after its simulation)', () => {
+    // writeContract decodes with the one-function ABI simulateContract hands it: no errors in it
+    const sealOnly = prismCrystalAbi.filter((i) => i.type === 'function' && i.name === 'seal');
+    const data = encodeErrorResult({ abi: prismCrystalAbi, errorName: 'SealMustBeInFuture' });
+    const revert = new ContractFunctionRevertedError({ abi: sealOnly, data, functionName: 'seal' });
+    expect(revert.signature).toBe('0x652df886');
+    expect(friendlyError(new BaseError('send failed', { cause: revert }))).toBe('The seal date must be in the future.');
+  });
+
   it('recognizes insufficient funds and falls back to the short message', () => {
     expect(friendlyError(new BaseError('insufficient funds for gas * price + value'))).toMatch(/Not enough ETH/);
     expect(friendlyError(new BaseError('Something odd'))).toBe('Something odd');

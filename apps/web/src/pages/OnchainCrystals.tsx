@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { formatUnits, type Address } from 'viem';
 import { simulateContract, writeContract } from 'wagmi/actions';
@@ -8,15 +9,20 @@ import {
   holdingShades,
   localDateTimeToUnix,
   normalizeHoldings,
+  opensIn,
   parseTokenAmount,
   prismCrystalAbi,
   valueWeights,
+  atName,
   type CrystalHistory,
+  type Gift,
   type Holding,
 } from '@prism/core';
 import { AssetDots } from '../components/AssetDots';
 import { FittedCrystal } from '../components/Crystal';
 import { CrystalThumb } from '../components/CrystalThumb';
+import { GiftCard, GiftIcon } from '../components/GiftCard';
+import { SHARE, ShareOnX } from '../components/ShareOnX';
 import { GuideNote } from '../components/Viber';
 import { PageHeader, PageScroll } from '../components/PageHeader';
 import { Stage } from '../components/Stage';
@@ -26,19 +32,22 @@ import { useTestnetTokens, type LiveToken } from '../data/chain';
 import { realCrystalHistory } from '../data/crystalHoldings';
 import { valueCrystal, type MarketOf, type Valued } from '../data/crystalValue';
 import { earliestForge, useMyCrystals, type OnchainCrystal } from '../data/crystals';
-import { OwnerChip, useProfile, type Profile } from '../data/profiles';
+import { useGiftNote, useNow, useOpenedGifts, useReceivedGifts } from '../data/gifts';
+import { OwnerChip, shortAddress, useProfile, useProfiles, type Profile } from '../data/profiles';
 import { ClaimBanner } from '../components/ClaimBanner';
 import { TARGET_CHAIN, wagmiConfig } from '../wallet/config';
 import { DepositForm } from '../wallet/DepositForm';
+import { GiftForm, type SentGift } from '../wallet/GiftForm';
 import { StepList, useTxSteps } from '../wallet/steps';
 import { SwitchNetworkButton, useWallet } from '../wallet/WalletButton';
 
-type Tab = 'holdings' | 'withdraw' | 'add' | 'seal' | 'burn';
+type Tab = 'holdings' | 'withdraw' | 'add' | 'seal' | 'gift' | 'burn';
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'holdings', label: 'Holdings' },
   { id: 'withdraw', label: 'Withdraw' },
   { id: 'add', label: 'Add' },
   { id: 'seal', label: 'Seal' },
+  { id: 'gift', label: 'Gift' },
   { id: 'burn', label: 'Burn' },
 ];
 
@@ -53,7 +62,7 @@ export function WhatYouCanDo() {
   const items = [
     { t: 'Holdings', d: 'See every token inside each crystal and what it is worth in ETH.' },
     { t: 'Withdraw & add', d: 'Take tokens out to your wallet, or put more in. Only you can.' },
-    { t: 'Seal', d: 'Lock a crystal until a date, like a wrapped gift you can still send.' },
+    { t: 'Seal & gift', d: 'Lock a crystal until a date, or give it to someone with a note.' },
     { t: 'Burn', d: 'Empty everything back to your wallet and retire the crystal.' },
   ];
   return (
@@ -93,6 +102,26 @@ export default function OnchainCrystals() {
   const valued = useMemo(() => new Map(list.map((c) => [c.id, valueCrystal(c, marketOf)])), [list, marketOf]);
   const histories = useMemo(() => new Map(list.map((c) => [c.id, realCrystalHistory(live, c)])), [list, live]);
 
+  // gifts: one you just sent, and the ones you received (wrapped until you unwrap them)
+  const queryClient = useQueryClient();
+  const [sent, setSent] = useState<SentGift | null>(null);
+  const received = useReceivedGifts(address);
+  const opened = useOpenedGifts(address);
+  const senders = useProfiles([...received.gifts.values()].map((g) => g.from));
+  const now = useNow();
+  const onGifted = (g: SentGift) => {
+    setSent(g);
+    crystals.refetch();
+    queryClient.invalidateQueries({ queryKey: ['crystal-events'] });
+    queryClient.invalidateQueries({ queryKey: ['all-crystals'] });
+  };
+  const giftFor = (c: OnchainCrystal) => {
+    const g = received.gifts.get(c.id);
+    if (!g) return undefined;
+    const sender = senders.get(g.from.toLowerCase());
+    return { gift: g, sender, fromLabel: sender?.name ? atName(sender.name) : shortAddress(g.from), wrapped: opened.isWrapped(c.id), open: () => opened.markOpened(c.id) };
+  };
+
   const empty = crystals.isSuccess && list.length === 0;
   const guide = !deployment ? (
     <GuideNote index={7}>The PRISM contract isn’t deployed on Robinhood Chain Testnet yet, so there are no crystals to show.</GuideNote>
@@ -114,7 +143,7 @@ export default function OnchainCrystals() {
       label="My crystals"
       lead="Your"
       accent="crystals."
-      subtitle="The crystals in your wallet and what is inside each one. Take things out, add more, or seal one as a gift."
+      subtitle="The crystals in your wallet and what is inside each one. Take things out, add more, or give one as a gift."
       guide={guide}
     />
   );
@@ -132,6 +161,22 @@ export default function OnchainCrystals() {
     <PageScroll>
       {header}
       {!onTarget && <SwitchNetworkButton />}
+      {sent && (
+        <section aria-live="polite" className="flex flex-wrap items-center gap-4 rounded-[20px] border border-lime/40 bg-lime/[0.06] p-5">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-lime/40 text-lime">
+            <GiftIcon size={20} />
+          </span>
+          <p className="min-w-0 flex-1 text-white">
+            Sent! Crystal #{sent.id.toString()} now belongs to <b>{sent.toLabel}</b>.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <ShareOnX text={SHARE.gift(sent.id)} className="btn btn-primary" />
+            <Link to={`/gift/${sent.id}`} className="btn btn-outline">
+              See the gift page
+            </Link>
+          </div>
+        </section>
+      )}
       {list.length > 0 && address && <ClaimBanner address={address} />}
       {crystals.isLoading && <LoadingStage label="Reading your crystals from the chain…" />}
       {crystals.isError && <p className="text-sm text-down">Couldn’t read crystals: {(crystals.error as Error).message.split('\n')[0]}</p>}
@@ -186,6 +231,8 @@ export default function OnchainCrystals() {
                       priced={priced}
                       active={selected?.id === c.id}
                       onSelect={() => setSelectedId(c.id)}
+                      gift={giftFor(c)}
+                      now={now}
                     />
                   </li>
                 ))}
@@ -202,6 +249,9 @@ export default function OnchainCrystals() {
                   ownerProfile={profile}
                   contract={deployment.prismCrystal}
                   onChanged={() => crystals.refetch()}
+                  onGifted={onGifted}
+                  gift={giftFor(selected)}
+                  now={now}
                 />
               )}
             </div>
@@ -221,9 +271,30 @@ function Stat({ label, value }: { label: ReactNode; value: ReactNode }) {
   );
 }
 
-function CrystalCard(props: { crystal: OnchainCrystal; valued: Valued; history?: CrystalHistory; priced: boolean; active: boolean; onSelect: () => void }) {
-  const { crystal, valued, history, priced, active, onSelect } = props;
+/** A received gift as the page shows it: who sent it, and whether it's still wrapped here. */
+interface ReceivedGift {
+  gift: Gift;
+  sender?: Profile;
+  fromLabel: string;
+  wrapped: boolean;
+  open: () => void;
+}
+
+function CrystalCard(props: {
+  crystal: OnchainCrystal;
+  valued: Valued;
+  history?: CrystalHistory;
+  priced: boolean;
+  active: boolean;
+  onSelect: () => void;
+  gift?: ReceivedGift;
+  now: number;
+}) {
+  const { crystal, valued, history, priced, active, onSelect, gift, now } = props;
   const sealed = isSealed(crystal);
+  // a gift still in its wrapping shows frosted, like a sealed one
+  const iced = sealed || !!gift?.wrapped;
+  const left = sealed && gift ? opensIn(crystal.sealedUntil, now) : null;
   return (
     <button
       type="button"
@@ -235,9 +306,15 @@ function CrystalCard(props: { crystal: OnchainCrystal; valued: Valued; history?:
     >
       <span className="flex w-full items-center gap-4">
         <span className="grid h-[72px] w-[72px] shrink-0 place-items-center rounded-2xl bg-ink">
-          <CrystalThumb holdings={valued.holdings} history={history} sealed={sealed} size={64} />
+          <CrystalThumb holdings={valued.holdings} history={history} sealed={iced} size={64} />
         </span>
         <span className="min-w-0 flex-1">
+          {gift && (
+            <span className="mb-1 flex items-center gap-1.5 truncate font-mono text-[10px] uppercase tracking-[0.12em] text-[#bfe6ff]">
+              <GiftIcon size={12} />
+              <span className="truncate normal-case tracking-normal">Gift from {gift.fromLabel}</span>
+            </span>
+          )}
           <span className="flex items-center gap-2">
             <span className="font-display text-lg font-bold">#{crystal.id.toString()}</span>
             {sealed && (
@@ -251,7 +328,11 @@ function CrystalCard(props: { crystal: OnchainCrystal; valued: Valued; history?:
           </span>
           <span className="mt-1 block font-mono text-xs text-white">{priced ? formatEth(valued.totalEth) : '…'}</span>
           <span className="mt-0.5 block text-xs">
-            {valued.change24h != null ? (
+            {left ? (
+              <span className="text-[#bfe6ff]">❄ {left}</span>
+            ) : gift?.wrapped ? (
+              <span className="text-lime">Ready to unwrap</span>
+            ) : valued.change24h != null ? (
               <>
                 <Change value={valued.change24h} /> <span className="text-mist">24h</span>
               </>
@@ -264,7 +345,7 @@ function CrystalCard(props: { crystal: OnchainCrystal; valued: Valued; history?:
         </span>
       </span>
       {/* the key to the thumbnail's colours */}
-      <AssetDots holdings={valued.holdings} sealed={sealed} className="px-1 pb-0.5" />
+      <AssetDots holdings={valued.holdings} sealed={iced} className="px-1 pb-0.5" />
     </button>
   );
 }
@@ -277,11 +358,19 @@ function CrystalView(props: {
   ownerProfile: Profile;
   contract: Address;
   onChanged: () => void;
+  onGifted: (gift: SentGift) => void;
+  gift?: ReceivedGift;
+  now: number;
 }) {
-  const { crystal, valued, history } = props;
+  const { crystal, valued, history, gift, now } = props;
   const sealed = isSealed(crystal);
   const [tab, setTab] = useState<Tab>('holdings');
   const form = { crystal, owner: props.owner, ownerProfile: props.ownerProfile, contract: props.contract, onChanged: props.onChanged };
+  // a received gift: the note comes from the gift transaction; it stays wrapped until unwrapped
+  const note = useGiftNote(gift?.gift);
+  const [unwrapping, setUnwrapping] = useState(false);
+  const wrapped = !!gift?.wrapped;
+  const canUnwrap = wrapped && !sealed;
 
   return (
     <div className="flex flex-col gap-6">
@@ -295,10 +384,41 @@ function CrystalView(props: {
         </div>
         {valued.totalEth > 0 && <EthPrice eth={valued.totalEth} usd={valued.totalUsd || null} />}
       </div>
+      {gift && (
+        <GiftCard
+          label="A gift from"
+          who={gift.gift.from}
+          profile={gift.sender}
+          note={note.data ?? null}
+          noteLoading={note.isLoading}
+          unlock={sealed ? crystal.sealedUntil : 0}
+          now={now}
+          opened={!wrapped}
+        >
+          {canUnwrap && (
+            <button type="button" className="btn btn-primary" disabled={unwrapping} onClick={() => setUnwrapping(true)}>
+              {unwrapping ? 'Unwrapping…' : 'Unwrap'}
+            </button>
+          )}
+        </GiftCard>
+      )}
       <div className="relative h-[320px] overflow-hidden rounded-[24px] border border-white/[0.08] sm:h-[420px]">
         <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
           {valued.holdings.length > 0 && (
-            <FittedCrystal holdings={valued.holdings} history={history} sealed={sealed} size={1.6} spin={0.2} top={0.08} bottom={0.92} />
+            <FittedCrystal
+              holdings={valued.holdings}
+              history={history}
+              sealed={sealed || wrapped}
+              unwrapping={unwrapping}
+              onUnwrapped={() => {
+                gift?.open();
+                setUnwrapping(false);
+              }}
+              size={1.6}
+              spin={0.2}
+              top={0.08}
+              bottom={0.92}
+            />
           )}
         </Stage>
       </div>
@@ -325,6 +445,17 @@ function CrystalView(props: {
           {tab === 'withdraw' && <WithdrawForm {...form} sealed={sealed} />}
           {tab === 'add' && <AddForm {...form} />}
           {tab === 'seal' && <SealForm {...form} />}
+          {tab === 'gift' && (
+            <GiftForm
+              crystal={crystal}
+              owner={props.owner}
+              ownerProfile={props.ownerProfile}
+              contract={props.contract}
+              holdings={valued.holdings}
+              history={history}
+              onSent={props.onGifted}
+            />
+          )}
           {tab === 'burn' && <BurnForm {...form} sealed={sealed} />}
         </div>
       </div>
@@ -371,6 +502,7 @@ const TAB_HELP: Record<Tab, string> = {
   withdraw: 'Take some or all of the tokens out of this crystal and back into your wallet.',
   add: 'Put more tokens or ETH into this crystal. It keeps everything it already holds.',
   seal: 'Lock this crystal until a date, like a wrapped gift. You can still send it to someone.',
+  gift: 'Give this crystal to someone: an @username or a 0x address, with an optional note and opening date.',
   burn: 'Take everything out and destroy the crystal. Use this when you are done with it.',
 };
 

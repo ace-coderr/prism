@@ -17,6 +17,7 @@ export const SHARE = {
   forged: (link: string) => `I just forged a crystal on @holdprism 🔮 a stock basket you can hold. Built on @vibevibefun · ${link}`,
   profile: (link: string) => `My PRISM profile 🔮 crystals, badges and gold seams: ${link}  @holdprism`,
   badge: (badge: string, link: string) => `Just earned the ${badge} badge on @holdprism 🔮 ${link}`,
+  gift: (id: bigint) => `I just gifted a PRISM crystal 🎁🔮 ${SITE}/gift/${id} @holdprism`,
 };
 
 /** X's post composer with the text filled in: no login on our side, no API. */

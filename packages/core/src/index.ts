@@ -17,5 +17,6 @@ export * from './abi/prismProfiles';
 export * from './profiles';
 export * from './activity';
 export * from './identicon';
+export * from './gifts';
 export * from './forgeFromEth';
 export type { Vec3, Quat } from './math';

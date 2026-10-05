@@ -3,7 +3,10 @@
  * without a wallet: amount parsing, pre-flight balance checks, approval planning,
  * readable errors, and crystal ownership from Transfer logs.
  */
-import { BaseError, ContractFunctionRevertedError, UserRejectedRequestError, parseUnits, type Address } from 'viem';
+import { BaseError, ContractFunctionRevertedError, UserRejectedRequestError, parseUnits, toFunctionSelector, type Abi, type Address } from 'viem';
+import { prismCrystalAbi } from './abi/prismCrystal';
+import { prismForgeRouterAbi } from './abi/prismForgeRouter';
+import { prismProfilesAbi } from './abi/prismProfiles';
 
 // ------------------------------------------------------------------ amounts
 
@@ -112,12 +115,30 @@ const REVERT_MESSAGES: Record<string, string> = {
 };
 
 /** Turn any wallet / RPC / revert error into one readable sentence. */
+let errorNames: Map<string, string> | null = null;
+/**
+ * A PRISM contract error's name from its 4-byte selector. Some nodes hand back only the
+ * selector (no revert data), and then viem can't decode it by itself.
+ */
+export function errorNameOf(selector: string): string | null {
+  if (!errorNames) {
+    errorNames = new Map();
+    for (const abi of [prismCrystalAbi, prismForgeRouterAbi, prismProfilesAbi] as Abi[]) {
+      for (const item of abi) {
+        if (item.type !== 'error') continue;
+        errorNames.set(toFunctionSelector(`${item.name}(${item.inputs.map((i) => i.type).join(',')})`), item.name);
+      }
+    }
+  }
+  return errorNames.get(selector.toLowerCase()) ?? null;
+}
+
 export function friendlyError(err: unknown): string {
   if (err instanceof BaseError) {
     if (err.walk((e) => e instanceof UserRejectedRequestError)) return 'You rejected the request in your wallet.';
     const revert = err.walk((e) => e instanceof ContractFunctionRevertedError);
     if (revert instanceof ContractFunctionRevertedError) {
-      const name = revert.data?.errorName ?? '';
+      const name = revert.data?.errorName ?? (revert.signature ? errorNameOf(revert.signature) : null) ?? '';
       if (REVERT_MESSAGES[name]) return REVERT_MESSAGES[name]!;
       if (revert.reason) return `The contract refused: ${revert.reason}`;
     }

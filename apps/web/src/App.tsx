@@ -12,6 +12,7 @@ import MyCrystals from './pages/MyCrystals';
 import Gallery from './pages/Gallery';
 import Agent from './pages/Agent';
 import Profile from './pages/Profile';
+import GiftPage from './pages/GiftPage';
 
 // One-time deploy tool: dev server only. In production builds `import.meta.env.DEV` is
 // `false`, so this branch (and the page + contract bytecode it imports) is dropped.
@@ -44,6 +45,7 @@ export default function App() {
               <Route path="/agent" element={<Agent />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/u/:id" element={<Profile />} />
+              <Route path="/gift/:id" element={<GiftPage />} />
               {Deploy && (
                 <Route
                   path="/deploy"

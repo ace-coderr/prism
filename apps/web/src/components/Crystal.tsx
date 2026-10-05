@@ -16,6 +16,7 @@ import {
 import { glowTexture, outlinedFaceTexture, toonRamp } from './textures';
 import { SceneLabel, useFitSphere } from './Stage';
 import { moveLabel, weightLabel, type LabelOf } from './AssetDots';
+import { FrostShell } from './FrostShell';
 
 const cube = new THREE.BoxGeometry(1, 1, 1);
 const OUTLINE = 1.14; // inverted-hull scale: thickness of the silhouette outline
@@ -58,6 +59,9 @@ const noRaycast = () => null;
 const isCoarse = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
 /** Seconds each cube takes to fly into place when a crystal assembles. */
 const ASSEMBLE_SECONDS = 0.75;
+/** How long unwrapping a gift takes (a short fade under prefers-reduced-motion). */
+const UNWRAP_SECONDS = 2.6;
+const UNWRAP_SECONDS_REDUCED = 0.5;
 /** A tapped holding stays picked this long (touch has no "pointer left"). */
 const TAP_HOLD_MS = 5000;
 
@@ -79,8 +83,12 @@ export interface CrystalProps {
    * ('gold'), or the sealed-gift frost ('frost').
    */
   focus?: CrystalFocus | null;
-  /** A sealed gift: the crystal is frosted over. */
+  /** A sealed (or still wrapped) gift: the crystal sits in a shell of ice with sparkles. */
   sealed?: boolean;
+  /** Plays the unwrap: the ice cracks, thaws and shatters into sparkles. */
+  unwrapping?: boolean;
+  /** Called once the unwrap animation has finished. */
+  onUnwrapped?: () => void;
   /** Cubes fly in and assemble the crystal the first time it appears. */
   assemble?: boolean;
   /** Sway gently around the gold seam (kept facing the camera) instead of spinning. */
@@ -117,6 +125,8 @@ export function Crystal({
   highlight,
   focus = null,
   sealed = false,
+  unwrapping = false,
+  onUnwrapped,
   assemble = false,
   sway = false,
   hue,
@@ -128,7 +138,7 @@ export function Crystal({
 }: CrystalProps) {
   const reduce = useReducedMotion();
   const tinted = hue !== undefined;
-  const { voxels, clusters, radius, biggest, yaw, seams } = useMemo(() => {
+  const { voxels, solid, clusters, radius, biggest, yaw, seams } = useMemo(() => {
     const geo = buildCrystal(holdings, history, {
       correlation,
       maxShards: 48,
@@ -150,7 +160,7 @@ export function Crystal({
         seams.scale[i * 3 + a] = a === s.along ? 1 + SEAM_WIDTH : s.normal[a] !== 0 ? SEAM_DEPTH : SEAM_WIDTH;
       }
     });
-    return { voxels, clusters: geo.clusters, radius: geo.radius, biggest, yaw: seamYaw(geo), seams };
+    return { voxels, solid: geo.voxels, clusters: geo.clusters, radius: geo.radius, biggest, yaw: seamYaw(geo), seams };
   }, [holdings, history, correlation, tinted]);
 
   // grow capacity in steps so the instanced buffers are rarely reallocated
@@ -232,38 +242,57 @@ export function Crystal({
     seam.current?.computeBoundingSphere();
   }, [voxels, capacity, seamCapacity, place, assemble, reduce]);
 
-  useLayoutEffect(() => {
-    const b = body.current;
-    if (!b) return;
+  /** Colour every cube; `frost` 0..1 is how iced-over it is (it fades while unwrapping). */
+  const paint = useMemo(() => {
     const col = new THREE.Color();
-    const target = picked?.cluster ?? null;
-    voxels.forEach((v, i) => {
-      if (v.gold) col.copy(GOLD_HDR);
-      else col.set(v.color);
-      if (tinted && !v.gold) {
-        col.getHSL(hsl);
-        col.setHSL(hue!, Math.max(0.55, hsl.s), hsl.l);
-      }
-      const frost = sealed || focus === 'frost';
-      if (frost) col.lerp(FROST, v.gold ? 0.35 : 0.62);
-      if (target !== null) {
-        // identify: the pointed-at holding stays as it is, the rest steps back
-        if (v.cluster !== target) col.lerp(DIM, 0.62);
-      } else if (focus && focus !== 'frost') {
-        const lit =
-          focus === 'gold'
-            ? v.gold
-            : focus === 'spikes'
-              ? v.spike
-              : focus === 'size'
-                ? v.cluster === biggest && !v.gold
-                : !v.gold && v.kind !== 'core'; // 'color'
-        if (!lit) col.lerp(DIM, 0.82);
-      }
-      b.setColorAt(i, col);
-    });
-    if (b.instanceColor) b.instanceColor.needsUpdate = true;
-  }, [voxels, capacity, focus, sealed, biggest, hue, tinted, picked]);
+    return (frost: number) => {
+      const b = body.current;
+      if (!b) return;
+      const target = picked?.cluster ?? null;
+      voxels.forEach((v, i) => {
+        if (v.gold) col.copy(GOLD_HDR);
+        else col.set(v.color);
+        if (tinted && !v.gold) {
+          col.getHSL(hsl);
+          col.setHSL(hue!, Math.max(0.55, hsl.s), hsl.l);
+        }
+        // under the ice the shades still show through
+        if (frost > 0) col.lerp(FROST, frost * (v.gold ? 0.2 : 0.3));
+        if (target !== null) {
+          // identify: the pointed-at holding stays as it is, the rest steps back
+          if (v.cluster !== target) col.lerp(DIM, 0.62);
+        } else if (focus && focus !== 'frost') {
+          const lit =
+            focus === 'gold'
+              ? v.gold
+              : focus === 'spikes'
+                ? v.spike
+                : focus === 'size'
+                  ? v.cluster === biggest && !v.gold
+                  : !v.gold && v.kind !== 'core'; // 'color'
+          if (!lit) col.lerp(DIM, 0.82);
+        }
+        b.setColorAt(i, col);
+      });
+      if (b.instanceColor) b.instanceColor.needsUpdate = true;
+    };
+  }, [voxels, focus, biggest, hue, tinted, picked]);
+
+  // ice: a sealed or still-wrapped gift (and the legend's "Frost" line); unwrapping thaws it
+  const iced = sealed || focus === 'frost';
+  const unwrapProgress = useRef<number | null>(null);
+  const unwrapStart = useRef<number | null>(null);
+  const unwrapDone = useRef(false);
+  useEffect(() => {
+    if (!unwrapping) {
+      unwrapProgress.current = null;
+      unwrapStart.current = null;
+      unwrapDone.current = false;
+    }
+  }, [unwrapping]);
+  useLayoutEffect(() => {
+    paint(iced && !(unwrapping && unwrapDone.current) ? 1 : 0);
+  }, [paint, capacity, iced, unwrapping]);
 
   // start at the fitted size; later changes ease in from useFrame
   useLayoutEffect(() => {
@@ -311,6 +340,18 @@ export function Crystal({
     if (fit.current) {
       const k = highlight ? 1.12 : 1;
       fit.current.scale.setScalar(THREE.MathUtils.damp(fit.current.scale.x, targetScale * k, 8, d));
+    }
+    // unwrap: the ice cracks, thaws and shatters while the crystal's own colours come back
+    if (unwrapping && iced && !unwrapDone.current) {
+      if (unwrapStart.current === null) unwrapStart.current = state.clock.elapsedTime;
+      const t = Math.min(1, (state.clock.elapsedTime - unwrapStart.current) / (reduce ? UNWRAP_SECONDS_REDUCED : UNWRAP_SECONDS));
+      unwrapProgress.current = t;
+      const reveal = THREE.MathUtils.smoothstep(t, 0.35, 1);
+      paint(1 - reveal);
+      if (t >= 1) {
+        unwrapDone.current = true;
+        onUnwrapped?.();
+      }
     }
     const a = assembly.current;
     if (!a || a.done) return;
@@ -388,6 +429,7 @@ export function Crystal({
         <instancedMesh key={`b${capacity}`} ref={body} args={[cube, bodyMaterial, capacity]} onPointerOver={onPointerOver} {...handlers} />
         <instancedMesh key={`h${capacity}`} ref={hull} args={[cube, outlineMaterial, capacity]} raycast={noRaycast} />
         <instancedMesh key={`s${seamCapacity}`} ref={seam} args={[cube, seamMaterial, seamCapacity]} raycast={noRaycast} />
+        {iced && !tinted && !(unwrapping && unwrapDone.current) && <FrostShell voxels={solid} unwrap={unwrapProgress} reduce={reduce} />}
         {shown && picked && (
           <SceneLabel position={picked.at} zIndexRange={[40, 30]}>
             <HoldingTag name={labelOf ? labelOf(shown.symbol) : shown.symbol} weight={shown.weight} change={shown.change24h} color={shown.color} />

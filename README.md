@@ -77,6 +77,17 @@ In the app:
 - The app refuses impersonation-prone words (`prism` in usernames only) and basic profanity in names and bios. That is a UI check only (see `contracts/SECURITY.md`).
 - Deployed and verified at `0xf7Da2Ee9dF52422eB87E8FBc3Be347a4B5611300`.
 
+## Gifts (no new contract)
+
+My Crystals → **Gift** sends a crystal with the existing PrismCrystal functions:
+
+- **To:** an `@username` (looked up on PrismProfiles) or a `0x` address; your own wallet and the zero address are refused.
+- **Note (optional, ≤ 140 characters):** sent as the `data` of `safeTransferFrom(from, to, id, data)`, UTF-8. ERC-721 neither stores nor emits it, so the app reads it back from the gift transaction's input (also when wrapped by a smart-contract wallet). Notes are public.
+- **Opens on (optional):** `seal(id, unlockTime)` runs first, while it is still yours (Seal 1/2 → Send 2/2). A seal can't be shortened, by anyone.
+- Received gifts sit in ice in My Crystals ("Gift from @name", the note, "Opens in 3d 4h"). Once open, **Unwrap** cracks, thaws and shatters the ice. Which gifts you unwrapped is kept in your browser only; without storage they simply show unwrapped.
+- `/gift/<id>` is the shareable gift page, and "Share on X" appears after sending.
+- Tests: `packages/core/test/gifts.test.ts`, plus `contracts/test/fork/PrismGift.fork.test.ts` (seal + send with a note on a fork of the testnet, read back with the app's reader).
+
 ## Explainer video
 
 `apps/video` is a Remotion project (React + TypeScript) that reuses `buildCrystal` from

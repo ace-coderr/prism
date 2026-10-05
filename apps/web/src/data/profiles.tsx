@@ -12,6 +12,8 @@ import { holdingsFromAssets, marketLookup, realCrystalHistory } from './crystalH
 import { earliestForge, useGalleryCrystals } from './crystals';
 
 export const shortAddress = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+/** "@name" once they have one, else the short address. */
+export const atNameOrShort = (a: string, name?: string | null) => (name ? atName(name) : shortAddress(a));
 
 /** The PrismProfiles contract, or undefined until it's deployed (profiles stay off). */
 export const profilesContract = (): Address | undefined => getDeployment(TARGET_CHAIN.id)?.prismProfiles;

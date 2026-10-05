@@ -16,6 +16,7 @@ describe('Share on X', () => {
     );
     expect(SHARE.profile(link)).toBe('My PRISM profile 🔮 crystals, badges and gold seams: prism-crystal.vercel.app/u/ace  @holdprism');
     expect(SHARE.badge('First Forge', link)).toBe('Just earned the First Forge badge on @holdprism 🔮 prism-crystal.vercel.app/u/ace');
+    expect(SHARE.gift(2n)).toBe('I just gifted a PRISM crystal 🎁🔮 prism-crystal.vercel.app/gift/2 @holdprism');
   });
 
   it("opens X's post composer with the text encoded (emoji, @, spaces, ·)", () => {

@@ -30,3 +30,5 @@ apps/video/public/audio/
 
 # local tool settings: stay on this computer, never committed
 .claude/
+CLAUDE.md
+CLAUDE.local.md

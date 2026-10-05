@@ -51,8 +51,9 @@ npm run test:fork -w @prism/contracts      # real swaps on a fork of the testnet
 
 In the app, Forge → **Start with ETH** (the default once the router is deployed): one ETH
 amount, a slider per stock (plus "keep as ETH"), live V4Quoter quotes, price impact with a
-plain warning above 3%, slippage 1% by default. The router is deployed and verified at
-`0xD1340ad67A4b5C0995CC050bE773ee74293fD24D` (see below).
+plain warning above 3%, slippage 1% by default (3% when ANTHROPIC or OPENAI is picked: their
+pools are thin and move fast; a note says so and it can still be changed). The router is
+deployed and verified at `0xD1340ad67A4b5C0995CC050bE773ee74293fD24D` (see below).
 
 The test-stock pools trade every few seconds and the thin pre-IPO ones (ANTHROPIC, OPENAI) can
 jump several percent between two swaps, so **Swap & forge** quotes again the moment it's pressed.

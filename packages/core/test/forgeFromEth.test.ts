@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   POOL_MANAGER,
   ROUTER_TOKENS,
+  defaultSlippageBps,
   minOut,
   minsAtSend,
   priceImpact,
@@ -9,6 +10,7 @@ import {
   routerDeployArgs,
   splitEth,
   suggestSmallerEth,
+  thinPoolNote,
   tokenById,
 } from '../src';
 
@@ -85,6 +87,30 @@ describe('forge from ETH helpers', () => {
     it('a better price is never a reason to stop', () => {
       const fresh = shownQuotes.map((q) => (q * 105n) / 100n);
       expect(minsAtSend(shownMins, fresh, 100).ok).toBe(true);
+    });
+  });
+
+  describe('starting slippage: 3% with a thin pool, else 1%', () => {
+    const pick = (...ids: string[]) => ids.map((id) => tokenById(id)!);
+
+    it('keeps 1% for AAPL, NVDA and SPCX', () => {
+      expect(defaultSlippageBps(pick('AAPL'))).toBe(100);
+      expect(defaultSlippageBps(pick('AAPL', 'NVDA', 'SPCX'))).toBe(100);
+      expect(thinPoolNote(pick('AAPL', 'NVDA', 'SPCX'))).toBeNull();
+      expect(defaultSlippageBps([])).toBe(100);
+    });
+
+    it('starts at 3% as soon as ANTHROPIC or OPENAI is in the basket', () => {
+      expect(defaultSlippageBps(pick('ANTHROPIC'))).toBe(300);
+      expect(defaultSlippageBps(pick('AAPL', 'OPENAI'))).toBe(300);
+      expect(defaultSlippageBps(pick('AAPL', 'NVDA', 'SPCX', 'ANTHROPIC', 'OPENAI'))).toBe(300);
+    });
+
+    it('says why, naming the thin pools that are picked', () => {
+      expect(thinPoolNote(pick('AAPL', 'NVDA', 'SPCX', 'ANTHROPIC', 'OPENAI'))).toBe(
+        'ANTHROPIC and OPENAI pools are thin and move fast, so a bit more room avoids failed forges.',
+      );
+      expect(thinPoolNote(pick('NVDA', 'OPENAI'))).toBe('The OPENAI pool is thin and moves fast, so a bit more room avoids failed forges.');
     });
   });
 });

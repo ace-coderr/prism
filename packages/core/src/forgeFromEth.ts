@@ -114,6 +114,28 @@ export function splitEth(total: bigint, percents: number[]): bigint[] {
   return out;
 }
 
+/**
+ * Pools thin enough to jump more than 1% between two swaps (pre-IPO test assets). With one
+ * of them in the basket, a 1% minimum fails often (measured on the testnet, 2026-10-05).
+ */
+export const THIN_POOL_IDS: readonly string[] = ['ANTHROPIC', 'OPENAI'];
+export const SLIPPAGE_BPS = 100;
+export const THIN_POOL_SLIPPAGE_BPS = 300;
+
+/** Starting slippage for a basket: 3% with a thin pool in it, else 1%. The user can change it. */
+export function defaultSlippageBps(tokens: readonly Pick<TestnetToken, 'id'>[]): number {
+  return tokens.some((t) => THIN_POOL_IDS.includes(t.id)) ? THIN_POOL_SLIPPAGE_BPS : SLIPPAGE_BPS;
+}
+
+/** Why the slippage starts higher, or null when no thin pool is picked. */
+export function thinPoolNote(tokens: readonly Pick<TestnetToken, 'id'>[]): string | null {
+  const thin = THIN_POOL_IDS.filter((id) => tokens.some((t) => t.id === id));
+  if (thin.length === 0) return null;
+  return thin.length === 1
+    ? `The ${thin[0]} pool is thin and moves fast, so a bit more room avoids failed forges.`
+    : `${thin.slice(0, -1).join(', ')} and ${thin.at(-1)} pools are thin and move fast, so a bit more room avoids failed forges.`;
+}
+
 /** The least output accepted at `slippageBps` (100 = 1%), rounded down, at least 1. */
 export function minOut(amount: bigint, slippageBps: number): bigint {
   const m = (amount * BigInt(10_000 - Math.round(slippageBps))) / 10_000n;

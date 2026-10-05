@@ -5,6 +5,7 @@ import { simulateContract, writeContract } from 'wagmi/actions';
 import {
   GAS_RESERVE_WEI,
   IMPACT_WARN,
+  defaultSlippageBps,
   evenWeights,
   minOut,
   minsAtSend,
@@ -16,6 +17,7 @@ import {
   rebalance,
   splitEth,
   suggestSmallerEth,
+  thinPoolNote,
   type TestnetToken,
 } from '@prism/core';
 import { Panel } from '../../components/ui';
@@ -57,6 +59,8 @@ export interface EthMix {
   setPercent: (i: number, value: number) => void;
   slippageBps: number;
   setSlippageBps: (bps: number) => void;
+  /** why the slippage starts at 3% (a thin pool is picked), else null */
+  thinNote: string | null;
   rows: Array<{ t: TestnetToken; percent: number; ethIn: bigint; quote: bigint | null; loading: boolean; impact: number | null; min: bigint | null }>;
   kept: bigint;
   worstImpact: number;
@@ -67,11 +71,13 @@ export interface EthMix {
 export function useEthMix(picked: TestnetToken[], markets: Map<string, LiveToken>): EthMix {
   const [ethInput, setEthInput] = useState('0.05');
   const [percents, setPercents] = useState<number[]>([100]);
-  const [slippageBps, setSlippageBps] = useState(100);
+  const [slippageBps, setSlippageBps] = useState(() => defaultSlippageBps(picked));
   const key = picked.map((t) => t.id).join(',');
-  // a new pick resets the mix: even across the stocks, nothing kept as ETH
+  // a new pick resets the mix: even across the stocks, nothing kept as ETH, and the
+  // slippage back to its default for these stocks (3% with a thin pool, else 1%)
   useEffect(() => {
     setPercents(picked.length === 0 ? [100] : [...evenWeights(picked.length), 0]);
+    setSlippageBps(defaultSlippageBps(picked));
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const total = ethInput === '' ? 0n : parseTokenAmount(ethInput, 18);
@@ -117,6 +123,7 @@ export function useEthMix(picked: TestnetToken[], markets: Map<string, LiveToken
     setPercent: (i, value) => setPercents((p) => rebalance(p, i, value)),
     slippageBps,
     setSlippageBps,
+    thinNote: thinPoolNote(picked),
     rows,
     kept: parts[picked.length] ?? 0n,
     worstImpact,
@@ -239,6 +246,7 @@ export function EthAmounts({ mix, balance, connected }: { mix: EthMix; balance?:
         ))}
         <span className="text-xs text-mist">If prices move more than this before your transaction lands, nothing happens and your ETH stays put.</span>
       </div>
+      {mix.thinNote && <p className="-mt-3 text-xs leading-relaxed text-amber-200/90">{mix.thinNote}</p>}
     </div>
   );
 }

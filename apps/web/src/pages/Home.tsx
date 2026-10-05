@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
 import { explorerAddressUrl, getDeployment } from '@prism/core';
+import { AssetDots } from '../components/AssetDots';
 import { FittedCrystal, FittedLoadingCrystal, type CrystalFocus } from '../components/Crystal';
 import { ExplainerVideo } from '../components/ExplainerVideo';
 import { Faq } from '../components/Faq';
@@ -14,6 +15,9 @@ import { LIVE_BASKET, liveBasket } from '../data/crystalHoldings';
 import { useChainStats } from '../data/crystals';
 import { useSnapshot } from '../data/snapshot';
 import { TARGET_CHAIN } from '../wallet/config';
+
+/** The live basket holds WETH for its ETH share; people know it as ETH. */
+const asEth = (symbol: string) => (symbol === 'WETH' ? 'ETH' : symbol);
 
 /**
  * The live basket (real 24h moves, jumpiness and drops): from the cached snapshot at
@@ -77,14 +81,22 @@ function Hero() {
           {/* the market-screen backdrop lives here only (never behind crystals in cards) */}
           <Stage className="!absolute inset-0" camera={{ position: [0, 0, 7], fov: 40 }} backdrop>
             {basket ? (
-              <FittedCrystal holdings={basket.holdings} history={basket.history} size={1.75} assemble sway top={0.04} bottom={0.9} />
+              <FittedCrystal holdings={basket.holdings} history={basket.history} size={1.75} assemble sway top={0.04} bottom={0.9} labelOf={asEth} />
             ) : (
               <FittedLoadingCrystal size={1.75} top={0.04} bottom={0.9} />
             )}
           </Stage>
-          <p className="section-label pointer-events-none absolute inset-x-0 bottom-0 text-center text-[10px]">
-            {LIVE_BASKET.map((s) => (s === 'WETH' ? 'ETH' : s)).join(' · ')} · equal parts
-          </p>
+          {/* the key to the crystal's colours, once the live moves are in */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1.5">
+            {basket ? (
+              <>
+                <AssetDots holdings={basket.holdings} labelOf={asEth} className="justify-center" />
+                <span className="font-mono text-[10px] leading-none text-mist">· equal parts</span>
+              </>
+            ) : (
+              <p className="section-label text-center text-[10px]">{LIVE_BASKET.map(asEth).join(' · ')} · equal parts</p>
+            )}
+          </div>
         </div>
       </div>
     </section>
@@ -144,7 +156,11 @@ function Machine() {
 
 const LEGEND: Array<{ focus: CrystalFocus; label: string; text: string }> = [
   { focus: 'size', label: 'Size', text: 'How much of each asset is inside. This live basket holds six in equal parts.' },
-  { focus: 'color', label: 'Green / red', text: 'Today’s price move. A deeper colour is a bigger move.' },
+  {
+    focus: 'color',
+    label: 'Green / red',
+    text: 'Each asset has its own shade. Green family = up today, red family = down today. Brighter = bigger move.',
+  },
   { focus: 'spikes', label: 'Spikes', text: 'How jumpy the price is. Calm assets stay smooth.' },
   { focus: 'gold', label: 'Gold seams', text: 'A real drop of 5% or more that the price later climbed back from.' },
   { focus: 'frost', label: 'Frost', text: 'A sealed gift. Nothing comes out until the date it opens.' },
@@ -168,11 +184,12 @@ function ReadYourCrystal() {
           <div className="relative h-[360px] overflow-hidden rounded-[24px] border border-white/[0.08] bg-panel sm:h-[480px] lg:h-[560px]">
             <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
               {basket ? (
-                <FittedCrystal holdings={basket.holdings} history={basket.history} size={1.6} sway top={0.1} bottom={0.9} focus={focus} />
+                <FittedCrystal holdings={basket.holdings} history={basket.history} size={1.6} sway top={0.1} bottom={0.86} focus={focus} labelOf={asEth} />
               ) : (
-                <FittedLoadingCrystal size={1.6} top={0.1} bottom={0.9} />
+                <FittedLoadingCrystal size={1.6} top={0.1} bottom={0.86} />
               )}
             </Stage>
+            {basket && <AssetDots holdings={basket.holdings} labelOf={asEth} className="pointer-events-none absolute inset-x-4 bottom-4 justify-center" />}
           </div>
         </Reveal>
 
@@ -199,13 +216,15 @@ function ReadYourCrystal() {
                 <span className={`font-bold ${active.focus === 'gold' ? 'text-gold' : 'text-white'}`}>{active.label}</span> = {active.text}
               </>
             ) : (
-              `Tap a word to light up that part of the crystal. ${basketNote(basket)}`
+              `Tap a word to light up that part of the crystal, or tap the crystal to name an asset. ${basketNote(basket)}`
             )}
           </p>
         </div>
 
         <div className="col-span-5 hidden flex-col justify-center gap-3 lg:flex" onMouseLeave={() => setFocus(null)}>
-          <p className="mb-3 text-sm text-mist">Point at a line to light up that part of the crystal. {basketNote(basket)}</p>
+          <p className="mb-3 text-sm text-mist">
+            Point at a line to light up that part of the crystal, or at the crystal itself to name an asset. {basketNote(basket)}
+          </p>
           {LEGEND.map((l, i) => {
             const on = focus === l.focus;
             return (
@@ -394,7 +413,7 @@ function Crystalette() {
     <div className="relative h-[280px] w-[280px]">
       <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
         {basket ? (
-          <FittedCrystal holdings={basket.holdings} history={basket.history} size={1.5} sway top={0.06} bottom={0.94} />
+          <FittedCrystal holdings={basket.holdings} history={basket.history} size={1.5} sway top={0.06} bottom={0.94} labelOf={asEth} />
         ) : (
           <FittedLoadingCrystal size={1.5} top={0.06} bottom={0.94} />
         )}

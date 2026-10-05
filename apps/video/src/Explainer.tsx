@@ -1,7 +1,7 @@
 import { useMemo, type CSSProperties, type ReactNode } from 'react';
 import { AbsoluteFill, Audio, Easing, Img, Sequence, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { ThreeCanvas } from '@remotion/three';
-import { viberAt, viberImageUrl } from '@prism/core';
+import { holdingShades, viberAt, viberImageUrl } from '@prism/core';
 import { C, DISPLAY, MONO } from './theme';
 import { VoxelCrystal, makeShape } from './VoxelCrystal';
 import { DROP, DURATION, EASE_BEZIER, FPS, HOLDINGS, S, T, TOKENS } from './timeline';
@@ -16,6 +16,8 @@ export { DURATION, FPS };
  */
 
 const ease = Easing.bezier(...EASE_BEZIER);
+/** Each token's own shade in the crystal, so its card matches its region. */
+const SHADE = new Map(holdingShades(HOLDINGS).map((h) => [h.symbol, h.color]));
 
 /** Camera for the crystal scenes, and the world → screen mapping overlays use to line up. */
 const CAM = { z: 9, fov: 32 };
@@ -127,7 +129,7 @@ function TokenCard({ t, style }: { t: (typeof TOKENS)[number]; style: CSSPropert
           marginTop: 22 * u,
           height: 8 * u,
           borderRadius: 99,
-          background: t.change >= 0 ? C.up : C.down,
+          background: SHADE.get(t.symbol) ?? (t.change >= 0 ? C.up : C.down),
           width: `${40 + Math.min(55, Math.abs(t.change) * 6)}%`,
         }}
       />

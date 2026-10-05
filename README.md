@@ -210,5 +210,12 @@ upcoming), so that slot is empty and no address is guessed.
   the price climbs back to that peak, the crack is filled with gold. Testnet history is days,
   not years, so this threshold is lower than the 15% long-run default in `buildCrystal`.
   Without an indexer, history older than ~14 days isn't scanned.
+- **Colours:** every asset keeps its own shade in every crystal (`packages/core/src/shades.ts`):
+  a green-family shade when it is up today (lime-green, emerald, teal-green, mint, deep
+  forest, …), a red-family shade when it is down (crimson, brick, coral, rose, maroon, …),
+  and its own grey without a price. Each shade has a fixed lightness, so holdings stay apart
+  even when they all moved the same way; a bigger move only makes the colour more vivid. A
+  dark seam runs wherever one holding meets another, hovering or tapping a holding names it
+  ("NVDA · 40% · +28.6% today"), and a row of colour dots sits under every thumbnail.
 
 Testnet only, no real funds.

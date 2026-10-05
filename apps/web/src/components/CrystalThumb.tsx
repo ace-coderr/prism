@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { LIVE_CRACK_THRESHOLD, KINTSUGI_GOLD, buildCrystal, exposedVoxels, type CrystalHistory, type Holding } from '@prism/core';
+import {
+  LIVE_CRACK_THRESHOLD,
+  KINTSUGI_GOLD,
+  buildCrystal,
+  exposedVoxels,
+  holdingShade,
+  regionBorders,
+  type BorderStrip,
+  type CrystalHistory,
+  type Holding,
+} from '@prism/core';
 
 const C30 = Math.cos(Math.PI / 6);
 const FROST = [214, 241, 255];
@@ -7,6 +17,7 @@ const FROST = [214, 241, 255];
 const hex = (c: string) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
 const shade = ([r, g, b]: number[], k: number) => `rgb(${Math.min(255, r! * k) | 0},${Math.min(255, g! * k) | 0},${Math.min(255, b! * k) | 0})`;
 const mix = (a: number[], b: number[], t: number) => a.map((v, i) => v + (b[i]! - v) * t);
+const cellKey = (p: readonly number[]) => p.join(',');
 
 /** Same lightness, new hue (0..1): the address identicon's tint. */
 function tint([r, g, b]: number[], hue: number): number[] {
@@ -24,9 +35,18 @@ function tint([r, g, b]: number[], hue: number): number[] {
 /** Isometric projection: looking down at the crystal from the front-right. */
 const iso = (x: number, y: number, z: number): [number, number] => [(x - z) * C30, (x + z) * 0.5 - y];
 
+/** The three faces the camera sees: top (+y), right (+x), left (+z), and how lit each is. */
+const FACES = [
+  { normal: [0, 1, 0], light: 1.18 },
+  { normal: [1, 0, 0], light: 0.92 },
+  { normal: [0, 0, 1], light: 0.7 },
+] as const;
+
 /**
  * A small static crystal: the same voxel geometry as the 3D one, drawn isometrically on
- * a 2D canvas (no WebGL context per card, so a long list stays cheap).
+ * a 2D canvas (no WebGL context per card, so a long list stays cheap). At this size it
+ * uses the boosted shades and draws the seams between holdings a little heavier, so each
+ * asset's region still reads on its own.
  */
 export function CrystalThumb({
   holdings,
@@ -43,12 +63,24 @@ export function CrystalThumb({
   size?: number;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const voxels = useMemo(() => {
-    if (!holdings.length) return [];
+  const tinted = hue !== undefined;
+  const shape = useMemo(() => {
+    if (!holdings.length) return null;
     const geo = buildCrystal(holdings, history, { maxShards: 32, resolution: 6, crackThreshold: LIVE_CRACK_THRESHOLD });
     // painter's order: farthest first (the camera sits towards +x +y +z)
-    return exposedVoxels(geo.voxels).sort((a, b) => a.position[0] + a.position[1] + a.position[2] - (b.position[0] + b.position[1] + b.position[2]));
-  }, [holdings, history]);
+    const voxels = exposedVoxels(geo.voxels).sort((a, b) => a.position[0] + a.position[1] + a.position[2] - (b.position[0] + b.position[1] + b.position[2]));
+    // small-picture shades (more vivid, a little more lightness spread) per holding
+    const colors = geo.clusters.map((c) => holdingShade(c.shade, c.change24h, { boost: true }).color);
+    // seams between holdings, grouped by the face they lie on (an identicon has none)
+    const seams = new Map<string, BorderStrip[]>();
+    if (!tinted) {
+      for (const s of regionBorders(geo.voxels)) {
+        const k = `${cellKey(s.cell)}|${cellKey(s.normal)}`;
+        seams.set(k, [...(seams.get(k) ?? []), s]);
+      }
+    }
+    return { voxels, colors, seams };
+  }, [holdings, history, tinted]);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -58,7 +90,8 @@ export function CrystalThumb({
     canvas.width = canvas.height = Math.round(size * dpr);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (!voxels.length) return;
+    if (!shape?.voxels.length) return;
+    const { voxels, colors, seams } = shape;
 
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (const v of voxels) {
@@ -77,29 +110,49 @@ export function CrystalThumb({
       const [sx, sy] = iso(x, y, z);
       return [ox + sx * k, oy + sy * k] as const;
     };
-    const face = (pts: ReadonlyArray<readonly [number, number]>, fill: string) => {
+    const poly = (pts: ReadonlyArray<readonly [number, number]>) => {
       ctx.beginPath();
       pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
       ctx.closePath();
-      ctx.fillStyle = fill;
-      ctx.fill();
-      ctx.stroke();
     };
+    // a seam is at least ~1 device pixel on each side of the border, however small the thumbnail
+    const seamWidth = Math.min(0.42, Math.max(0.24, 1.1 / k));
     ctx.lineWidth = Math.max(0.6, k * 0.07);
     ctx.strokeStyle = '#000';
     ctx.lineJoin = 'round';
     for (const v of voxels) {
       const [x, y, z] = v.position;
-      let rgb = hex(v.gold ? KINTSUGI_GOLD : v.color);
-      if (hue !== undefined && !v.gold) rgb = tint(rgb, hue);
+      let rgb = hex(v.gold ? KINTSUGI_GOLD : v.cluster >= 0 ? colors[v.cluster]! : v.color);
+      if (tinted && !v.gold) rgb = tint(rgb, hue!);
       if (sealed) rgb = mix(rgb, FROST, v.gold ? 0.35 : 0.62);
-      const h = 0.5;
-      // top (+y), right (+x), left (+z)
-      face([P(x - h, y + h, z - h), P(x + h, y + h, z - h), P(x + h, y + h, z + h), P(x - h, y + h, z + h)], shade(rgb, 1.18));
-      face([P(x + h, y + h, z - h), P(x + h, y + h, z + h), P(x + h, y - h, z + h), P(x + h, y - h, z - h)], shade(rgb, 0.92));
-      face([P(x - h, y + h, z + h), P(x + h, y + h, z + h), P(x + h, y - h, z + h), P(x - h, y - h, z + h)], shade(rgb, 0.7));
+      for (const { normal, light } of FACES) {
+        // the face's four corners: the cube centre + half the normal ± half of the other two axes
+        const u = normal[0] ? 1 : 0;
+        const w = normal[2] ? 1 : 2;
+        const corner = (a: number, b: number) => {
+          const p = [x + normal[0] * 0.5, y + normal[1] * 0.5, z + normal[2] * 0.5];
+          p[u]! += a * 0.5;
+          p[w]! += b * 0.5;
+          return P(p[0]!, p[1]!, p[2]!);
+        };
+        poly([corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)]);
+        ctx.fillStyle = shade(rgb, light);
+        ctx.fill();
+        ctx.stroke();
+        // seams on this face, drawn right after it so nearer cubes still paint over them
+        for (const s of seams.get(`${cellKey(v.position)}|${cellKey(normal)}`) ?? []) {
+          const half = [0, 0, 0];
+          half[s.along] = 0.5 + seamWidth / 2;
+          const a = s.edge.map((c, i) => c - half[i]!);
+          const b = s.edge.map((c, i) => c + half[i]!);
+          const d = s.inward.map((c) => c * seamWidth);
+          poly([P(a[0]!, a[1]!, a[2]!), P(b[0]!, b[1]!, b[2]!), P(b[0]! + d[0]!, b[1]! + d[1]!, b[2]! + d[2]!), P(a[0]! + d[0]!, a[1]! + d[1]!, a[2]! + d[2]!)]);
+          ctx.fillStyle = '#000';
+          ctx.fill();
+        }
+      }
     }
-  }, [voxels, sealed, size, hue]);
+  }, [shape, sealed, size, hue, tinted]);
 
   return <canvas ref={ref} aria-hidden className="shrink-0" style={{ width: size, height: size }} />;
 }

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildCrystal,
-  changeColor,
+  colorDistance,
   exposedVoxels,
+  hexToOklch,
+  holdingShade,
   seamYaw,
   groupByCorrelation,
   GOLD_SEAM_HALF_WIDTH,
@@ -10,8 +12,9 @@ import {
   MAX_CRACK_SLOPE,
   MAX_SPIKE_FRACTION,
   OPEN_CRACK_HALF_WIDTH,
-  NO_DATA_COLOR,
   normalizeHoldings,
+  regionBorders,
+  type Voxel,
   type CrystalGeometry,
   type Holding,
 } from '../src';
@@ -101,20 +104,36 @@ describe('buildCrystal (voxels)', () => {
     }
   });
 
-  it('bigger moves give deeper, more saturated colors', () => {
-    const small = changeColor(0.5);
-    const big = changeColor(7);
+  it('gives every holding its own shade, even when they all moved the same way', () => {
+    const allUp = buildCrystal([
+      { symbol: 'AAPL', weight: 1, change24h: 2.1, volatility: 0.3 },
+      { symbol: 'NVDA', weight: 1, change24h: 2.4, volatility: 0.3 },
+      { symbol: 'SPCX', weight: 1, change24h: 1.9, volatility: 0.3 },
+    ]);
+    const [a, b, c] = allUp.clusters.map((x) => x.color);
+    for (const [x, y] of [[a, b], [b, c], [a, c]] as const) expect(colorDistance(x!, y!)).toBeGreaterThan(0.1);
+    expect(new Set(allUp.clusters.map((x) => x.shade)).size).toBe(3);
+    // and a cluster's colour is exactly its asset's shade for that move
+    for (const cl of allUp.clusters) expect(cl.color).toBe(holdingShade(cl.shade, cl.change24h).color);
+  });
+
+  it('bigger moves give more vivid colors', () => {
+    const small = holdingShade(4, 0.5);
+    const big = holdingShade(4, 7);
     expect(big.intensity).toBeGreaterThan(small.intensity);
     const sat = (hex: string) => {
       const c = hexToRgb(hex);
       return Math.max(...c) - Math.min(...c);
     };
     expect(sat(big.color)).toBeGreaterThan(sat(small.color));
-    expect(changeColor(-50).intensity).toBe(1);
+    expect(holdingShade(4, -50).intensity).toBe(1);
   });
 
-  it('renders unknown change (no price feed) as neutral grey, not a guessed color', () => {
-    expect(changeColor(Number.NaN)).toEqual({ color: NO_DATA_COLOR, intensity: 0 });
+  it('renders unknown change (no price feed) as grey, not a guessed color', () => {
+    const grey = holdingShade(4, Number.NaN);
+    expect(grey.intensity).toBe(0);
+    expect(grey.family).toBe('none');
+    expect(hexToOklch(grey.color).C).toBeLessThan(0.02);
   });
 
   it('volatility makes taller, spikier columns', () => {
@@ -444,5 +463,53 @@ describe('clean regions', () => {
     expect(Math.abs(rx)).toBeLessThan(1e-6);
     expect(rz).toBeGreaterThan(0);
     expect(seamYaw(buildCrystal(six))).toBe(0);
+  });
+});
+
+describe('regionBorders', () => {
+  const cube = (x: number, y: number, z: number, cluster: number, gold = false): Voxel => ({
+    position: [x, y, z],
+    color: '#fff',
+    kind: 'facet',
+    cluster,
+    gold,
+    spike: false,
+  });
+  /** A 4×1×2 slab: cluster 0 for x < 2, cluster 1 for x ≥ 2. */
+  const slab = (gold = false) => [0, 1, 2, 3].flatMap((x) => [0, 1].map((z) => cube(x, 0, z, x < 2 ? 0 : 1, gold && x >= 2)));
+
+  it('runs a strip along both faces of every visible edge where two holdings meet', () => {
+    const strips = regionBorders(slab());
+    // top and bottom: two edges each, two faces per edge; front and back: one edge each
+    expect(strips).toHaveLength(12);
+    for (const s of strips) {
+      expect(s.edge[0]).toBe(1.5);
+      expect([1, 2]).toContain(s.cell[0]);
+      // the strip points from the edge into its own cube's face, and lies on that face
+      expect(s.inward[0]).toBe(s.cell[0] === 1 ? -1 : 1);
+      const axis = [0, 1, 2].find((i) => s.normal[i] !== 0)!;
+      expect(s.edge[axis]! - s.cell[axis]!).toBe(0.5 * s.normal[axis]!);
+    }
+  });
+
+  it('draws nothing inside one holding, or along gold', () => {
+    expect(regionBorders(slab().map((v) => ({ ...v, cluster: 0 })))).toHaveLength(0);
+    expect(regionBorders(slab(true))).toHaveLength(0);
+  });
+
+  it('only marks visible faces of a real crystal, between different holdings', () => {
+    const geo = buildCrystal(basket);
+    const filled = new Set(geo.voxels.map((v) => key(v.position)));
+    const owner = new Map(geo.voxels.map((v) => [key(v.position), v.cluster]));
+    const strips = regionBorders(geo.voxels);
+    expect(strips.length).toBeGreaterThan(20);
+    const clustersSeen = new Set<number>();
+    for (const s of strips) {
+      expect(filled.has(key(s.cell))).toBe(true);
+      expect(filled.has(key(s.cell.map((c, i) => c + s.normal[i]!)))).toBe(false);
+      clustersSeen.add(owner.get(key(s.cell))!);
+    }
+    expect(clustersSeen.size).toBe(basket.length);
+    expect(regionBorders(buildCrystal([basket[0]!]).voxels)).toHaveLength(0);
   });
 });

@@ -4,7 +4,6 @@ import {
   clamp,
   dot,
   hashString,
-  hslToHex,
   length,
   mixHex,
   normalize,
@@ -13,6 +12,7 @@ import {
   cross,
   tilt,
 } from './math';
+import { holdingShade, shadeSlots } from './shades';
 
 // ---------------------------------------------------------------------------
 // Inputs
@@ -86,7 +86,11 @@ export interface Cluster {
   direction: Vec3;
   /** Relative linear size (∛weight); the holding's share of the gem grows with weight. */
   size: number;
+  /** The holding's own shade (see shades.ts) in its family: green up, red down, grey no price. */
   color: string;
+  /** Shade slot: the same asset keeps the same slot in every crystal. */
+  shade: number;
+  change24h: number;
   /** 0..1 strength of the color, from |change24h|. */
   intensity: number;
   /** 0..1, from volatility. */
@@ -131,7 +135,6 @@ export const MAX_SPIKE_FRACTION = 0.32;
 const BASE_SIZE = 1.15;
 const DEFAULT_MAX_SHARDS = 64;
 const DEFAULT_RESOLUTION = 8;
-const COLOR_FULL_MOVE = 8; // a ±8% day saturates the color
 
 // ---------------------------------------------------------------------------
 // Pieces (exported for tests and UI reuse)
@@ -143,21 +146,6 @@ export function normalizeHoldings(holdings: Holding[]): Holding[] {
   const total = valid.reduce((s, h) => s + h.weight, 0);
   if (total <= 0) return [];
   return valid.map((h) => ({ ...h, weight: h.weight / total }));
-}
-
-export const NO_DATA_COLOR = '#8a9299';
-
-/**
- * Flat, saturated green for gains and red for losses; a bigger move is deeper and stronger.
- * A non-finite change (NaN = no price data) renders neutral grey instead of a guessed color.
- */
-export function changeColor(change24h: number): { color: string; intensity: number } {
-  if (!Number.isFinite(change24h)) return { color: NO_DATA_COLOR, intensity: 0 };
-  const intensity = clamp(Math.abs(change24h) / COLOR_FULL_MOVE, 0, 1);
-  const hue = change24h >= 0 ? 138 : 2;
-  const sat = 0.35 + 0.35 * intensity;
-  const light = 0.6 - 0.18 * intensity;
-  return { color: hslToHex(hue, sat, light), intensity };
 }
 
 function correlationLookup(holdings: Holding[], input?: CorrelationInput) {
@@ -217,6 +205,79 @@ export function exposedVoxels(voxels: Voxel[]): Voxel[] {
       !filled.has(cellKey(x, y, z - 1))
     );
   });
+}
+
+/**
+ * A dark strip along one edge of a visible cube face, where two holdings meet. Drawn on
+ * both faces at the edge, the pair reads as one thick seam between the regions.
+ */
+export interface BorderStrip {
+  /** the cube whose face the strip lies on */
+  cell: Cell;
+  /** the face's outward normal (a unit axis vector) */
+  normal: Cell;
+  /** midpoint of the border edge (on the face's edge) */
+  edge: Vec3;
+  /** axis the edge runs along: 0 = x, 1 = y, 2 = z */
+  along: 0 | 1 | 2;
+  /** unit axis vector from the edge into the face */
+  inward: Cell;
+}
+
+/**
+ * Every visible edge where one holding's surface meets another's. Gold seams and the
+ * mixed bridge cubes between fused holdings never get one (gold stays as it is).
+ */
+export function regionBorders(voxels: Voxel[]): BorderStrip[] {
+  const at = new Map(voxels.map((v) => [cellKey(...v.position), v]));
+  const region = (v: Voxel | undefined) => (!v || v.gold || v.cluster < 0 ? null : v.cluster);
+  const differ = (a: Voxel | undefined, b: Voxel | undefined) => {
+    const ra = region(a);
+    const rb = region(b);
+    return ra !== null && rb !== null && ra !== rb;
+  };
+  const seen = new Set<string>();
+  const out: BorderStrip[] = [];
+  // the four cells around an edge, in order round it
+  const ROUND = [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]] as const;
+  /** p moved by du along axis u and dw along axis w */
+  const shift = <T extends Vec3>(p: T, u: number, du: number, w: number, dw: number) =>
+    p.map((x, i) => x + (i === u ? du : 0) + (i === w ? dw : 0)) as T;
+  for (const v of exposedVoxels(voxels)) {
+    for (const along of [0, 1, 2] as const) {
+      const u = (along + 1) % 3;
+      const w = (along + 2) % 3;
+      for (const [su, sw] of ROUND) {
+        const edge = shift<Vec3>([...v.position], u, su, w, sw);
+        const key = `${along}:${edge[0] * 2},${edge[1] * 2},${edge[2] * 2}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const ring = ROUND.map(([du, dw]) => {
+          const p = shift<Cell>([...edge], u, du, w, dw);
+          return { p, v: at.get(cellKey(...p)) };
+        });
+        // visible faces at this edge: between ring neighbours where exactly one is filled
+        const faces: Array<{ F: (typeof ring)[number]; E: (typeof ring)[number] }> = [];
+        for (let i = 0; i < 4; i++) {
+          const A = ring[i]!;
+          const B = ring[(i + 1) % 4]!;
+          if (!A.v !== !B.v) faces.push(A.v ? { F: A, E: B } : { F: B, E: A });
+        }
+        const border =
+          faces.length === 2
+            ? differ(faces[0]!.F.v, faces[1]!.F.v)
+            : faces.length === 4 && differ(ring[0]!.v ?? ring[1]!.v, ring[2]!.v ?? ring[3]!.v); // two cubes touching only along this edge
+        if (!border) continue;
+        for (const { F, E } of faces) {
+          const normal = [E.p[0] - F.p[0], E.p[1] - F.p[1], E.p[2] - F.p[2]] as Cell;
+          const across = normal[u] !== 0 ? w : u;
+          const inward = F.p.map((x, i) => (i === across ? Math.sign(x - edge[i]!) : 0)) as Cell;
+          out.push({ cell: F.p, normal, edge, along, inward });
+        }
+      }
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -337,15 +398,18 @@ export function buildCrystal(
     fusedPair.add(`${i}:${j}`).add(`${j}:${i}`);
   }
 
-  // 2. Clusters.
+  // 2. Clusters, each in its asset's own shade.
+  const slots = shadeSlots(holdings.map((h) => h.symbol));
   const clusters: Cluster[] = holdings.map((h, i) => {
-    const { color, intensity } = changeColor(h.change24h);
+    const { color, intensity } = holdingShade(slots[i]!, h.change24h);
     return {
       symbol: h.symbol,
       weight: h.weight,
       direction: directions[i]!,
       size: BASE_SIZE * Math.cbrt(h.weight),
       color,
+      shade: slots[i]!,
+      change24h: h.change24h,
       intensity,
       spikiness: clamp(h.volatility, 0, 1),
       fusedWith: fusedWith[i]!,

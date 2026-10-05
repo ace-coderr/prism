@@ -14,6 +14,7 @@ import {
   type BadgeId,
   type CrystalHistory,
 } from '@prism/core';
+import { AssetDots } from '../components/AssetDots';
 import { FittedCrystal } from '../components/Crystal';
 import { CrystalThumb } from '../components/CrystalThumb';
 import { useProfileEditor } from '../components/editorContext';
@@ -264,6 +265,9 @@ function ProfileHeader(props: {
             )}
           </Stage>
         </div>
+        {avatar && (
+          <AssetDots holdings={avatar.holdings} sealed={avatar.sealed} className="mx-auto mt-3 max-w-[240px] justify-center sm:mx-0 sm:max-w-[320px] sm:justify-start" />
+        )}
       </div>
       <div className="col-span-12 min-w-0 sm:col-span-7 lg:col-span-8">
         <SectionLabel>{mine ? 'Your profile' : 'Profile'}</SectionLabel>
@@ -330,34 +334,38 @@ function CrystalCard({ crystal, valued, history, priced, mine }: { crystal: Onch
   const sealed = crystal.sealedUntil * 1000 > Date.now();
   const body = (
     <>
-      <span className="grid h-[72px] w-[72px] shrink-0 place-items-center rounded-2xl bg-ink">
-        <CrystalThumb holdings={valued.holdings} history={history} sealed={sealed} size={64} />
+      <span className="flex w-full items-center gap-4">
+        <span className="grid h-[72px] w-[72px] shrink-0 place-items-center rounded-2xl bg-ink">
+          <CrystalThumb holdings={valued.holdings} history={history} sealed={sealed} size={64} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-display text-lg font-bold">
+            #{crystal.id.toString()} {sealed && <span className="text-[13px] font-normal text-[#bfe6ff]">sealed</span>}
+          </span>
+          <span className="mt-1 block font-mono text-xs text-white">{priced ? formatEth(valued.totalEth) : '…'}</span>
+          <span className="mt-0.5 block text-xs">
+            {valued.change24h != null ? (
+              <>
+                <Change value={valued.change24h} /> <span className="text-mist">24h</span>
+              </>
+            ) : (
+              <span className="text-mist">
+                {crystal.assets.length} asset{crystal.assets.length === 1 ? '' : 's'}
+              </span>
+            )}
+          </span>
+        </span>
+        {mine && (
+          <span aria-hidden className="text-mist">
+            →
+          </span>
+        )}
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="block font-display text-lg font-bold">
-          #{crystal.id.toString()} {sealed && <span className="text-[13px] font-normal text-[#bfe6ff]">sealed</span>}
-        </span>
-        <span className="mt-1 block font-mono text-xs text-white">{priced ? formatEth(valued.totalEth) : '…'}</span>
-        <span className="mt-0.5 block text-xs">
-          {valued.change24h != null ? (
-            <>
-              <Change value={valued.change24h} /> <span className="text-mist">24h</span>
-            </>
-          ) : (
-            <span className="text-mist">
-              {crystal.assets.length} asset{crystal.assets.length === 1 ? '' : 's'}
-            </span>
-          )}
-        </span>
-      </span>
-      {mine && (
-        <span aria-hidden className="text-mist">
-          →
-        </span>
-      )}
+      {/* the key to the thumbnail's colours */}
+      <AssetDots holdings={valued.holdings} sealed={sealed} className="px-1 pb-0.5" />
     </>
   );
-  const cls = 'flex w-full items-center gap-4 rounded-[20px] border border-white/[0.08] bg-panel p-3 text-left';
+  const cls = 'flex w-full flex-col gap-3 rounded-[20px] border border-white/[0.08] bg-panel p-3 text-left';
   return mine ? (
     <Link to={`/my-crystals?id=${crystal.id}`} className={`${cls} transition-colors hover:border-white/25`} aria-label={`Open crystal #${crystal.id} in My Crystals`}>
       {body}

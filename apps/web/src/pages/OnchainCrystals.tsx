@@ -5,13 +5,16 @@ import { simulateContract, writeContract } from 'wagmi/actions';
 import {
   BASKET_TOKENS,
   getDeployment,
+  holdingShades,
   localDateTimeToUnix,
+  normalizeHoldings,
   parseTokenAmount,
   prismCrystalAbi,
   valueWeights,
   type CrystalHistory,
   type Holding,
 } from '@prism/core';
+import { AssetDots } from '../components/AssetDots';
 import { FittedCrystal } from '../components/Crystal';
 import { CrystalThumb } from '../components/CrystalThumb';
 import { GuideNote } from '../components/Viber';
@@ -226,38 +229,42 @@ function CrystalCard(props: { crystal: OnchainCrystal; valued: Valued; history?:
       type="button"
       onClick={onSelect}
       aria-pressed={active}
-      className={`flex w-full items-center gap-4 rounded-[20px] border p-3 text-left transition-colors ${
+      className={`flex w-full flex-col gap-3 rounded-[20px] border p-3 text-left transition-colors ${
         active ? 'border-lime/50 bg-lime/[0.05]' : 'border-white/[0.08] bg-panel hover:border-white/20'
       }`}
     >
-      <span className="grid h-[72px] w-[72px] shrink-0 place-items-center rounded-2xl bg-ink">
-        <CrystalThumb holdings={valued.holdings} history={history} sealed={sealed} size={64} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-2">
-          <span className="font-display text-lg font-bold">#{crystal.id.toString()}</span>
-          {sealed && (
-            <span title={`Sealed until ${fmtDate(crystal.sealedUntil)}`} className="text-[#bfe6ff]" aria-label="Sealed">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-                <rect x="5" y="10.5" width="14" height="10" rx="2" />
-                <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
-              </svg>
-            </span>
-          )}
+      <span className="flex w-full items-center gap-4">
+        <span className="grid h-[72px] w-[72px] shrink-0 place-items-center rounded-2xl bg-ink">
+          <CrystalThumb holdings={valued.holdings} history={history} sealed={sealed} size={64} />
         </span>
-        <span className="mt-1 block font-mono text-xs text-white">{priced ? formatEth(valued.totalEth) : '…'}</span>
-        <span className="mt-0.5 block text-xs">
-          {valued.change24h != null ? (
-            <>
-              <Change value={valued.change24h} /> <span className="text-mist">24h</span>
-            </>
-          ) : (
-            <span className="text-mist">
-              {crystal.assets.length} asset{crystal.assets.length === 1 ? '' : 's'}
-            </span>
-          )}
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span className="font-display text-lg font-bold">#{crystal.id.toString()}</span>
+            {sealed && (
+              <span title={`Sealed until ${fmtDate(crystal.sealedUntil)}`} className="text-[#bfe6ff]" aria-label="Sealed">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                  <rect x="5" y="10.5" width="14" height="10" rx="2" />
+                  <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+                </svg>
+              </span>
+            )}
+          </span>
+          <span className="mt-1 block font-mono text-xs text-white">{priced ? formatEth(valued.totalEth) : '…'}</span>
+          <span className="mt-0.5 block text-xs">
+            {valued.change24h != null ? (
+              <>
+                <Change value={valued.change24h} /> <span className="text-mist">24h</span>
+              </>
+            ) : (
+              <span className="text-mist">
+                {crystal.assets.length} asset{crystal.assets.length === 1 ? '' : 's'}
+              </span>
+            )}
+          </span>
         </span>
       </span>
+      {/* the key to the thumbnail's colours */}
+      <AssetDots holdings={valued.holdings} sealed={sealed} className="px-1 pb-0.5" />
     </button>
   );
 }
@@ -326,12 +333,17 @@ function CrystalView(props: {
 }
 
 function HoldingsList({ valued }: { valued: Valued }) {
+  // each row's colour in the crystal above
+  const colorOf = useMemo(() => new Map(holdingShades(normalizeHoldings(valued.holdings)).map((x) => [x.symbol, x.color])), [valued.holdings]);
   return (
     <ul className="divide-y divide-white/[0.06]">
       {valued.rows.map(({ a, m, ethValue, usdValue }, i) => (
         <li key={a.token ?? 'eth'} className="flex items-start justify-between gap-4 py-3">
           <div className="min-w-0">
-            <p className="font-display text-lg font-bold">
+            <p className="flex items-center gap-2 font-display text-lg font-bold">
+              {colorOf.has(a.symbol) && (
+                <span aria-hidden className="h-3 w-3 shrink-0 rounded-full ring-1 ring-black/70" style={{ background: colorOf.get(a.symbol) }} />
+              )}
               {a.symbol} <span className="font-mono text-xs font-normal text-mist">{Math.round((valued.holdings[i]?.weight ?? 0) * 100)}%</span>
             </p>
             <p className="font-mono text-xs text-mist">{fmtAmount(a.amount, a.decimals)}</p>

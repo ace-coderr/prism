@@ -4,8 +4,10 @@ import { useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { formatUnits } from 'viem';
-import { atName, getDeployment, type CrystalHistory, type Holding } from '@prism/core';
+import { atName, getDeployment, holdingShades, normalizeHoldings, type CrystalHistory, type Holding } from '@prism/core';
+import { frosted } from '../components/AssetDots';
 import { Crystal } from '../components/Crystal';
+import { CrystalThumb } from '../components/CrystalThumb';
 import { PageHeader, PageScroll } from '../components/PageHeader';
 import { SceneLabel, Stage } from '../components/Stage';
 import { EthPrice } from '../components/ui';
@@ -140,25 +142,53 @@ function CrystalScene({ items, interactive }: { items: SceneItem[]; interactive:
 const fmtQty = (v: bigint, d: number) =>
   Number(formatUnits(v, d)).toLocaleString('en-US', { maximumFractionDigits: 4 });
 
-function RealCrystalCard({ c, totalEth, profile }: { c: PublicCrystal; totalEth: number; profile?: Profile }) {
+function RealCrystalCard({
+  c,
+  shape,
+  totalEth,
+  profile,
+}: {
+  c: PublicCrystal;
+  shape: { holdings: Holding[]; history?: CrystalHistory };
+  totalEth: number;
+  profile?: Profile;
+}) {
   const sealed = c.sealedUntil * 1000 > Date.now();
+  // each chip carries its asset's colour in the crystal, as in the thumbnail
+  const colorOf = useMemo(
+    () => new Map(holdingShades(normalizeHoldings(shape.holdings), { boost: true }).map((x) => [x.symbol, x.color])),
+    [shape.holdings],
+  );
   return (
-    <div className="card card-hover h-full p-7">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="font-display text-2xl font-bold tracking-[-0.02em]">Crystal #{c.id.toString()}</p>
-        {totalEth > 0 && <EthPrice eth={totalEth} />}
+    <div className="card card-hover h-full p-6 sm:p-7">
+      <div className="flex items-center gap-4">
+        <span className="grid h-[68px] w-[68px] shrink-0 place-items-center rounded-2xl bg-ink">
+          <CrystalThumb holdings={shape.holdings} history={shape.history} sealed={sealed} size={62} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <p className="font-display text-2xl font-bold tracking-[-0.02em]">Crystal #{c.id.toString()}</p>
+            {totalEth > 0 && <EthPrice eth={totalEth} />}
+          </div>
+          <p className="mt-2 font-mono text-[11px] text-mist">
+            <span className="mr-1.5">owner</span>
+            <OwnerChip address={c.owner} profile={profile} size={18} className="text-white" />
+            {sealed ? ' · ❄ sealed gift' : ''}
+          </p>
+        </div>
       </div>
-      <p className="mt-2 font-mono text-[11px] text-mist">
-        <span className="mr-1.5">owner</span>
-        <OwnerChip address={c.owner} profile={profile} size={18} className="text-white" />
-        {sealed ? ' · ❄ sealed gift' : ''}
-      </p>
-      <ul className="mt-6 flex flex-wrap gap-2">
-        {c.assets.map((a) => (
-          <li key={a.token ?? 'eth'} className="chip">
-            {fmtQty(a.amount, a.decimals)} {a.symbol}
-          </li>
-        ))}
+      <ul className="mt-6 flex flex-wrap gap-2" aria-label="What is inside">
+        {c.assets.map((a) => {
+          const color = colorOf.get(a.symbol);
+          return (
+            <li key={a.token ?? 'eth'} className="chip inline-flex items-center gap-1.5">
+              {color && (
+                <span aria-hidden className="h-2 w-2 shrink-0 rounded-full ring-1 ring-black/70" style={{ background: sealed ? frosted(color) : color }} />
+              )}
+              {fmtQty(a.amount, a.decimals)} {a.symbol}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
@@ -244,7 +274,7 @@ export default function Gallery() {
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {real.map((c, i) => (
               <Reveal key={c.id.toString()} delay={Math.min(i, 6) * 0.06}>
-                <RealCrystalCard c={c} totalEth={holdingsFromAssets(c.assets, marketOf).totalEth} profile={profileOf(c.owner)} />
+                <RealCrystalCard c={c} shape={shapes.get(c.id)!} totalEth={holdingsFromAssets(c.assets, marketOf).totalEth} profile={profileOf(c.owner)} />
               </Reveal>
             ))}
           </div>

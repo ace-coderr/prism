@@ -1,9 +1,21 @@
 /*
  * The video crystal's cubes as plain data: where each one sits, where it flies in from,
- * when it lands, and its part in the crack / gold seam. VoxelCrystal.tsx draws them;
+ * when it lands, its part in the crack / gold seam, and the dark seams between holdings
+ * that ride on it. VoxelCrystal.tsx draws them;
  * scripts/soundtrack.ts times the "click into place" sounds from the same numbers.
  */
-import { buildCrystal, exposedVoxels, seamYaw, type Drawdown, type Holding } from '@prism/core';
+import { buildCrystal, exposedVoxels, regionBorders, seamYaw, type Drawdown, type Holding } from '@prism/core';
+
+/** Seams between holdings: a dark strip this wide (in cubes) on each face along a border (as on the site). */
+export const SEAM_WIDTH = 0.24;
+const SEAM_DEPTH = 0.02;
+
+/** A seam strip riding on one cube: offset from the cube's centre and its size, both in cubes. */
+export interface SeamData {
+  cell: number;
+  offset: [number, number, number];
+  scale: [number, number, number];
+}
 
 export interface CellData {
   pos: [number, number, number];
@@ -66,7 +78,13 @@ export function crystalCells(holdings: Holding[], drop: Drawdown) {
       crackDelay: along,
     };
   });
-  return { cells, radius: R, yaw: seamYaw(healed) };
+  const index = new Map(base.voxels.map((v, i) => [key(v.position), i]));
+  const seams: SeamData[] = regionBorders(base.voxels).map((s) => ({
+    cell: index.get(key(s.cell))!,
+    offset: [0, 1, 2].map((a) => s.edge[a]! - s.cell[a]! + s.inward[a]! * (SEAM_WIDTH / 2) + s.normal[a]! * (SEAM_DEPTH / 2)) as [number, number, number],
+    scale: [0, 1, 2].map((a) => (a === s.along ? 1 + SEAM_WIDTH : s.normal[a] !== 0 ? SEAM_DEPTH : SEAM_WIDTH)) as [number, number, number],
+  }));
+  return { cells, seams, radius: R, yaw: seamYaw(healed) };
 }
 
 /** Assembly progress (0..1) at which a cube with `delay` has fully landed (see VoxelCrystal). */

@@ -1,4 +1,5 @@
 export * from './crystal';
+export * from './shades';
 export * from './weights';
 export * from './chain';
 export * from './tokens';

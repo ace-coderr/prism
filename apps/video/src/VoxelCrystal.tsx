@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { Drawdown, Holding } from '@prism/core';
-import { crystalCells, type CellData } from './shape';
+import { crystalCells, type CellData, type SeamData } from './shape';
 
 /*
  * The PRISM voxel crystal for video: same buildCrystal geometry and look as the web app
@@ -44,6 +44,8 @@ type Cell = Omit<CellData, 'color'> & { color: THREE.Color };
 
 export interface CrystalShape {
   cells: Cell[];
+  /** dark seams where one holding meets another, each riding on a cube */
+  seams: SeamData[];
   radius: number;
   /** yaw that turns the seam towards the camera */
   yaw: number;
@@ -51,8 +53,8 @@ export interface CrystalShape {
 
 /** Precompute every cube's states once (shape.ts), with three.js colours. */
 export function makeShape(holdings: Holding[], drop: Drawdown): CrystalShape {
-  const { cells, radius, yaw } = crystalCells(holdings, drop);
-  return { cells: cells.map((c) => ({ ...c, color: new THREE.Color(c.color) })), radius, yaw };
+  const { cells, seams, radius, yaw } = crystalCells(holdings, drop);
+  return { cells: cells.map((c) => ({ ...c, color: new THREE.Color(c.color) })), seams, radius, yaw };
 }
 
 export interface CrystalState {
@@ -74,16 +76,20 @@ export function VoxelCrystal({ shape, state, size = 1.6, position = [0, 0, 0] }:
   const body = useRef<THREE.InstancedMesh>(null);
   const hull = useRef<THREE.InstancedMesh>(null);
   const gilt = useRef<THREE.InstancedMesh>(null);
+  const seam = useRef<THREE.InstancedMesh>(null);
   const materials = useMemo(() => {
     const face = faceTexture();
     return {
       body: new THREE.MeshToonMaterial({ map: face, gradientMap: toonRamp(), toneMapped: false }),
       hull: new THREE.MeshBasicMaterial({ color: '#000', side: THREE.BackSide }),
       gold: new THREE.MeshBasicMaterial({ map: face, color: GOLD, toneMapped: false }),
+      seam: new THREE.MeshBasicMaterial({ color: '#000' }),
     };
   }, []);
   const n = shape.cells.length;
   const goldCells = useMemo(() => shape.cells.filter((c) => c.gold), [shape]);
+  // each cube's scale and position this frame, for the seams riding on it
+  const placed = useMemo(() => ({ s: new Float32Array(n), p: new Float32Array(n * 3) }), [n]);
 
   useLayoutEffect(() => {
     const b = body.current;
@@ -101,6 +107,9 @@ export function VoxelCrystal({ shape, state, size = 1.6, position = [0, 0, 0] }:
       const px = x + c.from[0] * (1 - a);
       const py = y + c.from[1] * (1 - a);
       const pz = z + c.from[2] * (1 - a);
+      // a seam on a cube that turns gold fades out as the gold grows over it (gold stays clean)
+      placed.s[i] = c.gold ? s * (1 - healed) : s;
+      placed.p.set([px, py, pz], i * 3);
       m.makeScale(s, s, s).setPosition(px, py, pz);
       b.setMatrixAt(i, m);
       m.makeScale(s * OUTLINE, s * OUTLINE, s * OUTLINE).setPosition(px, py, pz);
@@ -112,6 +121,19 @@ export function VoxelCrystal({ shape, state, size = 1.6, position = [0, 0, 0] }:
     b.count = h.count = n;
     b.instanceMatrix.needsUpdate = h.instanceMatrix.needsUpdate = true;
     if (b.instanceColor) b.instanceColor.needsUpdate = true;
+
+    // seams between holdings fly in, crack open and heal with the cubes they lie on
+    const sm = seam.current;
+    if (sm) {
+      shape.seams.forEach((q, i) => {
+        const s = placed.s[q.cell]!;
+        m.makeScale(q.scale[0] * s, q.scale[1] * s, q.scale[2] * s);
+        m.setPosition(placed.p[q.cell * 3]! + q.offset[0] * s, placed.p[q.cell * 3 + 1]! + q.offset[1] * s, placed.p[q.cell * 3 + 2]! + q.offset[2] * s);
+        sm.setMatrixAt(i, m);
+      });
+      sm.count = shape.seams.length;
+      sm.instanceMatrix.needsUpdate = true;
+    }
 
     // the gold seam: unlit gold cubes that grow over the crack as it heals
     const g = gilt.current;
@@ -137,6 +159,7 @@ export function VoxelCrystal({ shape, state, size = 1.6, position = [0, 0, 0] }:
       <group scale={k}>
         <instancedMesh ref={body} args={[cube, materials.body, n]} />
         <instancedMesh ref={hull} args={[cube, materials.hull, n]} />
+        <instancedMesh ref={seam} args={[cube, materials.seam, Math.max(1, shape.seams.length)]} />
         <instancedMesh ref={gilt} args={[cube, materials.gold, Math.max(1, goldCells.length)]} />
       </group>
     </group>

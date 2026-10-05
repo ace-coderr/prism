@@ -34,6 +34,8 @@ describe('bio rules', () => {
   it('allows empty (no bio), refuses line breaks and blocked words', () => {
     expect(bioProblem('')).toBeNull();
     expect(bioProblem('Long-term holder of shiny things.')).toBeNull();
+    expect(bioProblem('Collecting PRISM crystals since day one.')).toBeNull(); // "prism" is fine in a bio
+    expect(nameProblem('prism_collector')).toMatch(/can’t contain/); // but not in a username
     expect(bioProblem('two\nlines')).toMatch(/line breaks/);
     expect(bioProblem('Official Robinhood support')).toMatch(/can’t contain/);
     expect(bioProblem('the vibe/vibe team')).toMatch(/can’t contain/);

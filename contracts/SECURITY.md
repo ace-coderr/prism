@@ -168,9 +168,10 @@ a PrismCrystal as avatar, a one-line bio and an X handle.
 
 ## Known limitations
 
-1. **The blocklist is UI-only.** The app refuses names and bios containing `vibevibe`,
-   `vibe_vibe`, `prism`, `admin`, `official` or `robinhood` (ignoring case and separators),
-   plus a basic profanity list (`packages/core/src/profiles.ts`), before sending. The contract
+1. **The blocklist is UI-only.** The app refuses usernames containing `vibevibe`,
+   `vibe_vibe`, `prism`, `admin`, `official` or `robinhood`, and bios containing any of those
+   except `prism` (ignoring case and separators), plus a basic profanity list in both
+   (`packages/core/src/profiles.ts`), before sending. The contract
    has no blocklist (that would need an admin or a hard-coded list), so anyone calling it
    directly can still set such a name or bio. Treat a username as a nickname, never as proof of
    identity; the app always shows the address in the tooltip and on the profile page.

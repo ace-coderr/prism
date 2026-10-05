@@ -49,8 +49,8 @@ npm run test:fork -w @prism/contracts      # real swaps on a fork of the testnet
 
 In the app, Forge → **Start with ETH** (the default once the router is deployed): one ETH
 amount, a slider per stock (plus "keep as ETH"), live V4Quoter quotes, price impact with a
-plain warning above 3%, slippage 1% by default. The button stays off until `forgeRouter` is set
-in `packages/core/src/deployments.ts`; deploy it from your wallet on the dev-only `/deploy` page.
+plain warning above 3%, slippage 1% by default. The router is deployed and verified at
+`0xD1340ad67A4b5C0995CC050bE773ee74293fD24D` (see below).
 V4 addresses (PoolManager, V4Quoter, Universal Router, Permit2) come from vibe/vibe's published
 config for chain 46630 and were checked on-chain.
 
@@ -72,8 +72,8 @@ In the app:
 - Each profile has a 3D avatar (your crystal, or a voxel gem generated from your address), stats, badges, your crystals and an activity feed.
 - Stats, badges and activity all come from PrismCrystal's own events; no extra contract is needed for them.
 - **Edit profile** is in the wallet menu, and owners appear as avatar + `@name` across Gallery, My Crystals and Agent.
-- The app refuses impersonation-prone words and basic profanity in names and bios. That is a UI check only (see `contracts/SECURITY.md`).
-- Everything that needs the contract stays off until `prismProfiles` is set in `packages/core/src/deployments.ts`; deploy it on the `/deploy` page.
+- The app refuses impersonation-prone words (`prism` in usernames only) and basic profanity in names and bios. That is a UI check only (see `contracts/SECURITY.md`).
+- Deployed and verified at `0xf7Da2Ee9dF52422eB87E8FBc3Be347a4B5611300`.
 
 ## Explainer video
 
@@ -100,14 +100,21 @@ while paused; on touch screens it is always shown. Keyboard: Space plays and pau
 `apps/web/src/components/ExplainerVideo.tsx` (`SCENES`); keep them in step with
 `apps/video/src/Explainer.tsx`.
 
-## Deployed contract
+## Deployed contracts
 
-**PrismCrystal on Robinhood Chain Testnet (46630):**
-[`0x59ce49dE3782FA87E94850b23FEB1457009f9f40`](https://explorer.testnet.chain.robinhood.com/address/0x59ce49dE3782FA87E94850b23FEB1457009f9f40#code)
-— source verified on Blockscout; deployed at block 128575215 in tx
-[`0xd2a73a56…`](https://explorer.testnet.chain.robinhood.com/tx/0xd2a73a5619ff9e3ac90ecb3ed9e02963af34ec360b41614a4b0fe0f480c86b57).
-`npx tsx packages/core/scripts/check-deployment.ts` re-checks that the on-chain code matches
-this repo's compiled contract byte for byte.
+All on Robinhood Chain Testnet (46630), deployed from the owner's wallet via `/deploy`, with source verified on the explorer:
+
+| Contract | Address | Block |
+| --- | --- | --- |
+| PrismCrystal | [`0x59ce49dE3782FA87E94850b23FEB1457009f9f40`](https://explorer.testnet.chain.robinhood.com/address/0x59ce49dE3782FA87E94850b23FEB1457009f9f40#code) | 128575215 |
+| PrismForgeRouter | [`0xD1340ad67A4b5C0995CC050bE773ee74293fD24D`](https://explorer.testnet.chain.robinhood.com/address/0xD1340ad67A4b5C0995CC050bE773ee74293fD24D#code) | 128964670 |
+| PrismProfiles | [`0xf7Da2Ee9dF52422eB87E8FBc3Be347a4B5611300`](https://explorer.testnet.chain.robinhood.com/address/0xf7Da2Ee9dF52422eB87E8FBc3Be347a4B5611300#code) | 128964290 |
+
+`npx tsx packages/core/scripts/check-deployment.ts` re-checks, read-only, that each contract's
+on-chain code matches this repo's compiled contract byte for byte. It also checks that each
+creation transaction was exactly the compiled bytecode plus the expected constructor arguments
+(the router's PoolManager, PrismCrystal, five test stocks, fee 3000 and tick spacing 60; the
+profiles' PrismCrystal).
 
 ## Wallet + contract
 

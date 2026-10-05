@@ -13,18 +13,20 @@ const X_RE = /^[A-Za-z0-9_]+$/;
 // eslint-disable-next-line no-control-regex
 const CONTROL_RE = /[\u0000-\u001f\u007f]/;
 
-/** Impersonation guard: names and bios may not contain these (app-side only). */
+/** Impersonation guard: usernames may not contain these (app-side only). */
 export const RESERVED_WORDS = ['vibevibe', 'vibe_vibe', 'prism', 'admin', 'official', 'robinhood'] as const;
+/** Bios may say "prism" ("Collecting PRISM crystals"); the rest stays refused. */
+export const BIO_RESERVED_WORDS = RESERVED_WORDS.filter((w) => w !== 'prism');
 /** Basic profanity, refused anywhere in a name or bio. */
 const PROFANITY_ANYWHERE = ['fuck', 'shit', 'cunt', 'nigger', 'nigga', 'faggot', 'bitch', 'whore', 'slut', 'retard', 'asshole', 'motherf'];
 /** Short words refused only as a whole word (so "class", "cocktail" and "grape" stay fine). */
 const PROFANITY_WORDS = ['ass', 'cock', 'dick', 'rape', 'porn', 'tits', 'twat', 'wank', 'piss', 'fag', 'dyke', 'nazi', 'kkk'];
 
 /** The first refused word in `text`, or null. Case and separators are ignored. */
-export function blockedWord(text: string): string | null {
+export function blockedWord(text: string, reservedWords: readonly string[] = RESERVED_WORDS): string | null {
   const spaced = text.toLowerCase().replace(/[^a-z0-9]+/g, '_'); // "Vibe/Vibe!" → "vibe_vibe_"
   const compact = spaced.replace(/_/g, ''); // "pr_ism" → "prism"
-  const reserved = RESERVED_WORDS.find((w) => spaced.includes(w) || compact.includes(w.replace(/_/g, '')));
+  const reserved = reservedWords.find((w) => spaced.includes(w) || compact.includes(w.replace(/_/g, '')));
   if (reserved) return reserved;
   const anywhere = PROFANITY_ANYWHERE.find((w) => spaced.includes(w));
   if (anywhere) return anywhere;
@@ -51,7 +53,7 @@ export function bioProblem(bio: string): string | null {
   if (bio === '') return null;
   if (bioBytes(bio) > BIO_MAX_BYTES) return `At most ${BIO_MAX_BYTES} bytes (emoji and accents count double or more).`;
   if (CONTROL_RE.test(bio)) return 'One line of text: no line breaks or control characters.';
-  const bad = blockedWord(bio);
+  const bad = blockedWord(bio, BIO_RESERVED_WORDS);
   return bad ? `Bios can’t contain ${refused(bad)}.` : null;
 }
 

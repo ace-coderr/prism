@@ -29,7 +29,9 @@ export default function Deploy() {
   const [deployed, setDeployed] = useState<{ address: Address; block: bigint } | null>(null);
   const existing = getDeployment(TARGET_CHAIN.id);
 
+  // PrismCrystal is deployed once: with an address in deployments.ts this can't run at all
   const deploy = () =>
+    !existing &&
     run([
       {
         label: 'Deploy PrismCrystal',
@@ -68,11 +70,12 @@ export default function Deploy() {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <span className="label text-mist">2 · Deploy</span>
-          <button className="btn btn-primary" disabled={!onTarget || running || !!deployed} onClick={deploy}>
-            {running ? 'Deploying…' : deployed ? 'Deployed' : 'Deploy contract'}
+          <button className="btn btn-primary" disabled={!!existing || !onTarget || running || !!deployed} onClick={deploy}>
+            {existing ? 'Already deployed' : running ? 'Deploying…' : deployed ? 'Deployed' : 'Deploy contract'}
           </button>
-          {!isConnected && <span className="text-xs text-mist">Connect a wallet first.</span>}
-          {isConnected && !onTarget && <span className="text-xs text-mist">Switch to Robinhood Chain Testnet first.</span>}
+          {existing && <span className="text-xs text-mist">Locked: PrismCrystal is already in deployments.ts.</span>}
+          {!existing && !isConnected && <span className="text-xs text-mist">Connect a wallet first.</span>}
+          {!existing && isConnected && !onTarget && <span className="text-xs text-mist">Switch to Robinhood Chain Testnet first.</span>}
         </div>
         <p className="text-xs text-mist/80">
           Your wallet will show a contract-creation transaction of roughly 4.5M gas. On testnet that costs a small amount of
@@ -118,6 +121,7 @@ function RouterDeploy() {
 
   const deploy = () =>
     args &&
+    !existing?.forgeRouter &&
     run([
       {
         label: 'Deploy PrismForgeRouter',
@@ -169,7 +173,7 @@ function RouterDeploy() {
         )}
         <div className="flex flex-wrap items-center gap-3">
           <button className="btn btn-primary" disabled={!args || !onTarget || running || !!deployed || !!existing?.forgeRouter} onClick={deploy}>
-            {running ? 'Deploying…' : deployed ? 'Deployed' : 'Deploy router'}
+            {existing?.forgeRouter ? 'Already deployed' : running ? 'Deploying…' : deployed ? 'Deployed' : 'Deploy router'}
           </button>
           {!isConnected && <span className="text-xs text-mist">Connect a wallet first.</span>}
           {isConnected && !onTarget && <span className="text-xs text-mist">Switch to Robinhood Chain Testnet first.</span>}
@@ -214,6 +218,7 @@ function ProfilesDeploy() {
 
   const deploy = () =>
     crystal &&
+    !existing &&
     run([
       {
         label: 'Deploy PrismProfiles',
@@ -248,7 +253,7 @@ function ProfilesDeploy() {
         )}
         <div className="flex flex-wrap items-center gap-3">
           <button className="btn btn-primary" disabled={!crystal || !onTarget || running || !!deployed || !!existing} onClick={deploy}>
-            {running ? 'Deploying…' : deployed ? 'Deployed' : 'Deploy PrismProfiles'}
+            {existing ? 'Already deployed' : running ? 'Deploying…' : deployed ? 'Deployed' : 'Deploy PrismProfiles'}
           </button>
           {!isConnected && <span className="text-xs text-mist">Connect a wallet first.</span>}
           {isConnected && !onTarget && <span className="text-xs text-mist">Switch to Robinhood Chain Testnet first.</span>}

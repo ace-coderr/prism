@@ -24,7 +24,9 @@ import { Change, EthPrice, formatEth } from '../components/ui';
 import { GuideNote } from '../components/Viber';
 import { ClaimBanner } from '../components/ClaimBanner';
 import { Logo } from '../components/Nav';
+import { SHARE, ShareOnX, profileLink } from '../components/ShareOnX';
 import { DEFAULT_VOLATILITY } from '../data/crystalHoldings';
+import { useProfile } from '../data/profiles';
 import { useTestnetTokens, type LiveToken } from '../data/chain';
 import { TARGET_CHAIN } from '../wallet/config';
 import { depositSteps } from '../wallet/deposit';
@@ -270,6 +272,8 @@ export default function Forge() {
   const [ethInput, setEthInput] = useState('');
   const [forgedId, setForgedId] = useState<bigint | null>(null);
   const tx = useTxSteps();
+  // for the "Share on X" link after a forge: their name once they have one
+  const { profile } = useProfile(address);
 
   const marketById = useMemo(() => {
     const m = new Map<string, LiveToken>();
@@ -421,9 +425,12 @@ export default function Forge() {
       <GuideNote
         index={7}
         action={
-          <Link to="/my-crystals" className="btn btn-primary">
-            See it in My Crystals
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <Link to="/my-crystals" className="btn btn-primary">
+              See it in My Crystals
+            </Link>
+            {address && <ShareOnX text={SHARE.forged(profileLink(address, profile.name))} />}
+          </div>
         }
       >
         Done! Crystal #{forgedId.toString()} is in your wallet.
@@ -713,12 +720,15 @@ export default function Forge() {
           )}
 
           {forgedId !== null && step === 3 && (
-            <p className="text-sm text-white">
-              Crystal #{forgedId.toString()} is in your wallet.{' '}
-              <Link to="/my-crystals" className="text-lime underline">
-                See it in My Crystals →
-              </Link>
-            </p>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+              <p className="text-sm text-white">
+                Crystal #{forgedId.toString()} is in your wallet.{' '}
+                <Link to="/my-crystals" className="text-lime underline">
+                  See it in My Crystals →
+                </Link>
+              </p>
+              {address && <ShareOnX text={SHARE.forged(profileLink(address, profile.name))} />}
+            </div>
           )}
 
           {!desktop && <PreviewFold holdings={preview} items={summary.items} total={summary.total} />}

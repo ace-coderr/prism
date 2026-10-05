@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { getAddress, isAddress, type Address } from 'viem';
 import {
@@ -20,6 +20,7 @@ import { CrystalThumb } from '../components/CrystalThumb';
 import { useProfileEditor } from '../components/editorContext';
 import { LoadingStage } from '../components/LoadingStage';
 import { PageHeader, PageScroll } from '../components/PageHeader';
+import { SHARE, ShareOnX, profileLink } from '../components/ShareOnX';
 import { SectionLabel } from '../components/design';
 import { Stage } from '../components/Stage';
 import { Change, formatEth } from '../components/ui';
@@ -34,6 +35,45 @@ import { TARGET_CHAIN } from '../wallet/config';
 import { WalletButton, useWallet } from '../wallet/WalletButton';
 
 const same = (a?: string | null, b?: string | null) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+
+/** Badge ids this browser has already shown for a wallet (null = never looked yet). */
+const seenKey = (a: Address) => `prism.badges.seen.${a.toLowerCase()}`;
+function readSeen(a: Address): string[] | null {
+  try {
+    const v = window.localStorage.getItem(seenKey(a));
+    return v ? (JSON.parse(v) as string[]) : null;
+  } catch {
+    return null;
+  }
+}
+function writeSeen(a: Address, ids: string[]) {
+  try {
+    window.localStorage.setItem(seenKey(a), JSON.stringify(ids));
+  } catch {
+    /* storage blocked: every badge just stays shareable from its card */
+  }
+}
+
+/**
+ * Badges earned since this browser last looked at the owner's profile. The first look only
+ * records what is already earned (so old badges don't all pop up as new); a badge that
+ * turns up after that is "new" until it is shared or dismissed.
+ */
+function useNewBadges(address: Address, earned: string[] | null, ready: boolean) {
+  const [fresh, setFresh] = useState<string[]>([]);
+  const key = earned?.join(',') ?? '';
+  useEffect(() => {
+    if (!ready || !earned) return;
+    const seen = readSeen(address);
+    if (seen === null) writeSeen(address, earned);
+    else setFresh(earned.filter((id) => !seen.includes(id)));
+  }, [address, ready, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const seen = (id: string) => {
+    writeSeen(address, [...new Set([...(readSeen(address) ?? []), id])]);
+    setFresh((f) => f.filter((x) => x !== id));
+  };
+  return { fresh, seen };
+}
 
 /** /profile (yours) and /u/:name or /u/:address (anyone's, shareable). */
 export default function ProfilePage() {
@@ -119,6 +159,8 @@ function ProfileView({ address }: { address: Address }) {
 
   const avatarCrystal = profile.avatarId ? owned.find((c) => c.id === profile.avatarId) : undefined;
   const loaded = crystals.isSuccess && !!activity;
+  // badges need prices too (Kintsugi counts gold seams), so only compare once both are in
+  const newBadges = useNewBadges(address, badges?.filter((b) => b.isEarned).map((b) => b.id) ?? null, mine && loaded && priced);
   const empty = loaded && owned.length === 0 && activity.length === 0;
   const editor = useProfileEditor();
   const guide = empty ? (
@@ -188,14 +230,41 @@ function ProfileView({ address }: { address: Address }) {
         <SectionLabel>
           <span id="badges-title">Badges</span>
         </SectionLabel>
+        {mine &&
+          newBadges.fresh.map((id) => {
+            const b = badges?.find((x) => x.id === id);
+            if (!b) return null;
+            return (
+              <div key={id} role="status" className="flex flex-wrap items-center gap-4 rounded-[20px] border border-lime/40 bg-lime/[0.06] p-4 sm:p-5">
+                <BadgeIcon id={b.id} earned />
+                <div className="min-w-0 flex-1">
+                  <p className="section-label text-[10px] !text-lime">New badge</p>
+                  <p className="mt-1 font-display text-lg font-bold text-white">{b.name}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <ShareOnX text={SHARE.badge(b.name, profileLink(address, profile.name))} className="btn btn-primary" onClick={() => newBadges.seen(id)} />
+                  <button type="button" className="btn btn-outline" onClick={() => newBadges.seen(id)}>
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         <ul className="grid gap-3 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
           {(badges ?? []).map((b) => (
             <li key={b.id} className={`card flex items-start gap-4 p-5 ${b.isEarned ? '' : 'opacity-60'}`}>
               <BadgeIcon id={b.id} earned={b.isEarned} />
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className={`font-display text-lg font-bold ${b.isEarned ? 'text-white' : 'text-mist'}`}>{b.name}</p>
                 <p className="mt-1 text-[13px] leading-snug text-mist">{b.isEarned ? b.earned : `How to earn it: ${b.how}`}</p>
               </div>
+              {mine && b.isEarned && (
+                <ShareOnX
+                  text={SHARE.badge(b.name, profileLink(address, profile.name))}
+                  label="Share"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-mist transition-colors hover:border-white/30 hover:text-white"
+                />
+              )}
             </li>
           ))}
           {!badges && <li className="col-span-full text-sm text-mist">Reading the chain…</li>}
@@ -312,8 +381,9 @@ function ProfileHeader(props: {
               Edit profile
             </button>
           )}
+          {mine && <ShareOnX text={SHARE.profile(profileLink(address, profile.name))} />}
           <button type="button" className="btn btn-outline" onClick={share}>
-            {copied ? 'Link copied ✓' : 'Share profile'}
+            {copied ? 'Link copied ✓' : mine ? 'Copy link' : 'Share profile'}
           </button>
         </div>
       </div>

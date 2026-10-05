@@ -146,7 +146,6 @@ export function Nav() {
   );
 }
 
-export const LIVE_URL = 'https://prism-crystal.vercel.app';
 export const STATUS_TOOLTIP = 'Live data from Robinhood Chain Testnet';
 
 /** Navbar status: a green dot and "Testnet". */
@@ -177,6 +176,10 @@ export function Footer() {
             <Logo size={16} />
             <span className="font-display text-[13px] font-bold tracking-[-0.02em]">PRISM</span>
           </NavLink>
+          {dot}
+          <a className={a} href="https://x.com/holdprism" target="_blank" rel="noreferrer">
+            PRISM on X
+          </a>
           {dot}
           <a className={a} href="https://x.com/_ace_won" target="_blank" rel="noreferrer">
             Built by ace

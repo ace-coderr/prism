@@ -7,6 +7,7 @@ import { atName, getDeployment, identicon, nameProblem, prismProfilesAbi, type C
 import { CrystalThumb } from '../components/CrystalThumb';
 import { TARGET_CHAIN } from '../wallet/config';
 import { testnetClient, useTestnetTokens } from './chain';
+import { profileHref } from './share';
 import { holdingsFromAssets, marketLookup, realCrystalHistory } from './crystalHoldings';
 import { earliestForge, useGalleryCrystals } from './crystals';
 
@@ -29,8 +30,7 @@ type RawProfile = { name: string; avatarId: bigint; bio: string; x: string };
 const toProfile = (r: RawProfile | undefined): Profile =>
   r ? { name: r.name || null, avatarId: r.avatarId > 0n ? r.avatarId : null, bio: r.bio || null, x: r.x || null } : NO_PROFILE;
 
-/** Where an address's public profile lives: /u/name once it has one, else /u/0x…. */
-export const profileHref = (address: Address, name?: string | null) => `/u/${name ?? address}`;
+export { profileHref };
 
 /** Profiles for many addresses (lower-cased keys); empty until PrismProfiles is deployed. */
 export function useProfiles(addresses: Array<Address | undefined>) {

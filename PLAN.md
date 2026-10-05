@@ -5,8 +5,8 @@ Status: **Done** · **In progress** · **Not started**
 ## Phase 1 (testnet launch)
 - **Done** · Core PRISM (forge, view, gallery)
 - **Done** · Living crystal with kintsugi gold seams
-- **In progress** · Sealed gifts (frost-wrapped, optional time-lock): sealing works; still to build: the gift flow to an @username with a note, and the frost wrap / unwrap animation
-- **Not started** · Shareable replays (crystal time-lapse to video clip for X)
+- **Done** · Sealed gifts (frost-wrapped, optional time-lock): send to an @username or address with a note, optional seal, ice wrap and unwrap animation, /gift/<id> page
+- **Done** · Shareable replays (crystal time-lapse to video clip for X): /replay/<id>, MP4 made in the browser (1080×1080 or 1920×1080, with sound)
 
 ## Shipped beyond the plan
 - **Done** · Forge from ETH (PrismForgeRouter: swap ETH into the picked stocks and forge in one transaction)
@@ -14,7 +14,7 @@ Status: **Done** · **In progress** · **Not started**
 - **Done** · Badges and activity feed on profiles
 - **Done** · vibers as guides through the app
 - **Done** · Explainer video (40s) with an original soundtrack and synced sound effects
-- **Done** · Share on X buttons (after a forge, on your profile, for new badges)
+- **Done** · Share on X buttons (after a forge, on your profile, for new badges, after a gift, on replays)
 - **Done** · X launch: [@holdprism](https://x.com/holdprism)
 
 ## Phase 2

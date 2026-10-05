@@ -98,8 +98,8 @@ export default function Deploy() {
             </button>
           </div>
           <p className="pt-2 text-sm">
-            <b>Next:</b> paste this address (and block number) back to Claude in chat. It will be saved in{' '}
-            <code className="font-mono text-lime">packages/core/src/deployments.ts</code> and the source verified on the explorer.
+            <b>Next:</b> record this address (and block number) in{' '}
+            <code className="font-mono text-lime">packages/core/src/deployments.ts</code> and verify the source on the explorer.
           </p>
         </Panel>
       )}
@@ -197,9 +197,9 @@ function RouterDeploy() {
             </button>
           </div>
           <p className="pt-2 text-sm">
-            <b>Next:</b> paste this address back to Claude in chat. It goes into <code className="font-mono text-lime">forgeRouter</code> in{' '}
-            <code className="font-mono text-lime">packages/core/src/deployments.ts</code>, which switches on “Start with ETH”, and the
-            source gets verified on the explorer.
+            <b>Next:</b> record this address as <code className="font-mono text-lime">forgeRouter</code> in{' '}
+            <code className="font-mono text-lime">packages/core/src/deployments.ts</code>, which switches on “Start with ETH”, and verify
+            the source on the explorer.
           </p>
         </Panel>
       )}
@@ -275,9 +275,9 @@ function ProfilesDeploy() {
             </button>
           </div>
           <p className="pt-2 text-sm">
-            <b>Next:</b> paste this address back to Claude in chat. It goes into <code className="font-mono text-lime">prismProfiles</code> in{' '}
+            <b>Next:</b> record this address as <code className="font-mono text-lime">prismProfiles</code> in{' '}
             <code className="font-mono text-lime">packages/core/src/deployments.ts</code>, which switches on profiles (names, avatars, bios,
-            Edit profile), and the source gets verified on the explorer.
+            Edit profile), and verify the source on the explorer.
           </p>
         </Panel>
       )}

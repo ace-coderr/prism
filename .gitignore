@@ -23,7 +23,10 @@ typechain-types
 *.log
 
 # vercel build output
-.vercel
+.vercel/
 
 # generated soundtrack (npm run audio -w @prism/video); rebuilt before every render
 apps/video/public/audio/
+
+# local tool settings: stay on this computer, never committed
+.claude/

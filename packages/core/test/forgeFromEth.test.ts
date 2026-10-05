@@ -3,7 +3,9 @@ import {
   POOL_MANAGER,
   ROUTER_TOKENS,
   minOut,
+  minsAtSend,
   priceImpact,
+  priceMovedMessage,
   routerDeployArgs,
   splitEth,
   suggestSmallerEth,
@@ -45,5 +47,44 @@ describe('forge from ETH helpers', () => {
     expect(suggestSmallerEth(E(1), 0.02)).toBeNull();
     const s = suggestSmallerEth(E(1), 0.08)!; // ≈ 1 × 2.4% / 8% = 0.3
     expect(Number(s) / 1e18).toBeCloseTo(0.3, 6);
+  });
+
+  describe('minimums at the moment of sending (quotes go stale on busy, thin pools)', () => {
+    // the bug case: 5 stocks × 0.004 ETH at 1%, and ANTHROPIC jumps between the quote and the click
+    const shownQuotes = [E(0.0305), E(0.0302), E(0.016), E(0.02432), E(0.0521)];
+    const shownMins = shownQuotes.map((q) => minOut(q, 100));
+
+    it('goes ahead with the full slippage counted from the fresh quote when nothing moved past the minimum', () => {
+      const fresh = [E(0.0304), E(0.0302), E(0.0161), E(0.0242), E(0.0519)]; // small moves, all above the minimums
+      const check = minsAtSend(shownMins, fresh, 100);
+      expect(check).toEqual({ ok: true, mins: fresh.map((q) => minOut(q, 100)) });
+    });
+
+    it('stops before the wallet opens when a fresh quote is below the minimum the user saw', () => {
+      const fresh = [...shownQuotes];
+      fresh[3] = E(0.01474); // ANTHROPIC −39%
+      const check = minsAtSend(shownMins, fresh, 100);
+      expect(check.ok).toBe(false);
+      if (check.ok) return;
+      expect(check.moved).toEqual([{ index: 3, quote: E(0.01474), min: shownMins[3] }]);
+      expect(priceMovedMessage(check.moved.map((m) => ({ ...m, token: tokenById('ANTHROPIC')! })), 100)).toBe(
+        'ANTHROPIC moved more than 1% since the quote on screen: ANTHROPIC now buys about 0.01474 (your minimum was 0.02408). Nothing was sent. The amounts are updated: check them and press Swap & forge again, or raise slippage.',
+      );
+    });
+
+    it('lists every token that moved', () => {
+      const fresh = [...shownQuotes];
+      fresh[3] = E(0.02);
+      fresh[4] = E(0.05);
+      const check = minsAtSend(shownMins, fresh, 100);
+      if (check.ok) throw new Error('expected a move');
+      const msg = priceMovedMessage(check.moved.map((m) => ({ ...m, token: [tokenById('ANTHROPIC')!, tokenById('OPENAI')!][m.index - 3]! })), 100);
+      expect(msg).toMatch(/^ANTHROPIC and OPENAI moved more than 1%/);
+    });
+
+    it('a better price is never a reason to stop', () => {
+      const fresh = shownQuotes.map((q) => (q * 105n) / 100n);
+      expect(minsAtSend(shownMins, fresh, 100).ok).toBe(true);
+    });
   });
 });

@@ -53,6 +53,14 @@ In the app, Forge → **Start with ETH** (the default once the router is deploye
 amount, a slider per stock (plus "keep as ETH"), live V4Quoter quotes, price impact with a
 plain warning above 3%, slippage 1% by default. The router is deployed and verified at
 `0xD1340ad67A4b5C0995CC050bE773ee74293fD24D` (see below).
+
+The test-stock pools trade every few seconds and the thin pre-IPO ones (ANTHROPIC, OPENAI) can
+jump several percent between two swaps, so **Swap & forge** quotes again the moment it's pressed.
+If a fresh quote is still above the minimum on screen, it sends with the full slippage counted
+from that fresh quote. If not, nothing is sent and the screen shows the new amounts. Every
+router and crystal error is shown as a plain sentence ("ANTHROPIC's price moved more than 1%
+since your quote…"), including for a transaction that fails on-chain, which is replayed at its
+block to read the reason. Fork test: `contracts/test/fork/ForgeFromEthSlippage.fork.test.ts`.
 V4 addresses (PoolManager, V4Quoter, Universal Router, Permit2) come from vibe/vibe's published
 config for chain 46630 and were checked on-chain.
 

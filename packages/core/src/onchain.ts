@@ -1,12 +1,9 @@
 /**
  * Pure helpers for on-chain flows (forge / add / withdraw / seal) that can be tested
  * without a wallet: amount parsing, pre-flight balance checks, approval planning,
- * readable errors, and crystal ownership from Transfer logs.
+ * and crystal ownership from Transfer logs (readable errors: ./errors).
  */
-import { BaseError, ContractFunctionRevertedError, UserRejectedRequestError, parseUnits, toFunctionSelector, type Abi, type Address } from 'viem';
-import { prismCrystalAbi } from './abi/prismCrystal';
-import { prismForgeRouterAbi } from './abi/prismForgeRouter';
-import { prismProfilesAbi } from './abi/prismProfiles';
+import { parseUnits, type Address } from 'viem';
 
 // ------------------------------------------------------------------ amounts
 
@@ -78,86 +75,6 @@ export function planDeposit(
   const approvals = items.filter((it) => it.amount > 0n && it.allowance < it.amount);
   return { ok: problems.length === 0, problems, approvals };
 }
-
-// ------------------------------------------------------------------ errors
-
-const REVERT_MESSAGES: Record<string, string> = {
-  NotCrystalOwner: 'Only the crystal’s current owner can do that.',
-  CrystalSealed: 'This crystal is sealed — withdrawals unlock at the seal date.',
-  LengthMismatch: 'Token and amount lists don’t match.',
-  EmptyDeposit: 'Add at least one token amount or some ETH.',
-  NothingToWithdraw: 'Choose something to withdraw.',
-  ZeroAmount: 'Amounts must be greater than zero.',
-  ZeroAddress: 'Invalid address.',
-  DuplicateToken: 'The same token is listed twice.',
-  TooManyAssets: 'A crystal holds at most 8 assets (ETH counts as one).',
-  NothingReceived: 'The token transfer delivered nothing.',
-  InsufficientBalance: 'The crystal doesn’t hold that much of this token.',
-  InsufficientEth: 'The crystal doesn’t hold that much ETH.',
-  SealMustBeInFuture: 'The seal date must be in the future.',
-  SealCanOnlyBeExtended: 'A seal can only be extended, never shortened.',
-  SealTooLong: 'Seals are limited to 100 years.',
-  EthTransferFailed: 'The ETH transfer to the recipient failed.',
-  ReentrancyGuardReentrantCall: 'Blocked a re-entrant call.',
-  ERC20InsufficientBalance: 'Not enough tokens in your wallet.',
-  ERC20InsufficientAllowance: 'Token approval is too low — approve again.',
-  ERC721NonexistentToken: 'That crystal doesn’t exist (or was burned).',
-  // PrismProfiles
-  InvalidName: 'Usernames are 3–20 characters: lowercase letters, numbers and _.',
-  NameTaken: 'Someone else just took that username. Try another.',
-  AlreadyYours: 'That username is already yours.',
-  NoName: 'You don’t have a username to remove.',
-  NoAvatar: 'You don’t have an avatar to remove.',
-  InvalidBio: 'Bios are one line of up to 120 bytes.',
-  NoBio: 'You don’t have a bio to remove.',
-  InvalidX: 'X handles are up to 15 letters, numbers or _ (no @, no link).',
-  NoX: 'You don’t have an X handle to remove.',
-};
-
-/** Turn any wallet / RPC / revert error into one readable sentence. */
-let errorNames: Map<string, string> | null = null;
-/**
- * A PRISM contract error's name from its 4-byte selector. Some nodes hand back only the
- * selector (no revert data), and then viem can't decode it by itself.
- */
-export function errorNameOf(selector: string): string | null {
-  if (!errorNames) {
-    errorNames = new Map();
-    for (const abi of [prismCrystalAbi, prismForgeRouterAbi, prismProfilesAbi] as Abi[]) {
-      for (const item of abi) {
-        if (item.type !== 'error') continue;
-        errorNames.set(toFunctionSelector(`${item.name}(${item.inputs.map((i) => i.type).join(',')})`), item.name);
-      }
-    }
-  }
-  return errorNames.get(selector.toLowerCase()) ?? null;
-}
-
-export function friendlyError(err: unknown): string {
-  if (err instanceof BaseError) {
-    if (err.walk((e) => e instanceof UserRejectedRequestError)) return 'You rejected the request in your wallet.';
-    const revert = err.walk((e) => e instanceof ContractFunctionRevertedError);
-    if (revert instanceof ContractFunctionRevertedError) {
-      const name = revert.data?.errorName ?? (revert.signature ? errorNameOf(revert.signature) : null) ?? '';
-      if (REVERT_MESSAGES[name]) return REVERT_MESSAGES[name]!;
-      if (revert.reason) return `The contract refused: ${revert.reason}`;
-    }
-    const text = `${err.shortMessage} ${err.details ?? ''}`.toLowerCase();
-    if (text.includes('insufficient funds')) return 'Not enough ETH in your wallet to pay for this (including gas).';
-    if (text.includes('user rejected') || text.includes('user denied')) return 'You rejected the request in your wallet.';
-    if (text.includes('chain mismatch') || text.includes('does not match the target chain'))
-      return 'Your wallet is on the wrong network — switch to Robinhood Chain Testnet.';
-    return err.shortMessage;
-  }
-  if (err instanceof Error) {
-    const m = err.message.toLowerCase();
-    if (m.includes('user rejected') || m.includes('user denied')) return 'You rejected the request in your wallet.';
-    return err.message.split('\n')[0]!;
-  }
-  return 'Something went wrong.';
-}
-
-export const revertMessage = (errorName: string) => REVERT_MESSAGES[errorName] ?? null;
 
 // ------------------------------------------------------------------ ownership from logs
 

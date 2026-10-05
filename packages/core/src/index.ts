@@ -10,6 +10,7 @@ export * from './reader';
 export * from './snapshot';
 export * from './deployments';
 export * from './onchain';
+export * from './errors';
 export * from './vibers';
 export * from './abi/prismCrystal';
 export * from './abi/prismForgeRouter';

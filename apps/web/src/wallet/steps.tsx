@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import type { Hash, TransactionReceipt } from 'viem';
-import { waitForTransactionReceipt } from 'wagmi/actions';
-import { explorerTx, friendlyError } from '@prism/core';
+import { call, getTransaction, waitForTransactionReceipt } from 'wagmi/actions';
+import { explorerTx, friendlyError, messageForRevertData, revertDataOf, type ErrorContext } from '@prism/core';
 import { wagmiConfig } from './config';
 
 export type StepStatus = 'waiting' | 'wallet' | 'mining' | 'done' | 'error';
@@ -19,6 +19,25 @@ export interface StepDef {
   send: () => Promise<Hash>;
   /** Optional follow-up once mined (e.g. read the new crystal id from logs). */
   after?: (receipt: TransactionReceipt) => void;
+  /** What the error messages should know (e.g. the slippage picked). */
+  errorContext?: ErrorContext;
+}
+
+/**
+ * Why a mined transaction reverted: a receipt carries no reason, so replay the same call
+ * at its block and decode what the contract says (usually the same thing, right after).
+ */
+async function explainFailedTx(hash: Hash, receipt: TransactionReceipt, ctx: ErrorContext = {}): Promise<string> {
+  const generic = 'The transaction failed on-chain (reverted). Nothing changed except the network fee.';
+  try {
+    const tx = await getTransaction(wagmiConfig, { hash });
+    if (!tx.to) return generic;
+    await call(wagmiConfig, { account: tx.from, to: tx.to, data: tx.input, value: tx.value, gas: tx.gas, blockNumber: receipt.blockNumber });
+  } catch (e) {
+    const data = revertDataOf(e);
+    if (data !== undefined) return `The transaction failed on-chain, so only the network fee was spent. ${messageForRevertData(data, ctx)}`;
+  }
+  return generic;
 }
 
 /** Runs transactions one by one, tracking each step for the UI. Stops at the first failure. */
@@ -38,13 +57,13 @@ export function useTxSteps() {
         try {
           hash = await defs[i]!.send();
         } catch (e) {
-          patch(i, { status: 'error', error: friendlyError(e) });
+          patch(i, { status: 'error', error: friendlyError(e, defs[i]!.errorContext) });
           return false;
         }
         patch(i, { status: 'mining', hash });
         const receipt = await waitForTransactionReceipt(wagmiConfig, { hash });
         if (receipt.status !== 'success') {
-          patch(i, { status: 'error', error: 'The transaction failed on-chain (reverted).' });
+          patch(i, { status: 'error', error: await explainFailedTx(hash, receipt, defs[i]!.errorContext) });
           return false;
         }
         defs[i]!.after?.(receipt);

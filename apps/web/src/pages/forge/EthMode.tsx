@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { formatUnits, parseEventLogs, type Address } from 'viem';
 import { simulateContract, writeContract } from 'wagmi/actions';
 import {
@@ -7,8 +7,10 @@ import {
   IMPACT_WARN,
   evenWeights,
   minOut,
+  minsAtSend,
   parseTokenAmount,
   priceImpact,
+  priceMovedMessage,
   prismForgeRouterAbi,
   quoteEthToToken,
   rebalance,
@@ -33,6 +35,8 @@ const fmt = (v: bigint, d: number, max = 4) => {
   return n === 0 ? '0' : n < 0.0001 ? '<0.0001' : n.toLocaleString('en-US', { maximumFractionDigits: max });
 };
 const pctText = (x: number) => `${(x * 100).toFixed(x < 0.1 ? 1 : 0)}%`;
+/** One cache entry per (token, ETH in): the list on screen and the check before sending share it. */
+const quoteKey = (t: TestnetToken, ethIn: bigint) => ['v4-quote', t.id, ethIn.toString()];
 
 /** Debounce a value (quotes follow typing after a short pause). */
 function useDebounced<T>(value: T, ms = 350) {
@@ -79,10 +83,11 @@ export function useEthMix(picked: TestnetToken[], markets: Map<string, LiveToken
     queries: picked.map((t, i) => {
       const ethIn = quoted[i] ?? 0n;
       return {
-        queryKey: ['v4-quote', t.id, ethIn.toString()],
+        queryKey: quoteKey(t, ethIn),
         enabled: ethIn > 0n,
-        staleTime: 15_000,
-        refetchInterval: 20_000,
+        // the pools trade every few seconds; keep what's on screen close to what a swap gets
+        staleTime: 5_000,
+        refetchInterval: 10_000,
         queryFn: () => quoteEthToToken(testnetClient, t, ethIn),
       };
     }),
@@ -258,20 +263,31 @@ export function useEthForge({
   onDone: () => void;
 }) {
   const tx = useTxSteps();
+  const queryClient = useQueryClient();
   const ready = !!router && !!account && mix.quotesReady && problems.length === 0 && mix.total !== null && mix.total > 0n;
   const forge = async () => {
     if (!router || !account || !mix.total) return;
-    const swaps = mix.rows.map((r) => ({ token: r.t.address, ethIn: r.ethIn }));
-    const mins = mix.rows.map((r) => r.min!);
-    await tx.run([
+    const rows = mix.rows;
+    const swaps = rows.map((r) => ({ token: r.t.address, ethIn: r.ethIn }));
+    const ok = await tx.run([
       {
         label: 'Swapping your ETH and forging your crystal',
+        errorContext: { slippageBps: mix.slippageBps },
         send: async () => {
+          // Quote again right now (this also updates the amounts on screen). A quote can be
+          // seconds old, and a thin pool can move more than the slippage in that time.
+          const fresh = await Promise.all(
+            rows.map((r) =>
+              queryClient.fetchQuery({ queryKey: quoteKey(r.t, r.ethIn), queryFn: () => quoteEthToToken(testnetClient, r.t, r.ethIn), staleTime: 0 }),
+            ),
+          );
+          const check = minsAtSend(rows.map((r) => r.min!), fresh, mix.slippageBps);
+          if (!check.ok) throw new Error(priceMovedMessage(check.moved.map((m) => ({ ...m, token: rows[m.index]!.t })), mix.slippageBps));
           const { request } = await simulateContract(wagmiConfig, {
             address: router,
             abi: prismForgeRouterAbi,
             functionName: 'forgeFromETH',
-            args: [swaps, mins, mix.kept],
+            args: [swaps, check.mins, mix.kept],
             value: mix.total!,
             chainId: TARGET_CHAIN.id,
             account,
@@ -284,6 +300,8 @@ export function useEthForge({
         },
       },
     ]);
+    // after a failure, show what the same ETH buys now
+    if (!ok) void queryClient.invalidateQueries({ queryKey: ['v4-quote'] });
     onDone();
   };
   return { tx, ready, forge };

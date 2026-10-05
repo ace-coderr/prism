@@ -4,6 +4,7 @@
  * split across the chosen tokens. Pure helpers + read-only quoting (eth_call only).
  */
 import type { Address, PublicClient } from 'viem';
+import { formatAmount, slippageText } from './errors';
 import { POOL_MANAGER } from './pool';
 import { BASKET_TOKENS, type TestnetToken } from './tokens';
 
@@ -117,6 +118,41 @@ export function splitEth(total: bigint, percents: number[]): bigint[] {
 export function minOut(amount: bigint, slippageBps: number): bigint {
   const m = (amount * BigInt(10_000 - Math.round(slippageBps))) / 10_000n;
   return m > 0n ? m : 1n;
+}
+
+export interface PriceMove {
+  /** index into the swaps */
+  index: number;
+  /** what the same ETH buys now */
+  quote: bigint;
+  /** the least the user was shown */
+  min: bigint;
+}
+
+/**
+ * Minimums to send, from quotes taken the moment the user presses "Swap & forge".
+ * The pools trade every few seconds and the thin ones can jump several percent, so the
+ * quote on screen can be stale. When a fresh quote still clears the minimum the user was
+ * shown, the swap goes ahead with the full slippage counted from now (Uniswap's interface
+ * does the same); when it doesn't, nothing is sent and the user sees the new amounts first.
+ */
+export function minsAtSend(
+  shownMins: readonly bigint[],
+  freshQuotes: readonly bigint[],
+  slippageBps: number,
+): { ok: true; mins: bigint[] } | { ok: false; moved: PriceMove[] } {
+  const moved = freshQuotes.flatMap((quote, index) => (quote < shownMins[index]! ? [{ index, quote, min: shownMins[index]! }] : []));
+  return moved.length ? { ok: false, moved } : { ok: true, mins: freshQuotes.map((q) => minOut(q, slippageBps)) };
+}
+
+/** "ANTHROPIC moved more than 1% since the quote on screen…", for moves found before sending. */
+export function priceMovedMessage(moves: ReadonlyArray<PriceMove & { token: TestnetToken }>, slippageBps: number): string {
+  const what = moves
+    .map((m) => `${m.token.id} now buys about ${formatAmount(m.quote, m.token.decimals)} (your minimum was ${formatAmount(m.min, m.token.decimals)})`)
+    .join('; ');
+  const who = moves.map((m) => m.token.id);
+  const names = who.length === 1 ? who[0] : `${who.slice(0, -1).join(', ')} and ${who.at(-1)}`;
+  return `${names} moved more than ${slippageText({ slippageBps })} since the quote on screen: ${what}. Nothing was sent. The amounts are updated: check them and press Swap & forge again, or raise slippage.`;
 }
 
 /** Impact above this is worth a plain warning (the thin pre-IPO pools get there quickly). */

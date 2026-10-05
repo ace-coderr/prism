@@ -1,43 +1,21 @@
 import { useMemo, type CSSProperties, type ReactNode } from 'react';
-import { AbsoluteFill, Easing, Img, Sequence, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Audio, Easing, Img, Sequence, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { ThreeCanvas } from '@remotion/three';
-import { viberAt, viberImageUrl, type Holding } from '@prism/core';
+import { viberAt, viberImageUrl } from '@prism/core';
 import { C, DISPLAY, MONO } from './theme';
 import { VoxelCrystal, makeShape } from './VoxelCrystal';
+import { DROP, DURATION, EASE_BEZIER, FPS, HOLDINGS, S, T, TOKENS } from './timeline';
+
+export { DURATION, FPS };
 
 /*
- * PRISM in 40 seconds (30 fps, 1200 frames). No voiceover, no music: short, big captions
- * that read on a phone. Works at 16:9 (1920×1080) and 1:1 (1080×1080).
+ * PRISM in 40 seconds (30 fps, 1200 frames). Short, big captions that read on a phone,
+ * over a quiet original soundtrack with synced sound effects (scripts/soundtrack.ts,
+ * generated from the same timeline). Works at 16:9 (1920×1080) and 1:1 (1080×1080).
+ * Scene boundaries and the moments sounds follow live in timeline.ts.
  */
 
-export const FPS = 30;
-export const DURATION = 1200;
-
-/** Scene boundaries (frames). */
-const S = {
-  ask: [0, 120],
-  pick: [120, 255],
-  fuse: [255, 435],
-  read: [435, 615],
-  seam: [615, 825],
-  gift: [825, 975],
-  trust: [975, 1080],
-  end: [1080, 1200],
-} as const;
-
-/** An illustrative basket for the explainer: the six assets PRISM supports, in equal parts. */
-const TOKENS = [
-  { symbol: 'AAPL', name: 'Apple', change: 2.6, vol: 0.35 },
-  { symbol: 'NVDA', name: 'NVIDIA', change: 7.5, vol: 0.5 },
-  { symbol: 'SPCX', name: 'SpaceX', change: -2.4, vol: 0.8 },
-  { symbol: 'ANTHROPIC', name: 'Anthropic', change: 5.8, vol: 0.9 },
-  { symbol: 'OPENAI', name: 'OpenAI', change: 4.1, vol: 0.55 },
-  { symbol: 'ETH', name: 'Ether', change: -1.5, vol: 0.2 },
-];
-const HOLDINGS: Holding[] = TOKENS.map((t) => ({ symbol: t.symbol, weight: 1 / 6, change24h: t.change, volatility: t.vol }));
-const DROP = { depth: 12, recovered: true, symbol: 'ANTHROPIC' };
-
-const ease = Easing.bezier(0.2, 0.8, 0.2, 1);
+const ease = Easing.bezier(...EASE_BEZIER);
 
 /** Camera for the crystal scenes, and the world → screen mapping overlays use to line up. */
 const CAM = { z: 9, fov: 32 };
@@ -168,7 +146,7 @@ function Cards() {
   const totalW = cols * cw + (cols - 1) * gap;
   const cardH = 190 * u;
   const top0 = height / 2 - (rows * cardH + (rows - 1) * gap) / 2 + (square ? 40 : 30) * u;
-  const merge = prog(f, S.fuse[0], S.fuse[0] + 45);
+  const merge = prog(f, ...T.merge);
   const visible = f < S.fuse[0] + 50;
   return (
     <AbsoluteFill style={{ opacity: f < S.pick[0] + 6 ? 0 : 1 }}>
@@ -178,7 +156,7 @@ function Cards() {
       </AbsoluteFill>
       {visible &&
         TOKENS.map((t, i) => {
-          const s = spring({ frame: f - S.pick[0] - 22 - i * 5, fps, config: { damping: 18, stiffness: 120 } });
+          const s = spring({ frame: f - T.cardIn(i), fps, config: { damping: 18, stiffness: 120 } });
           const col = i % cols;
           const row = Math.floor(i / cols);
           const x = width / 2 - totalW / 2 + col * (cw + gap);
@@ -211,16 +189,16 @@ function CrystalLayer() {
   const shape = useMemo(() => makeShape(HOLDINGS, DROP), []);
   if (f < S.fuse[0] + 10 || f > S.trust[0] + 12) return null;
 
-  const assemble = prog(f, S.fuse[0] + 20, S.fuse[0] + 110);
-  const crack = prog(f, S.seam[0] + 45, S.seam[0] + 85);
-  const heal = prog(f, S.seam[0] + 120, S.seam[0] + 165);
-  const frost = prog(f, S.gift[0] + 5, S.gift[0] + 35);
+  const assemble = prog(f, ...T.assemble);
+  const crack = prog(f, ...T.crack);
+  const heal = prog(f, ...T.heal);
+  const frost = prog(f, ...T.frost);
   // gentle sway around the seam-facing angle; a slow half turn while reading
   const readTurn = interpolate(f, [S.read[0], S.read[1]], [0, Math.PI * 0.9], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease });
   const backTurn = interpolate(f, [S.read[1], S.read[1] + 30], [0, -Math.PI * 0.9], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease });
   const yaw = Math.sin(f / 45) * 0.28 + readTurn + backTurn;
   // gift: the crystal flies off to a friend (right; down on square)
-  const fly = prog(f, S.gift[0] + 55, S.gift[0] + 110);
+  const fly = prog(f, ...T.fly);
   const target = giftTarget(square);
   const shrink = 1 - 0.55 * fly;
   const seamShift = square ? 0 : prog(f, S.seam[0], S.seam[0] + 25) * -1.5 * (1 - prog(f, S.gift[0], S.gift[0] + 25));
@@ -303,7 +281,7 @@ function Seam() {
   const path = pts.map((v, i) => `${(i / (pts.length - 1)) * W},${H * 0.25 + v * H * 0.9}`).join(' ');
   // linear, so the dip lands as the crack opens and the climb back as it turns gold
   const draw = interpolate(f, [S.seam[0] + 10, S.seam[0] + 155], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
-  const healed = prog(f, S.seam[0] + 120, S.seam[0] + 165);
+  const healed = prog(f, ...T.heal);
   const left = square ? (width - W) / 2 : width * 0.6;
   const top = square ? 70 * u : height * 0.2;
   return (
@@ -348,7 +326,7 @@ function Gift() {
   const friend = prog(f, S.gift[0] + 45, S.gift[0] + 65);
   const t = giftTarget(square);
   const ring = toScreen(t.x, t.y, width, height);
-  const got = prog(f, S.gift[0] + 100, S.gift[0] + 115);
+  const got = prog(f, T.received, T.received + 15);
   return (
     <AbsoluteFill style={{ opacity: fade(f, S.gift) }}>
       <div
@@ -414,7 +392,7 @@ function Trust() {
     <AbsoluteFill style={{ justifyContent: 'center', padding: square ? '0 90px' : '0 240px', opacity: fade(f, S.trust) }}>
       <Label style={{ marginBottom: 30 * u }}>05 / Built to be trusted</Label>
       {lines.map((l, i) => {
-        const s = spring({ frame: f - S.trust[0] - 6 - i * 12, fps, config: { damping: 200 }, durationInFrames: 20 });
+        const s = spring({ frame: f - T.trustLine(i), fps, config: { damping: 200 }, durationInFrames: 20 });
         return (
           <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 28 * u, opacity: s, transform: `translateY(${(1 - s) * 40}px)`, marginTop: 10 * u }}>
             <span
@@ -462,7 +440,7 @@ function End() {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
   const { square, u, caption } = useLayout();
-  const s = spring({ frame: f - S.end[0], fps, config: { damping: 200 }, durationInFrames: 24 });
+  const s = spring({ frame: f - T.end, fps, config: { damping: 200 }, durationInFrames: 24 });
   const v = spring({ frame: f - S.end[0] - 12, fps, config: { damping: 16 } });
   const viber = viberAt(0);
   return (
@@ -506,6 +484,8 @@ function End() {
 export function Explainer() {
   return (
     <AbsoluteFill>
+      {/* generated by scripts/soundtrack.ts (music + effects, plus apps/video/voiceover.mp3 if present) */}
+      <Audio src={staticFile('audio/soundtrack.wav')} />
       <Backdrop />
       <Sequence durationInFrames={S.ask[1]} layout="none">
         <Ask />

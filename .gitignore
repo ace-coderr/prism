@@ -24,3 +24,6 @@ typechain-types
 
 # vercel build output
 .vercel
+
+# generated soundtrack (npm run audio -w @prism/video); rebuilt before every render
+apps/video/public/audio/

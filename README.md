@@ -30,7 +30,7 @@ npm run check:liquidity  # probe Uniswap V4 pools for the verified tokens
 npm run dev              # http://localhost:5173
 npm run test:contracts   # Hardhat tests for the PrismCrystal contract
 npm run video:studio     # edit the explainer in Remotion Studio
-npm run video:render     # re-render the explainer videos + poster (each video < 6 MB)
+npm run video:render     # re-render the explainer videos + poster (each video < 8 MB, sync-checked)
 ```
 
 ## Forge from ETH (PrismForgeRouter)
@@ -79,24 +79,48 @@ In the app:
 
 `apps/video` is a Remotion project (React + TypeScript) that reuses `buildCrystal` from
 `packages/core`, the voxel look, the palette and the fonts (Space Grotesk, Space Mono; SIL OFL,
-in `apps/video/public/fonts`). No voiceover and no music, only short captions. The crystal in
+in `apps/video/public/fonts`). Short captions over a quiet original soundtrack (see below). The crystal in
 the video is an illustrative basket of the six supported assets (it explains the idea; the
 live data is on the site). The end card shows one official vibe viber, loaded as-is from
 vibe/vibe's site, with a small credit. `npm run video:render` writes:
 
-| File | Format |
-| --- | --- |
-| `prism-explainer.mp4` | 1920×1080, H.264 (Home section 04) |
-| `prism-explainer.webm` | 1920×1080, VP9 (Home section 04) |
-| `prism-explainer-poster.jpg` | poster frame |
-| `prism-explainer-square.mp4` | 1080×1080, H.264 (for X) |
+| File | Format | Size |
+| --- | --- | --- |
+| `prism-explainer.mp4` | 1920×1080, H.264 + AAC 128 kb/s (Home section 04) | 2.87 MB |
+| `prism-explainer.webm` | 1920×1080, VP9 + Opus 96 kb/s (Home section 04) | 3.66 MB |
+| `prism-explainer-poster.jpg` | poster frame | 0.07 MB |
+| `prism-explainer-square.mp4` | 1080×1080, H.264 + AAC 128 kb/s (for X) | 2.61 MB |
+
+**Sound, made in code.** `apps/video/scripts/soundtrack.ts` synthesises the whole soundtrack.
+It uses oscillators, filtered noise, a small reverb and delay, and deterministic noise; there
+are no samples or outside tracks, so no licensing to worry about. It writes
+`apps/video/public/audio/soundtrack.wav`, 48 kHz stereo, 40 s; this is generated, not committed.
+
+- **Music:** A minor at 96 BPM, so 16 bars fill exactly 40 s. A dark pad opens, an arpeggio
+  joins at the token cards, and kick, hats and a riser build through the Forge scene. At the
+  market drop the beat stops and the harmony turns tense; it lifts into warm F major as gold
+  fills the crack, and lands on a clean C major chord at the call to action. The bed sits at
+  about −27 dBFS RMS so the captions stay the focus.
+- **Effects:** every one is placed from the same timeline the picture uses (`src/timeline.ts`,
+  `src/shape.ts`), so it lands on its frame. Whooshes for the token cards and the gift flight;
+  a click as each visible cube locks in, plus a final snap; a low crack at the drop; a rising
+  chime as gold fills the seam; an icy shimmer as frost wraps the crystal; a tick per trust line.
+- **Voiceover later:** drop `apps/video/voiceover.mp3` (starting at 0:00) and re-render. It is
+  mixed on top and the music ducks about 10 dB under it.
+
+`npm run video:audio` regenerates the WAV, and it also runs before `video:studio` and
+`video:render`. Rendering encodes AAC 128 kb/s (MP4) or Opus 96 kb/s (WebM), keeps each file
+under 8 MB, and finishes with `scripts/check-sync.mjs`. That script cross-correlates each
+file's audio with the WAV around every effect and fails if anything drifts by a frame
+(33 ms) or more.
 
 On Home the player autoplays muted while in view (not under reduced motion) and has its own
 control bar. It has play/pause, a progress bar you can click or drag, scene markers
 (Hook, Pick, Forge, Read it, Gold seams, Gift, Trust, Start) that show their name on hover
-and jump on click, the time, and fullscreen. With a mouse the bar fades in on hover and
+and jump on click, the time, a sound on/off button (the choice is remembered for the browser
+session; autoplay always starts muted and unmutes at the next tap or key press), and fullscreen. With a mouse the bar fades in on hover and
 while paused; on touch screens it is always shown. Keyboard: Space plays and pauses,
-←/→ skip 5 s and F toggles fullscreen. The scene times live in
+←/→ skip 5 s, M toggles sound and F toggles fullscreen. The scene times live in
 `apps/web/src/components/ExplainerVideo.tsx` (`SCENES`); keep them in step with
 `apps/video/src/Explainer.tsx`.
 

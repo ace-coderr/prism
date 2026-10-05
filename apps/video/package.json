@@ -4,8 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "audio": "tsx scripts/soundtrack.ts",
+    "prestudio": "npm run audio",
     "studio": "remotion studio src/index.ts",
     "render": "node scripts/render.mjs",
+    "check-sync": "node scripts/check-sync.mjs",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
@@ -24,6 +27,7 @@
   "devDependencies": {
     "@types/react": "^19.1.13",
     "@types/three": "^0.180.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.2"
   }
 }

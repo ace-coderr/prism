@@ -20,6 +20,16 @@ export const SCENES: Array<{ at: number; name: string }> = [
   { at: 36, name: 'Start' },
 ];
 const FALLBACK_DURATION = 40;
+const SOUND_KEY = 'prism.explainer.sound';
+
+/** The visitor's sound choice for this browser session (off unless they turned it on). */
+function soundPref(): boolean {
+  try {
+    return window.sessionStorage.getItem(SOUND_KEY) === 'on';
+  } catch {
+    return false;
+  }
+}
 const SKIP = 5;
 const HIDE_AFTER_MS = 2000;
 
@@ -41,8 +51,11 @@ const canHover = () => typeof window !== 'undefined' && window.matchMedia?.('(ho
  * - Control bar: play/pause · progress (click or drag to seek; scene ticks you can hover
  *   and click with a mouse) · time · fullscreen. On a mouse it fades in on hover and while paused, and out 2s after the
  *   mouse stops; on touch screens it is always shown.
+ * - Sound: off by default (browsers only autoplay muted). The speaker button turns the
+ *   soundtrack on and the choice is remembered for the browser session; on a later
+ *   autoplay it starts muted and unmutes at the visitor's next tap or key press.
  * - Keyboard (when the player has focus): Space = play/pause, ←/→ = 5s back/forward,
- *   F = fullscreen.
+ *   M = sound, F = fullscreen.
  */
 export function ExplainerVideo() {
   const frame = useRef<HTMLDivElement>(null);
@@ -63,6 +76,8 @@ export function ExplainerVideo() {
   const [focused, setFocused] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [mouse] = useState(canHover);
+  const [soundOn, setSoundOn] = useState(soundPref);
+  const soundRef = useRef(soundOn);
   const hideTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // sources are attached when near; load() makes the browser (re)select one
@@ -70,12 +85,49 @@ export function ExplainerVideo() {
     if (near) video.current?.load();
   }, [near]);
 
+  // sound was chosen but the browser only allowed muted playback: unmute at the next gesture
+  const disarm = useRef<(() => void) | null>(null);
+  const armUnmute = useCallback(() => {
+    if (disarm.current) return;
+    const unmute = () => {
+      if (soundRef.current && video.current) video.current.muted = false;
+      disarm.current?.();
+    };
+    disarm.current = () => {
+      document.removeEventListener('pointerdown', unmute, true);
+      document.removeEventListener('keydown', unmute, true);
+      disarm.current = null;
+    };
+    document.addEventListener('pointerdown', unmute, true);
+    document.addEventListener('keydown', unmute, true);
+  }, []);
+  useEffect(() => () => disarm.current?.(), []);
+
   const play = useCallback(() => {
     const v = video.current;
     if (!v) return;
     setPhase((p) => (p === 'playing' ? p : 'loading'));
-    v.play().catch(() => setPhase((p) => (p === 'playing' ? p : 'blocked')));
-  }, []);
+    v.muted = !soundRef.current;
+    v.play().catch(() => {
+      if (v.muted) return setPhase((p) => (p === 'playing' ? p : 'blocked'));
+      // autoplay with sound needs a gesture first: play muted now, unmute on the next one
+      v.muted = true;
+      v.play().catch(() => setPhase((p) => (p === 'playing' ? p : 'blocked')));
+      armUnmute();
+    });
+  }, [armUnmute]);
+
+  const toggleSound = () => {
+    const next = !soundRef.current;
+    soundRef.current = next;
+    setSoundOn(next);
+    if (video.current) video.current.muted = !next; // a click is a gesture: allowed
+    try {
+      window.sessionStorage.setItem(SOUND_KEY, next ? 'on' : 'off');
+    } catch {
+      /* storage blocked: the choice lasts until the page closes */
+    }
+  };
 
   useEffect(() => {
     const v = video.current;
@@ -182,6 +234,9 @@ export function ExplainerVideo() {
     } else if (e.key === 'f') {
       e.preventDefault();
       toggleFullscreen();
+    } else if (e.key === 'm') {
+      e.preventDefault();
+      toggleSound();
     } else return;
     wake();
   };
@@ -197,7 +252,7 @@ export function ExplainerVideo() {
         ref={player}
         tabIndex={0}
         role="region"
-        aria-label="PRISM explainer video player. Space plays or pauses, arrow keys skip 5 seconds."
+        aria-label="PRISM explainer video player. Space plays or pauses, arrow keys skip 5 seconds, M turns sound on or off."
         onKeyDown={onKey}
         onMouseMove={wake}
         onMouseLeave={() => setActive(false)}
@@ -213,7 +268,7 @@ export function ExplainerVideo() {
           loop
           playsInline
           preload="none"
-          aria-label="PRISM explained in 40 seconds (no sound)"
+          aria-label="PRISM explained in 40 seconds"
           onClick={toggle}
           onPlaying={() => setPhase('playing')}
           onPause={() => setPhase((p) => (p === 'error' ? p : 'paused'))}
@@ -278,6 +333,20 @@ export function ExplainerVideo() {
           >
             <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden>
               {playing ? <path d="M6 5h4v14H6zM14 5h4v14h-4z" /> : <path d="M8 5.5v13l10.5-6.5L8 5.5Z" />}
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleSound}
+            aria-label={soundOn ? 'Turn sound off' : 'Turn sound on'}
+            aria-pressed={soundOn}
+            title={soundOn ? 'Sound on (M)' : 'Sound off (M)'}
+            className={`grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors hover:bg-white/10 hover:text-lime ${soundOn ? 'text-lime' : 'text-white'}`}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor" />
+              {soundOn ? <path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" /> : <path d="M16 9.5l5 5M21 9.5l-5 5" />}
             </svg>
           </button>
 

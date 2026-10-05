@@ -16,6 +16,7 @@
     "verify:tokens": "npx tsx packages/core/scripts/verify-tokens.ts",
     "check:liquidity": "npx tsx packages/core/scripts/check-liquidity.ts",
     "test:contracts": "npm test -w @prism/contracts",
+    "video:audio": "npm run audio -w @prism/video",
     "video:render": "npm run render -w @prism/video",
     "video:studio": "npm run studio -w @prism/video"
   },

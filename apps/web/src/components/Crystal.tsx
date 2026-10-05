@@ -18,13 +18,13 @@ import { SceneLabel, useFitSphere } from './Stage';
 import { moveLabel, weightLabel, type LabelOf } from './AssetDots';
 import { FrostShell } from './FrostShell';
 
-const cube = new THREE.BoxGeometry(1, 1, 1);
-const OUTLINE = 1.14; // inverted-hull scale: thickness of the silhouette outline
+export const cube = new THREE.BoxGeometry(1, 1, 1);
+export const OUTLINE = 1.14; // inverted-hull scale: thickness of the silhouette outline
 // HDR gold (linear, slightly >1): crosses the bloom threshold for a warm glow, but
 // stays low enough that each cube's black frame still reads through it.
-const GOLD_HDR = new THREE.Color(2.5, 1.5, 0.24);
+export const GOLD_HDR = new THREE.Color(2.5, 1.5, 0.24);
 /** Sealed-gift frost tint and the grey used to dim parts the legend isn't pointing at. */
-const FROST = new THREE.Color('#d6f1ff');
+export const FROST = new THREE.Color('#d6f1ff');
 const DIM = new THREE.Color('#23282c');
 const hsl = { h: 0, s: 0, l: 0 };
 /**
@@ -32,19 +32,19 @@ const hsl = { h: 0, s: 0, l: 0 };
  * so neighbouring regions read as separate blocks even in similar shades. A cube's own
  * frame is ~0.09 per face, so a seam is well over twice as thick as the grid lines.
  */
-const SEAM_WIDTH = 0.24;
-const SEAM_DEPTH = 0.02;
+export const SEAM_WIDTH = 0.24;
+export const SEAM_DEPTH = 0.02;
 
 export type CrystalFocus = 'size' | 'color' | 'spikes' | 'gold' | 'frost';
 
 // shared materials — every crystal reuses the same programs
-const bodyMaterial = new THREE.MeshToonMaterial({
+export const bodyMaterial = new THREE.MeshToonMaterial({
   map: outlinedFaceTexture(),
   gradientMap: toonRamp(),
   toneMapped: false,
 });
-const outlineMaterial = new THREE.MeshBasicMaterial({ color: '#000000', side: THREE.BackSide });
-const seamMaterial = new THREE.MeshBasicMaterial({ color: '#000000' });
+export const outlineMaterial = new THREE.MeshBasicMaterial({ color: '#000000', side: THREE.BackSide });
+export const seamMaterial = new THREE.MeshBasicMaterial({ color: '#000000' });
 const glowMaterial = new THREE.MeshBasicMaterial({
   map: glowTexture(),
   color: '#d4f000',
@@ -54,7 +54,7 @@ const glowMaterial = new THREE.MeshBasicMaterial({
   blending: THREE.AdditiveBlending,
   toneMapped: false,
 });
-const noRaycast = () => null;
+export const noRaycast = () => null;
 
 const isCoarse = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
 /** Seconds each cube takes to fly into place when a crystal assembles. */

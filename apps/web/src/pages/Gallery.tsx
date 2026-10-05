@@ -190,6 +190,9 @@ function RealCrystalCard({
           );
         })}
       </ul>
+      <Link to={`/replay/${c.id}`} className="mt-5 inline-flex font-mono text-xs uppercase tracking-[0.14em] text-lime hover:underline">
+        ▶ Watch its replay
+      </Link>
     </div>
   );
 }

@@ -436,12 +436,20 @@ function CrystalCard({ crystal, valued, history, priced, mine }: { crystal: Onch
     </>
   );
   const cls = 'flex w-full flex-col gap-3 rounded-[20px] border border-white/[0.08] bg-panel p-3 text-left';
-  return mine ? (
+  const card = mine ? (
     <Link to={`/my-crystals?id=${crystal.id}`} className={`${cls} transition-colors hover:border-white/25`} aria-label={`Open crystal #${crystal.id} in My Crystals`}>
       {body}
     </Link>
   ) : (
     <div className={cls}>{body}</div>
+  );
+  return (
+    <div className="flex flex-col gap-1.5">
+      {card}
+      <Link to={`/replay/${crystal.id}`} className="self-end px-1 font-mono text-[10px] uppercase tracking-[0.14em] text-mist hover:text-lime">
+        ▶ Replay
+      </Link>
+    </div>
   );
 }
 

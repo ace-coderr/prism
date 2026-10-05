@@ -30,6 +30,8 @@ export interface CrystalEvent {
   unlockTime?: number;
   /** forged / added / withdrawn / burned: how many assets moved */
   assets?: number;
+  /** forged / added: what went in (positive); withdrawn / burned: what came out (negative). null token = ETH */
+  moves?: Array<{ token: Address | null; amount: bigint }>;
 }
 
 const KINDS: Record<string, CrystalEventKind> = {
@@ -57,13 +59,18 @@ export async function readCrystalEvents(client: PublicClient, d: PrismDeployment
       } else if (kind === 'sealed') {
         out.push({ ...base, id: args.id as bigint, unlockTime: Number(args.unlockTime) });
       } else {
-        const tokens = (args.tokens as unknown[] | undefined) ?? [];
+        const tokens = (args.tokens as Address[] | undefined) ?? [];
         const eth = (args.eth as bigint | undefined) ?? 0n;
+        const amounts = ((args.received ?? args.amounts) as bigint[] | undefined) ?? [];
+        const sign = kind === 'withdrawn' || kind === 'burned' ? -1n : 1n;
+        const moves: Array<{ token: Address | null; amount: bigint }> = tokens.map((token, i) => ({ token, amount: sign * (amounts[i] ?? 0n) }));
+        if (eth > 0n) moves.push({ token: null, amount: sign * eth });
         out.push({
           ...base,
           id: args.id as bigint,
           account: (args.owner ?? args.by ?? args.to) as Address,
           assets: tokens.length + (eth > 0n ? 1 : 0),
+          moves,
         });
       }
     }

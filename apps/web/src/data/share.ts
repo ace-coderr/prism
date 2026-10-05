@@ -18,6 +18,7 @@ export const SHARE = {
   profile: (link: string) => `My PRISM profile 🔮 crystals, badges and gold seams: ${link}  @holdprism`,
   badge: (badge: string, link: string) => `Just earned the ${badge} badge on @holdprism 🔮 ${link}`,
   gift: (id: bigint) => `I just gifted a PRISM crystal 🎁🔮 ${SITE}/gift/${id} @holdprism`,
+  replay: (id: bigint) => `My PRISM crystal's journey 🔮 ${SITE}/replay/${id} @holdprism`,
 };
 
 /** X's post composer with the text filled in: no login on our side, no API. */

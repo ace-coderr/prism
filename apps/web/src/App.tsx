@@ -13,6 +13,7 @@ import Gallery from './pages/Gallery';
 import Agent from './pages/Agent';
 import Profile from './pages/Profile';
 import GiftPage from './pages/GiftPage';
+import ReplayPage from './pages/ReplayPage';
 
 // One-time deploy tool: dev server only. In production builds `import.meta.env.DEV` is
 // `false`, so this branch (and the page + contract bytecode it imports) is dropped.
@@ -46,6 +47,7 @@ export default function App() {
               <Route path="/profile" element={<Profile />} />
               <Route path="/u/:id" element={<Profile />} />
               <Route path="/gift/:id" element={<GiftPage />} />
+              <Route path="/replay/:id" element={<ReplayPage />} />
               {Deploy && (
                 <Route
                   path="/deploy"

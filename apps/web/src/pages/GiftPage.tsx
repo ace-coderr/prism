@@ -97,6 +97,9 @@ export default function GiftPage() {
               </>
             )}
           </div>
+          <Link to={`/replay/${id}`} className="font-mono text-xs uppercase tracking-[0.14em] text-lime hover:underline">
+            ▶ Watch its replay
+          </Link>
         </div>
       </div>
     </PageScroll>

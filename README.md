@@ -88,6 +88,17 @@ My Crystals → **Gift** sends a crystal with the existing PrismCrystal function
 - `/gift/<id>` is the shareable gift page, and "Share on X" appears after sending.
 - Tests: `packages/core/test/gifts.test.ts`, plus `contracts/test/fork/PrismGift.fork.test.ts` (seal + send with a note on a fork of the testnet, read back with the app's reader).
 
+## Replays
+
+`/replay/<id>` (and **▶ Replay** on My Crystals, the Gallery, profiles and gift pages) plays a crystal's life as an 8–15 s time-lapse built from real data: its on-chain events and the price history from the forge block to now (the last 48 h, or back to the forge block when it's newer; history reaches back about 14 days).
+
+- **Timeline:** `buildReplay` in `packages/core/src/replay.ts` is pure: what it held at each moment (from the amounts in its Forged/Added/Withdrawn events), its value in ETH, the real drops (≥ 5 % from a peak: a crack) and when they recovered (healed in gold), and for gifts the seal, the gift (ice) and the unwrap. Tests: `packages/core/test/replay.test.ts`.
+- **Scene:** the crystal morphs between keyframes, cracks and gold seams fade in and out, gifts get the ice shell and shatter at the unwrap; a 2D overlay adds the date/time ticker, the value line, captions and the end card (crystal #, owner, "A stock basket you can hold", prism-crystal.vercel.app).
+- **Download video:** made in the browser. Where WebCodecs can encode H.264 + AAC (Chrome, Edge, Safari) every frame is rendered at an exact 1/30 s step and muxed with [Mediabunny](https://mediabunny.dev) (loaded only on download) into an MP4 with the index at the front, so a slow device takes longer but never drops frames. The sound is the same WebAudio synth rendered offline. Elsewhere it falls back to recording the canvas in real time with MediaRecorder (MP4 if supported, else WebM, with a note). 1080×1080 by default, 1920×1080 with **Wide 16:9**.
+- Checked on crystal #2: H.264 High, 30 fps, 14.3 s, AAC-LC 48 kHz stereo, 8.6 MB square / 10.7 MB wide, plays in Chrome; inside X's limits (≤ 512 MB, ≤ 140 s, H.264/AAC).
+- **Share on X** posts the replay link; X links can't carry a video, so download it and attach it to the post.
+- Reduced motion: nothing plays by itself; it rests on the end card until you press Play.
+
 ## Explainer video
 
 `apps/video` is a Remotion project (React + TypeScript) that reuses `buildCrystal` from

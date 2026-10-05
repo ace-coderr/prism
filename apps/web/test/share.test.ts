@@ -9,7 +9,7 @@ describe('Share on X', () => {
     expect(profileLink(ME, null)).toBe(`prism-crystal.vercel.app/u/${ME}`);
   });
 
-  it('writes the three posts word for word', () => {
+  it('writes each post word for word', () => {
     const link = profileLink(ME, 'ace');
     expect(SHARE.forged(link)).toBe(
       'I just forged a crystal on @holdprism 🔮 a stock basket you can hold. Built on @vibevibefun · prism-crystal.vercel.app/u/ace',
@@ -17,6 +17,7 @@ describe('Share on X', () => {
     expect(SHARE.profile(link)).toBe('My PRISM profile 🔮 crystals, badges and gold seams: prism-crystal.vercel.app/u/ace  @holdprism');
     expect(SHARE.badge('First Forge', link)).toBe('Just earned the First Forge badge on @holdprism 🔮 prism-crystal.vercel.app/u/ace');
     expect(SHARE.gift(2n)).toBe('I just gifted a PRISM crystal 🎁🔮 prism-crystal.vercel.app/gift/2 @holdprism');
+    expect(SHARE.replay(2n)).toBe("My PRISM crystal's journey 🔮 prism-crystal.vercel.app/replay/2 @holdprism");
   });
 
   it("opens X's post composer with the text encoded (emoji, @, spaces, ·)", () => {

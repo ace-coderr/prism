@@ -382,7 +382,12 @@ function CrystalView(props: {
           </p>
           {sealed && <p className="label mt-2 text-[#bfe6ff]">Sealed until {fmtDate(crystal.sealedUntil)}</p>}
         </div>
-        {valued.totalEth > 0 && <EthPrice eth={valued.totalEth} usd={valued.totalUsd || null} />}
+        <div className="flex flex-wrap items-center gap-3">
+          {valued.totalEth > 0 && <EthPrice eth={valued.totalEth} usd={valued.totalUsd || null} />}
+          <Link to={`/replay/${crystal.id}`} className="btn btn-outline">
+            ▶ Replay
+          </Link>
+        </div>
       </div>
       {gift && (
         <GiftCard

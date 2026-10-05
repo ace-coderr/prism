@@ -31,6 +31,8 @@ npm run dev              # http://localhost:5173
 npm run test:contracts   # Hardhat tests for the PrismCrystal contract
 npm run video:studio     # edit the explainer in Remotion Studio
 npm run video:render     # re-render the explainer videos + poster (each video < 8 MB, sync-checked)
+npm run brand            # favicons, share card (og.jpg), X profile picture + banner (public/brand/x)
+npm run brand brand/x    # only the X images
 ```
 
 ## Forge from ETH (PrismForgeRouter)

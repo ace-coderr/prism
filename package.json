@@ -18,6 +18,7 @@
     "test:contracts": "npm test -w @prism/contracts",
     "video:audio": "npm run audio -w @prism/video",
     "video:render": "npm run render -w @prism/video",
+    "brand": "npm run brand -w @prism/web --",
     "video:studio": "npm run studio -w @prism/video"
   },
   "engines": {

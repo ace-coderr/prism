@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.server.json",
     "serve:dist": "node scripts/serve-dist.mjs",
     "test": "vitest run --config vitest.config.ts",
-    "build:vercel": "node scripts/vercel-output.mjs"
+    "build:vercel": "node scripts/vercel-output.mjs",
+    "brand": "tsx scripts/make-brand-assets.ts"
   },
   "dependencies": {
     "@prism/core": "*",

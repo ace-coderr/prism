@@ -1,12 +1,15 @@
 import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { Address } from 'viem';
+import { CrystalLinks, DeepNav, ForgeCta } from '../components/DeepNav';
 import { LoadingStage } from '../components/LoadingStage';
 import { PageHeader, PageScroll } from '../components/PageHeader';
 import { GuideNote } from '../components/Viber';
+import { crystalCrumbs, crystalHref } from '../data/nav';
 import { atNameOrShort, useProfile, useProfiles } from '../data/profiles';
 import { useReplay } from '../data/replay';
 import { ReplayPlayer } from '../replay/ReplayPlayer';
+import { useWallet } from '../wallet/WalletButton';
 
 /** /replay/:id, a crystal's life as a short time-lapse, made in the browser from real data. */
 export default function ReplayPage() {
@@ -14,6 +17,8 @@ export default function ReplayPage() {
   const id = /^\d+$/.test(raw ?? '') ? BigInt(raw!) : null;
   const { crystal, timeline, loading, error } = useReplay(id);
   const { profile } = useProfile(crystal?.owner);
+  const { address: viewer } = useWallet();
+  const mine = !!viewer && !!crystal && viewer.toLowerCase() === crystal.owner.toLowerCase();
   const recipients = useProfiles((timeline?.events ?? []).flatMap((e) => (e.to ? [e.to] : [])));
   const info = useMemo(
     () =>
@@ -28,7 +33,10 @@ export default function ReplayPage() {
   );
 
   const header = (subtitle: string) => (
-    <PageHeader label="Replay" lead="Crystal" accent={id !== null ? `#${id}` : ''} subtitle={subtitle} />
+    <div className="flex flex-col gap-8 md:gap-10">
+      <DeepNav crumbs={crystalCrumbs(id, 'Replay', id !== null ? crystalHref(id, crystal?.owner, viewer) : '/gallery')} />
+      <PageHeader label="Replay" lead="Crystal" accent={id !== null ? `#${id}` : ''} subtitle={subtitle} />
+    </div>
   );
   if (id === null) return <PageScroll>{header('That isn’t a crystal number.')}</PageScroll>;
   if (!crystal && !loading) {
@@ -51,8 +59,12 @@ export default function ReplayPage() {
           <LoadingStage label="Reading its history from the chain…" />
         )
       ) : (
-        <ReplayPlayer key={timeline.id.toString()} timeline={timeline} info={info} />
+        <div className="flex flex-col gap-8">
+          <ReplayPlayer key={timeline.id.toString()} timeline={timeline} info={info} />
+          {crystal && id !== null && <CrystalLinks id={id} owner={crystal.owner} ownerName={profile.name} viewer={viewer} />}
+        </div>
       )}
+      {!mine && <ForgeCta />}
     </PageScroll>
   );
 }

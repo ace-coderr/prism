@@ -28,7 +28,9 @@ export default function App() {
     <MotionConfig reducedMotion="user">
       <ProfileEditorProvider>
         <Nav />
-        <AnimatePresence mode="wait" initial={false} onExitComplete={() => window.scrollTo(0, 0)}>
+        {/* jump (not glide: html is scroll-behavior smooth) to the top before the next page appears;
+            a smooth scroll could be cut short as that page grows, leaving its title under the navbar */}
+        <AnimatePresence mode="wait" initial={false} onExitComplete={() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' })}>
           <motion.main
             key={location.pathname}
             className="relative flex-1"

@@ -17,6 +17,7 @@ import {
 import { AssetDots } from '../components/AssetDots';
 import { FittedCrystal } from '../components/Crystal';
 import { CrystalThumb } from '../components/CrystalThumb';
+import { DeepNav } from '../components/DeepNav';
 import { useProfileEditor } from '../components/editorContext';
 import { LoadingStage } from '../components/LoadingStage';
 import { PageHeader, PageScroll } from '../components/PageHeader';
@@ -30,6 +31,7 @@ import { useTestnetTokens, type LiveToken } from '../data/chain';
 import { realCrystalHistory } from '../data/crystalHoldings';
 import { earliestForge, useMyCrystals, type OnchainCrystal } from '../data/crystals';
 import { valueCrystal, type MarketOf, type Valued } from '../data/crystalValue';
+import { profileCrumbs } from '../data/nav';
 import { OwnerChip, profileHref, profilesContract, shortAddress, useAddressOfName, useProfile, useProfiles, type Profile } from '../data/profiles';
 import { TARGET_CHAIN } from '../wallet/config';
 import { WalletButton, useWallet } from '../wallet/WalletButton';
@@ -83,7 +85,7 @@ export default function ProfilePage() {
     if (!me) return <NotConnected />;
     return <ProfileView key={me} address={me} />;
   }
-  if (isAddress(id)) return <ProfileView key={id} address={getAddress(id)} />;
+  if (isAddress(id)) return <ProfileView key={id} address={getAddress(id)} deep />;
   return <ByName name={id.toLowerCase()} />;
 }
 
@@ -107,7 +109,7 @@ function NotConnected() {
 
 function ByName({ name }: { name: string }) {
   const lookup = useAddressOfName(name);
-  if (lookup.data) return <ProfileView key={lookup.data} address={lookup.data} />;
+  if (lookup.data) return <ProfileView key={lookup.data} address={lookup.data} deep />;
   const note = !profilesContract()
     ? 'Usernames turn on once the profiles contract is deployed. Until then, profiles are at /u/ followed by an address.'
     : lookup.isLoading
@@ -117,13 +119,17 @@ function ByName({ name }: { name: string }) {
         : `Nobody has ${atName(name)} yet.`;
   return (
     <PageScroll>
-      <PageHeader label="Profile" lead={atName(name)} subtitle="A PRISM profile." guide={note && <GuideNote index={3}>{note}</GuideNote>} />
+      <div className="flex flex-col gap-8 md:gap-10">
+        <DeepNav crumbs={profileCrumbs(atName(name), `/u/${name}`)} />
+        <PageHeader label="Profile" lead={atName(name)} subtitle="A PRISM profile." guide={note && <GuideNote index={3}>{note}</GuideNote>} />
+      </div>
       {!note && <LoadingStage label="Looking up the name…" />}
     </PageScroll>
   );
 }
 
-function ProfileView({ address }: { address: Address }) {
+/** `deep`: opened at /u/… (often from a shared link), so it gets "← Back" and a breadcrumb. */
+function ProfileView({ address, deep = false }: { address: Address; deep?: boolean }) {
   const { address: me } = useWallet();
   const mine = same(me, address);
   const deployment = getDeployment(TARGET_CHAIN.id);
@@ -191,16 +197,19 @@ function ProfileView({ address }: { address: Address }) {
 
   return (
     <PageScroll>
-      <header>
-        <ProfileHeader
-          address={address}
-          profile={profile}
-          mine={mine}
-          joined={joined}
-          forgedCount={forged ? forged.length : null}
-          avatar={avatarCrystal ? { holdings: valued.get(avatarCrystal.id)!.holdings, history: histories.get(avatarCrystal.id), sealed: avatarCrystal.sealedUntil * 1000 > Date.now() } : null}
-        />
-        {guide && <div className="mt-8">{guide}</div>}
+      <header className="flex flex-col gap-8 md:gap-10">
+        {deep && <DeepNav crumbs={profileCrumbs(profile.name ? atName(profile.name) : shortAddress(address), profileHref(address, profile.name))} />}
+        <div>
+          <ProfileHeader
+            address={address}
+            profile={profile}
+            mine={mine}
+            joined={joined}
+            forgedCount={forged ? forged.length : null}
+            avatar={avatarCrystal ? { holdings: valued.get(avatarCrystal.id)!.holdings, history: histories.get(avatarCrystal.id), sealed: avatarCrystal.sealedUntil * 1000 > Date.now() } : null}
+          />
+          {guide && <div className="mt-8">{guide}</div>}
+        </div>
       </header>
 
       <section aria-label="Stats" className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-6 lg:grid-cols-5">

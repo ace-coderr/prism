@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useReadContract } from 'wagmi';
 import { getDeployment, prismCrystalAbi } from '@prism/core';
 import { FittedCrystal } from '../components/Crystal';
+import { CrystalLinks, DeepNav, ForgeCta } from '../components/DeepNav';
 import { GiftCard } from '../components/GiftCard';
 import { LoadingStage } from '../components/LoadingStage';
 import { PageHeader, PageScroll } from '../components/PageHeader';
@@ -9,6 +10,7 @@ import { Stage } from '../components/Stage';
 import { GuideNote } from '../components/Viber';
 import { useGalleryCrystals } from '../data/crystals';
 import { useGift, useGiftNote, useNow } from '../data/gifts';
+import { crystalCrumbs, crystalHref } from '../data/nav';
 import { atNameOrShort, useCrystalShapes, useProfile } from '../data/profiles';
 import { TARGET_CHAIN } from '../wallet/config';
 import { WalletButton, useWallet } from '../wallet/WalletButton';
@@ -37,7 +39,14 @@ export default function GiftPage() {
     query: { enabled: !!deployment && id !== null && !!gift },
   });
 
-  const header = (lead: string, subtitle: string) => <PageHeader label="Gift" lead={lead} accent={id !== null ? `#${id}` : ''} subtitle={subtitle} />;
+  // who holds it: the gift's recipient once it's known (the gallery may still be a cached snapshot)
+  const owner = gift?.to ?? crystal?.owner;
+  const header = (lead: string, subtitle: string) => (
+    <div className="flex flex-col gap-8 md:gap-10">
+      <DeepNav crumbs={crystalCrumbs(id, 'Gift', id !== null ? crystalHref(id, owner, address) : '/gallery')} />
+      <PageHeader label="Gift" lead={lead} accent={id !== null ? `#${id}` : ''} subtitle={subtitle} />
+    </div>
+  );
 
   if (id === null) return <PageScroll>{header('A PRISM', 'That isn’t a crystal number.')}</PageScroll>;
   if (gallery.loading || gift === undefined || (gift && sealed.isLoading)) {
@@ -67,12 +76,15 @@ export default function GiftPage() {
     <PageScroll>
       {header('A gift:', `For ${atNameOrShort(gift.to, recipient.name)}, from ${atNameOrShort(gift.from, sender.name)}.`)}
       <div className="grid grid-cols-12 gap-6">
-        <div className="relative col-span-12 h-[340px] overflow-hidden rounded-[24px] border border-[#bfe6ff]/20 bg-panel sm:h-[440px] lg:col-span-7">
-          <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
-            {shape && shape.holdings.length > 0 && (
-              <FittedCrystal holdings={shape.holdings} history={shape.history} sealed identify={false} size={1.6} spin={0.2} top={0.08} bottom={0.92} />
-            )}
-          </Stage>
+        <div className="col-span-12 flex flex-col gap-5 lg:col-span-7">
+          <div className="relative h-[340px] overflow-hidden rounded-[24px] border border-[#bfe6ff]/20 bg-panel sm:h-[440px]">
+            <Stage className="!absolute inset-0" camera={{ position: [0, 0, 6], fov: 40 }}>
+              {shape && shape.holdings.length > 0 && (
+                <FittedCrystal holdings={shape.holdings} history={shape.history} sealed identify={false} size={1.6} spin={0.2} top={0.08} bottom={0.92} />
+              )}
+            </Stage>
+          </div>
+          <CrystalLinks id={id} owner={gift.to} ownerName={recipient.name} viewer={address} />
         </div>
         <div className="col-span-12 flex flex-col gap-5 lg:col-span-5">
           <GiftCard label="A gift from" who={gift.from} profile={sender} note={note.data ?? null} noteLoading={note.isLoading} unlock={unlock} now={now} />
@@ -102,6 +114,7 @@ export default function GiftPage() {
           </Link>
         </div>
       </div>
+      {!mine && <ForgeCta />}
     </PageScroll>
   );
 }

@@ -1,5 +1,5 @@
-import { useLayoutEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useLayoutEffect, useMemo } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -18,6 +18,7 @@ import { OwnerChip, useProfiles, type Profile } from '../data/profiles';
 import { holdingsFromAssets, marketLookup, realCrystalHistory } from '../data/crystalHoldings';
 import { useTestnetTokens } from '../data/chain';
 import { earliestForge, useGalleryCrystals, type PublicCrystal } from '../data/crystals';
+import { crystalFromHash } from '../data/nav';
 import { TARGET_CHAIN } from '../wallet/config';
 import { shortAddress } from '../wallet/WalletButton';
 
@@ -147,11 +148,14 @@ function RealCrystalCard({
   shape,
   totalEth,
   profile,
+  highlight = false,
 }: {
   c: PublicCrystal;
   shape: { holdings: Holding[]; history?: CrystalHistory };
   totalEth: number;
   profile?: Profile;
+  /** the crystal a "View crystal #id" link pointed at */
+  highlight?: boolean;
 }) {
   const sealed = c.sealedUntil * 1000 > Date.now();
   // each chip carries its asset's colour in the crystal, as in the thumbnail
@@ -160,7 +164,11 @@ function RealCrystalCard({
     [shape.holdings],
   );
   return (
-    <div className="card card-hover h-full p-6 sm:p-7">
+    <div
+      id={`crystal-${c.id}`}
+      aria-current={highlight ? 'true' : undefined}
+      className={`card card-hover h-full scroll-mt-28 p-6 sm:p-7 ${highlight ? '!border-lime/70 !bg-lime/[0.05] shadow-[0_0_0_1px_rgba(212,240,0,0.35)]' : ''}`}
+    >
       <div className="flex items-center gap-4">
         <span className="grid h-[68px] w-[68px] shrink-0 place-items-center rounded-2xl bg-ink">
           <CrystalThumb holdings={shape.holdings} history={shape.history} sealed={sealed} size={62} />
@@ -207,6 +215,21 @@ export default function Gallery() {
   const real = useMemo(() => gallery.crystals ?? [], [gallery.crystals]);
   const profiles = useProfiles(real.map((c) => c.owner));
   const profileOf = (owner: string) => profiles.get(owner.toLowerCase());
+  // "View crystal #id" (from a replay or gift page) lands here: bring its card into view
+  const { hash } = useLocation();
+  const target = crystalFromHash(hash);
+  const targetShown = target !== null && real.some((c) => c.id === target);
+  useEffect(() => {
+    if (!targetShown) return;
+    // jump, don't glide: the 3D scene above can still grow the page while a smooth scroll runs
+    const show = () => {
+      const el = document.getElementById(`crystal-${target}`);
+      const r = el?.getBoundingClientRect();
+      if (el && r && (r.top < 80 || r.bottom > window.innerHeight)) el.scrollIntoView({ block: 'center', behavior: 'instant' });
+    };
+    const timers = [setTimeout(show, 150), setTimeout(show, 1200)];
+    return () => timers.forEach(clearTimeout);
+  }, [target, targetShown]);
   // stable per crystal, so each 3D crystal is only rebuilt when its data changes
   const shapes = useMemo(
     () =>
@@ -277,7 +300,13 @@ export default function Gallery() {
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {real.map((c, i) => (
               <Reveal key={c.id.toString()} delay={Math.min(i, 6) * 0.06}>
-                <RealCrystalCard c={c} shape={shapes.get(c.id)!} totalEth={holdingsFromAssets(c.assets, marketOf).totalEth} profile={profileOf(c.owner)} />
+                <RealCrystalCard
+                  c={c}
+                  shape={shapes.get(c.id)!}
+                  totalEth={holdingsFromAssets(c.assets, marketOf).totalEth}
+                  profile={profileOf(c.owner)}
+                  highlight={c.id === target}
+                />
               </Reveal>
             ))}
           </div>

@@ -101,6 +101,19 @@ describe('buildReplay', () => {
     expect(later.events.some((e) => e.kind === 'unwrap')).toBe(false);
   });
 
+  it('a crystal made with Swap & forge is not a gift: no ice, no unwrap', () => {
+    const ROUTER = '0xD1340ad67A4b5C0995CC050bE773ee74293fD24D' as Address;
+    const viaRouter: CrystalEvent[] = [
+      ev('transfer', 10, { from: ZERO, to: ROUTER }),
+      ev('forged', 10, { account: ROUTER, moves: [{ token: AAPL, amount: 10n * E18 }] }),
+      ev('transfer', 10, { from: ROUTER, to: ME }),
+    ];
+    const r = buildReplay({ id: 7n, events: viaRouter, clock, info, ethUsd, historyStart: T(0), now: T(50), router: ROUTER });
+    expect(r.frost).toBeNull();
+    expect(r.events.map((e) => e.kind)).not.toContain('gift');
+    expect(r.events.map((e) => e.kind)).not.toContain('unwrap');
+  });
+
   it('starts at the forge, or at the start of the loaded history when the forge is older', () => {
     const r = buildReplay({ id: 7n, events, clock, info, ethUsd, historyStart: T(15), now: T(50) });
     expect(r.start).toBe(T(15));

@@ -8,11 +8,11 @@
 import { formatUnits, type Address } from 'viem';
 import type { CrystalEvent } from './activity';
 import type { CrystalHistory, Holding } from './crystal';
+import { isGiftTransfer } from './gifts';
 import { LIVE_CRACK_THRESHOLD, MAX_CRYSTAL_DROPS, priceAt } from './history';
 import type { PricePoint } from './pool';
 import { valueWeights } from './onchain';
 
-const ZERO = '0x0000000000000000000000000000000000000000';
 const DAY = 86400;
 
 /** What the replay needs to know about a token (null = ETH). */
@@ -120,6 +120,8 @@ export function buildReplay(input: {
   /** earliest time the price history covers */
   historyStart: number;
   now: number;
+  /** the forge router: its hand-off of a crystal it just forged isn't a gift */
+  router?: Address | null;
   keyframes?: number;
   samples?: number;
 }): ReplayTimeline {
@@ -176,7 +178,7 @@ export function buildReplay(input: {
     .sort((a, b) => a.openAt - b.openAt);
 
   // gift / seal: frost from the seal (or the gift) until it opens
-  const lastGift = [...evs].reverse().find((x) => x.e.kind === 'transfer' && x.e.from && x.e.to && x.e.from.toLowerCase() !== ZERO && x.e.to.toLowerCase() !== ZERO);
+  const lastGift = [...evs].reverse().find((x) => isGiftTransfer(x.e, input.router));
   const seals = evs.filter((x) => x.e.kind === 'sealed');
   const lastSeal = seals[seals.length - 1];
   const unlock = lastSeal?.e.unlockTime ?? 0;

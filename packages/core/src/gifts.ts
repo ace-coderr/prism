@@ -171,22 +171,32 @@ export interface Gift {
   block: bigint;
 }
 
-const isGiftTransfer = (e: CrystalEvent) => e.kind === 'transfer' && !!e.from && !!e.to && e.from.toLowerCase() !== ZERO && e.to.toLowerCase() !== ZERO;
+/**
+ * A crystal changing hands between two wallets: not a mint, not a burn, and not the forge
+ * router handing over a crystal it just forged (Swap & forge mints to the router first).
+ */
+export const isGiftTransfer = (e: CrystalEvent, router?: Address | null) =>
+  e.kind === 'transfer' &&
+  !!e.from &&
+  !!e.to &&
+  e.from.toLowerCase() !== ZERO &&
+  e.to.toLowerCase() !== ZERO &&
+  !(router && e.from.toLowerCase() === router.toLowerCase());
 
-/** The crystal's latest gift (a transfer that isn't a mint or a burn), if it was ever given. */
-export function giftOf(events: CrystalEvent[], id: bigint): Gift | null {
+/** The crystal's latest gift, if it was ever given. Pass the forge router so its hand-offs don't count. */
+export function giftOf(events: CrystalEvent[], id: bigint, router?: Address | null): Gift | null {
   let last: CrystalEvent | null = null;
-  for (const e of events) if (e.id === id && isGiftTransfer(e)) last = e;
+  for (const e of events) if (e.id === id && isGiftTransfer(e, router)) last = e;
   return last ? { id, from: last.from!, to: last.to!, tx: last.tx, block: last.block } : null;
 }
 
 /** Gifts `owner` holds right now: crystals whose latest gift went to them and that haven't moved on. */
-export function giftsReceived(events: CrystalEvent[], owner: Address): Map<bigint, Gift> {
+export function giftsReceived(events: CrystalEvent[], owner: Address, router?: Address | null): Map<bigint, Gift> {
   const out = new Map<bigint, Gift>();
   const latest = new Map<bigint, CrystalEvent>();
   for (const e of events) if (e.kind === 'transfer') latest.set(e.id, e);
   for (const [id, e] of latest) {
-    if (isGiftTransfer(e) && e.to!.toLowerCase() === owner.toLowerCase()) out.set(id, { id, from: e.from!, to: e.to!, tx: e.tx, block: e.block });
+    if (isGiftTransfer(e, router) && e.to!.toLowerCase() === owner.toLowerCase()) out.set(id, { id, from: e.from!, to: e.to!, tx: e.tx, block: e.block });
   }
   return out;
 }

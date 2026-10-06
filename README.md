@@ -175,7 +175,23 @@ profiles' PrismCrystal).
 
 ## Wallet + contract
 
-- Injected wallets (MetaMask, Rabby, …) via wagmi. PRISM never asks for or stores keys.
+- **Log in with Privy** (`apps/web/src/wallet`): email, Google, X or a wallet (MetaMask, Rabby, …).
+  Anyone without a wallet gets an embedded one on first login, on Robinhood Chain Testnet only
+  (custom chain 46630, RPC `https://rpc.testnet.chain.robinhood.com`, explorer
+  `https://explorer.testnet.chain.robinhood.com`). CONNECT opens Privy's login, themed like PRISM
+  (`PRIVY_CONFIG`: panel background, lime accent, `public/brand/privy-logo.png`).
+- Every transaction goes through `useTxSteps`: a browser wallet signs it in its own window as before;
+  an embedded wallet shows Privy's confirmation screen with PRISM's plain description of what it
+  does ("Swap 0.02 ETH into AAPL, NVDA … and forge your crystal").
+- The wallet menu shows how you signed in (email / Google / X / wallet), and for an embedded wallet
+  **Export private key**, which opens Privy's own export screen (an iframe on Privy's domain: PRISM
+  never sees the key). New wallets with 0 test ETH get a note with their address and the
+  [Robinhood Chain faucet](https://faucet.testnet.chain.robinhood.com).
+- `VITE_PRIVY_APP_ID` (public, client-side only) turns Privy on; it's set in Vercel's environment
+  variables. Without it the app falls back to browser wallets only. For local dev, put
+  `VITE_PRIVY_APP_ID=…` in `apps/web/.env.local` (git-ignored). The App Secret is never used.
+- viem is pinned to 2.56.5, the exact version `@privy-io/react-auth` and `@privy-io/wagmi` require.
+- PRISM never asks for or stores keys.
 - `/deploy` (dev server only, not in the nav) deploys `PrismCrystal` from your wallet. The address goes in
   `packages/core/src/deployments.ts`; then Forge and My Crystals switch to real on-chain mode.
 
@@ -183,8 +199,9 @@ profiles' PrismCrystal).
 
 `vercel.json` at the repo root does the work: `npm ci` at the root (npm workspaces, so
 `@prism/core` is linked), `npm run build` (builds `apps/web`), output `apps/web/dist`, and a
-catch-all rewrite to `index.html` so routes like `/forge` survive a refresh. No environment
-variables. The one-time `/deploy` page exists only on the dev server.
+catch-all rewrite to `index.html` so routes like `/forge` survive a refresh. One environment
+variable: `VITE_PRIVY_APP_ID` (Privy login, see above). The one-time `/deploy` page exists only
+on the dev server.
 
 Check a production build locally with the same rewrite behaviour:
 

@@ -1,5 +1,5 @@
 import { erc20Abi, parseEventLogs, type Address } from 'viem';
-import { simulateContract, writeContract } from 'wagmi/actions';
+import { simulateContract } from 'wagmi/actions';
 import { prismCrystalAbi } from '@prism/core';
 import { TARGET_CHAIN, wagmiConfig } from './config';
 import type { StepDef } from './steps';
@@ -27,8 +27,13 @@ export function depositSteps(opts: {
   const { crystal, account, items, needsApproval, ethWei, target } = opts;
   const steps: StepDef[] = needsApproval.map((it, i) => ({
     label: `Approve ${it.symbol} ${i + 1}/${needsApproval.length}`,
-    send: () =>
-      writeContract(wagmiConfig, {
+    tx: {
+      description: `Let the PRISM crystal contract take exactly the ${it.symbol} you're putting in, and nothing more.`,
+      action: `Approve ${it.symbol}`,
+      contract: it.symbol,
+    },
+    send: (write) =>
+      write({
         address: it.token,
         abi: erc20Abi,
         functionName: 'approve',
@@ -44,7 +49,8 @@ export function depositSteps(opts: {
   if (target.kind === 'forge') {
     steps.push({
       label: 'Forging crystal',
-      send: async () => {
+      tx: { description: 'Forge your crystal from the tokens and ETH you picked. Only you can take them out again.', action: 'Forge crystal', contract: 'PrismCrystal' },
+      send: async (write) => {
         const { request } = await simulateContract(wagmiConfig, {
           address: crystal,
           abi: prismCrystalAbi,
@@ -54,7 +60,7 @@ export function depositSteps(opts: {
           chainId: TARGET_CHAIN.id,
           account,
         });
-        return writeContract(wagmiConfig, request);
+        return write(request);
       },
       after: (receipt) => {
         const [ev] = parseEventLogs({ abi: prismCrystalAbi, eventName: 'Forged', logs: receipt.logs });
@@ -64,7 +70,8 @@ export function depositSteps(opts: {
   } else {
     steps.push({
       label: `Adding to crystal #${target.id}`,
-      send: async () => {
+      tx: { description: `Add the tokens and ETH you picked to crystal #${target.id}.`, action: 'Add to crystal', contract: 'PrismCrystal' },
+      send: async (write) => {
         const { request } = await simulateContract(wagmiConfig, {
           address: crystal,
           abi: prismCrystalAbi,
@@ -74,7 +81,7 @@ export function depositSteps(opts: {
           chainId: TARGET_CHAIN.id,
           account,
         });
-        return writeContract(wagmiConfig, request);
+        return write(request);
       },
     });
   }

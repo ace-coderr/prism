@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { encodeFunctionData, type Address, type Hex } from 'viem';
-import { simulateContract, writeContract } from 'wagmi/actions';
+import { simulateContract } from 'wagmi/actions';
 import { BIO_MAX_BYTES, NAME_MAX, X_MAX, atName, bioBytes, bioProblem, identicon, normalizeX, prismProfilesAbi, xProblem } from '@prism/core';
 import { CrystalThumb } from './CrystalThumb';
 import { EditorContext } from './editorContext';
@@ -147,21 +147,22 @@ function Fields({
     const ok = await tx.run([
       {
         label: 'Saving your profile',
-        send: async () => {
+        tx: { description: 'Save your PRISM profile on-chain: username, avatar crystal, bio and X handle.', action: 'Save profile', contract: 'PrismProfiles' },
+        send: async (write) => {
           if (hasSet && clears.length === 0) {
             const { request } = await simulateContract(wagmiConfig, { ...base, functionName: 'setProfile', args: [set.name, set.avatar, set.bio, set.x] });
-            return writeContract(wagmiConfig, request);
+            return write(request);
           }
           if (!hasSet && clears.length === 1) {
             const { request } = await simulateContract(wagmiConfig, { ...base, functionName: clears[0]! });
-            return writeContract(wagmiConfig, request);
+            return write(request);
           }
           const calls: Hex[] = [
             ...(hasSet ? [encodeFunctionData({ abi: prismProfilesAbi, functionName: 'setProfile', args: [set.name, set.avatar, set.bio, set.x] })] : []),
             ...clears.map((fn) => encodeFunctionData({ abi: prismProfilesAbi, functionName: fn })),
           ];
           const { request } = await simulateContract(wagmiConfig, { ...base, functionName: 'multicall', args: [calls] });
-          return writeContract(wagmiConfig, request);
+          return write(request);
         },
       },
     ]);

@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { formatUnits, type Address } from 'viem';
-import { simulateContract, writeContract } from 'wagmi/actions';
+import { simulateContract } from 'wagmi/actions';
 import {
   BASKET_TOKENS,
   getDeployment,
@@ -543,7 +543,8 @@ function WithdrawForm({ crystal, owner, ownerProfile, contract, onChanged, seale
     const ok = await run([
       {
         label: `Withdrawing from crystal #${crystal.id}`,
-        send: async () => {
+        tx: { description: `Take what you picked out of crystal #${crystal.id}, back to your wallet.`, action: 'Withdraw', contract: 'PrismCrystal' },
+        send: async (write) => {
           const { request } = await simulateContract(wagmiConfig, {
             address: contract,
             abi: prismCrystalAbi,
@@ -552,7 +553,7 @@ function WithdrawForm({ crystal, owner, ownerProfile, contract, onChanged, seale
             chainId: TARGET_CHAIN.id,
             account: owner,
           });
-          return writeContract(wagmiConfig, request);
+          return write(request);
         },
       },
     ]);
@@ -654,7 +655,12 @@ function SealForm({ crystal, owner, contract, onChanged }: FormProps) {
     const ok = await run([
       {
         label: `Sealing crystal #${crystal.id}`,
-        send: async () => {
+        tx: {
+          description: `Seal crystal #${crystal.id}: nothing can be taken out before the date you picked, not even by you. A seal can't be shortened.`,
+          action: 'Seal crystal',
+          contract: 'PrismCrystal',
+        },
+        send: async (write) => {
           const { request } = await simulateContract(wagmiConfig, {
             address: contract,
             abi: prismCrystalAbi,
@@ -663,7 +669,7 @@ function SealForm({ crystal, owner, contract, onChanged }: FormProps) {
             chainId: TARGET_CHAIN.id,
             account: owner,
           });
-          return writeContract(wagmiConfig, request);
+          return write(request);
         },
       },
     ]);
@@ -710,7 +716,12 @@ function BurnForm({ crystal, owner, contract, onChanged, sealed }: FormProps & {
     const ok = await run([
       {
         label: `Emptying and burning crystal #${crystal.id}`,
-        send: async () => {
+        tx: {
+          description: `Send everything in crystal #${crystal.id} back to your wallet and burn the crystal. This can't be undone.`,
+          action: 'Empty and burn',
+          contract: 'PrismCrystal',
+        },
+        send: async (write) => {
           const { request } = await simulateContract(wagmiConfig, {
             address: contract,
             abi: prismCrystalAbi,
@@ -719,7 +730,7 @@ function BurnForm({ crystal, owner, contract, onChanged, sealed }: FormProps & {
             chainId: TARGET_CHAIN.id,
             account: owner,
           });
-          return writeContract(wagmiConfig, request);
+          return write(request);
         },
       },
     ]);

@@ -1,5 +1,5 @@
 import type { Address } from 'viem';
-import { simulateContract, writeContract } from 'wagmi/actions';
+import { simulateContract } from 'wagmi/actions';
 import { encodeNote, prismCrystalAbi, type GiftStep } from '@prism/core';
 import { TARGET_CHAIN, wagmiConfig } from './config';
 import type { StepDef } from './steps';
@@ -29,7 +29,12 @@ export function giftSteps(opts: {
     kind === 'seal'
       ? {
           label: `Seal ${i + 1}/${n}: closed until ${fmtDate(unlock!)}`,
-          send: async () => {
+          tx: {
+            description: `Seal crystal #${id} until ${fmtDate(unlock!)}: nobody can take anything out before then, not even you. A seal can't be shortened.`,
+            action: 'Seal crystal',
+            contract: 'PrismCrystal',
+          },
+          send: async (write) => {
             const { request } = await simulateContract(wagmiConfig, {
               address: crystal,
               abi: prismCrystalAbi,
@@ -38,12 +43,17 @@ export function giftSteps(opts: {
               chainId: TARGET_CHAIN.id,
               account,
             });
-            return writeContract(wagmiConfig, request);
+            return write(request);
           },
         }
       : {
           label: `Send ${i + 1}/${n}: crystal #${id} to ${toLabel}`,
-          send: async () => {
+          tx: {
+            description: `Give crystal #${id} to ${toLabel}${note ? ', with your note' : ''}. It leaves your wallet for good.`,
+            action: 'Send gift',
+            contract: 'PrismCrystal',
+          },
+          send: async (write) => {
             const { request } = await simulateContract(wagmiConfig, {
               address: crystal,
               abi: prismCrystalAbi,
@@ -52,7 +62,7 @@ export function giftSteps(opts: {
               chainId: TARGET_CHAIN.id,
               account,
             });
-            return writeContract(wagmiConfig, request);
+            return write(request);
           },
         },
   );

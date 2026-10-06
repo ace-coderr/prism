@@ -15,6 +15,7 @@
  * - brand/x/prism-x-banner.png (1500×500): the X header. Text and crystal stay clear of the
  *   bottom-left 450×200 (where the profile picture sits) and of the top / bottom edges
  *   some screens crop.
+ * - brand/privy-logo.png (360×180): the PRISM logo for Privy's login modal and login emails.
  *
  * The crystals are drawn by the real renderer (buildCrystal: per-asset shades, seams
  * between holdings, gold seams) from the explainer video's illustrative basket
@@ -321,6 +322,31 @@ function xAvatarSvg(): string {
 </svg>`;
 }
 
+/**
+ * Privy's login modal and login emails: 2:1 as Privy recommends (shown at 180×90), PNG (its
+ * emails don't take SVG), on a dark rounded tile so it reads on Privy's white email too.
+ */
+function privyLogoSvg(): string {
+  const W = 360;
+  const H = 180;
+  const cell = 15;
+  const gemW = cell * 7;
+  const gap = 20;
+  const textW = 196; // "PRISM" at 64px in Space Grotesk Bold
+  const ox = (W - (gemW + gap + textW)) / 2;
+  const oy = (H - cell * 6) / 2;
+  const voxels = GEM.flatMap((row, y) =>
+    [...row].map((ch, x) =>
+      ch === '.' ? '' : `<rect x="${ox + x * cell}" y="${oy + y * cell}" width="${cell}" height="${cell}" fill="${SHADES[ch]}" stroke="#000" stroke-width="2"/>`,
+    ),
+  ).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <rect width="${W}" height="${H}" rx="28" fill="${BG}"/>
+  ${voxels}
+  <text x="${ox + gemW + gap}" y="${H / 2 + 22}" font-family="${GROTESK}" font-weight="700" font-size="64" letter-spacing="-1.5" fill="${INK}">PRISM</text>
+</svg>`;
+}
+
 /** A dark "market screen" with faint, mostly green candlesticks (as behind the site's hero). */
 function candlePanel(x: number, y: number, w: number, h: number, seed: number, opacity: number): string {
   let s = seed * 9301 + 49297;
@@ -452,3 +478,5 @@ write(
 // X: profile picture (upload limit 2 MB) and header (5 MB)
 write('brand/x/prism-x-avatar.png', () => png(xAvatarSvg()), 2_000_000);
 write('brand/x/prism-x-banner.png', () => png(xBannerSvg()), 5_000_000);
+// Privy: the login modal's logo (PRIVY_CONFIG.appearance.logo) and, set in its dashboard, its login emails
+write('brand/privy-logo.png', () => png(privyLogoSvg()), 200_000);

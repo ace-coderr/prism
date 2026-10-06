@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { formatUnits, parseEventLogs, type Address } from 'viem';
-import { simulateContract, writeContract } from 'wagmi/actions';
+import { simulateContract } from 'wagmi/actions';
 import {
   GAS_RESERVE_WEI,
   IMPACT_WARN,
@@ -277,11 +277,18 @@ export function useEthForge({
     if (!router || !account || !mix.total) return;
     const rows = mix.rows;
     const swaps = rows.map((r) => ({ token: r.t.address, ethIn: r.ethIn }));
+    const names = rows.map((r) => r.t.id);
+    const list = names.length <= 2 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
     const ok = await tx.run([
       {
         label: 'Swapping your ETH and forging your crystal',
         errorContext: { slippageBps: mix.slippageBps },
-        send: async () => {
+        tx: {
+          description: `Swap ${fmt(mix.total, 18, 5)} ETH into ${list}${mix.kept > 0n ? ` (keeping ${fmt(mix.kept, 18, 5)} as ETH)` : ''} and forge your crystal. If any price moves more than ${mix.slippageBps / 100}%, nothing happens.`,
+          action: 'Swap & forge',
+          contract: 'PRISM Forge Router',
+        },
+        send: async (write) => {
           // Quote again right now (this also updates the amounts on screen). A quote can be
           // seconds old, and a thin pool can move more than the slippage in that time.
           const fresh = await Promise.all(
@@ -300,7 +307,7 @@ export function useEthForge({
             chainId: TARGET_CHAIN.id,
             account,
           });
-          return writeContract(wagmiConfig, request);
+          return write(request);
         },
         after: (receipt) => {
           const [ev] = parseEventLogs({ abi: prismForgeRouterAbi, eventName: 'ForgedFromETH', logs: receipt.logs });

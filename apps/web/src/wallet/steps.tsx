@@ -1,8 +1,9 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { Hash, TransactionReceipt } from 'viem';
 import { call, getTransaction, waitForTransactionReceipt } from 'wagmi/actions';
 import { explorerTx, friendlyError, messageForRevertData, revertDataOf, type ErrorContext } from '@prism/core';
 import { wagmiConfig } from './config';
+import { useWriters, type TxDescription, type Writer } from './write';
 
 export type StepStatus = 'waiting' | 'wallet' | 'mining' | 'done' | 'error';
 
@@ -15,8 +16,13 @@ export interface Step {
 
 export interface StepDef {
   label: string;
-  /** Sends one transaction and returns its hash (the wallet prompt happens inside). */
-  send: () => Promise<Hash>;
+  /**
+   * Sends one transaction and returns its hash (the wallet prompt happens inside). Send it
+   * with `write`: an embedded wallet then shows `tx` on its confirmation screen.
+   */
+  send: (write: Writer) => Promise<Hash>;
+  /** What the transaction does, for an embedded wallet's confirmation (defaults to the label). */
+  tx?: Partial<TxDescription>;
   /** Optional follow-up once mined (e.g. read the new crystal id from logs). */
   after?: (receipt: TransactionReceipt) => void;
   /** What the error messages should know (e.g. the slippage picked). */
@@ -44,6 +50,10 @@ async function explainFailedTx(hash: Hash, receipt: TransactionReceipt, ctx: Err
 export function useTxSteps() {
   const [steps, setSteps] = useState<Step[]>([]);
   const [running, setRunning] = useState(false);
+  // the latest wallet state, read when each step is sent
+  const writers = useWriters();
+  const writersRef = useRef(writers);
+  writersRef.current = writers;
 
   const run = useCallback(async (defs: StepDef[]) => {
     setRunning(true);
@@ -55,7 +65,9 @@ export function useTxSteps() {
         patch(i, { status: 'wallet' });
         let hash: Hash;
         try {
-          hash = await defs[i]!.send();
+          const def = defs[i]!;
+          const write = writersRef.current({ description: def.tx?.description ?? def.label, action: def.tx?.action ?? def.label, contract: def.tx?.contract });
+          hash = await def.send(write);
         } catch (e) {
           patch(i, { status: 'error', error: friendlyError(e, defs[i]!.errorContext) });
           return false;

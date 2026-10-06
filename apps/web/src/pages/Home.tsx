@@ -14,6 +14,7 @@ import { useTestnetTokens } from '../data/chain';
 import { LIVE_BASKET, liveBasket } from '../data/crystalHoldings';
 import { useChainStats } from '../data/crystals';
 import { useSnapshot } from '../data/snapshot';
+import { TestEthNote } from '../components/TestEthNote';
 import { TARGET_CHAIN } from '../wallet/config';
 
 /** The live basket holds WETH for its ETH share; people know it as ETH. */
@@ -75,6 +76,7 @@ function Hero() {
                 Watch in 40s
               </a>
             </div>
+            <TestEthNote className="mt-8" />
           </Reveal>
         </div>
         <div className="relative order-1 h-[34svh] min-h-[240px] lg:order-2 lg:h-[72vh] lg:max-h-[720px]">

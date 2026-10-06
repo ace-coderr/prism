@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Headline, Reveal, SectionLabel } from './design';
+import { TestEthNote } from './TestEthNote';
 
 /**
  * Every page opens the same way: a mono label, a big headline with one lime phrase,
@@ -38,7 +39,12 @@ export function PageHeader({
   );
 }
 
-/** A page's content column: max 1200px, clear of the floating navbar. */
+/** A page's content column: max 1200px, clear of the floating navbar (with the test-ETH note on top when needed). */
 export function PageScroll({ className = '', children }: { className?: string; children: ReactNode }) {
-  return <div className={`container-x flex flex-col gap-12 pb-20 pt-28 md:gap-16 md:pb-28 md:pt-36 ${className}`}>{children}</div>;
+  return (
+    <div className={`container-x flex flex-col gap-12 pb-20 pt-28 md:gap-16 md:pb-28 md:pt-36 ${className}`}>
+      <TestEthNote />
+      {children}
+    </div>
+  );
 }

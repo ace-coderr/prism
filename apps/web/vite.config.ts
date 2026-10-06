@@ -46,9 +46,16 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), snapshotApi()],
   server: { port: 5173 },
   build: {
-    chunkSizeWarningLimit: 1600,
+    // three (1.2 MB) and privy (1.8 MB) are big vendor chunks on purpose; warn about anything bigger
+    chunkSizeWarningLimit: 1900,
     rollupOptions: {
-      output: { manualChunks: { three: ['three', '@react-three/fiber', '@react-three/drei', '@react-three/postprocessing'] } },
+      output: {
+        manualChunks: {
+          three: ['three', '@react-three/fiber', '@react-three/drei', '@react-three/postprocessing'],
+          // login + embedded wallets: big and rarely updated, so cached on its own
+          privy: ['@privy-io/react-auth', '@privy-io/wagmi'],
+        },
+      },
     },
   },
 });

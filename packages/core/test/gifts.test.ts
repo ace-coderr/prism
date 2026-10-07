@@ -143,11 +143,11 @@ describe('finding gifts', () => {
   it('Swap & forge’s hand-off from the router is not a gift (the router mints to itself, then sends it on)', () => {
     const ROUTER = '0xD1340ad67A4b5C0995CC050bE773ee74293fD24D' as Address;
     const viaRouter = [t(9n, ZERO, ROUTER), t(9n, ROUTER, ME)];
-    expect(giftOf(viaRouter, 9n, ROUTER)).toBeNull();
-    expect([...giftsReceived(viaRouter, ME, ROUTER).keys()]).toEqual([]);
+    expect(giftOf(viaRouter, 9n, { router: ROUTER })).toBeNull();
+    expect([...giftsReceived(viaRouter, ME, { router: ROUTER }).keys()]).toEqual([]);
     // given away later: that one is a gift
     const thenGiven = [...viaRouter, t(9n, ME, FRIEND)];
-    expect(giftOf(thenGiven, 9n, ROUTER)).toMatchObject({ from: ME, to: FRIEND });
-    expect([...giftsReceived(thenGiven, FRIEND, ROUTER).keys()]).toEqual([9n]);
+    expect(giftOf(thenGiven, 9n, { router: ROUTER })).toMatchObject({ from: ME, to: FRIEND });
+    expect([...giftsReceived(thenGiven, FRIEND, { router: ROUTER }).keys()]).toEqual([9n]);
   });
 });

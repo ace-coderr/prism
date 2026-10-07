@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import type { Address } from 'viem';
-import { DEFAULT_VOLATILITY, TESTNET_TOKENS, buildReplay, getDeployment, type ReplayAssetInfo } from '@prism/core';
-import { TARGET_CHAIN } from '../wallet/config';
+import { DEFAULT_VOLATILITY, TESTNET_TOKENS, buildReplay, type ReplayAssetInfo } from '@prism/core';
 import { useCrystalEvents } from './activity';
+import { giftContracts } from './gifts';
 import { useTestnetTokens } from './chain';
 import { useGalleryCrystals } from './crystals';
 
@@ -47,7 +47,7 @@ export function useReplay(id: bigint | null) {
       ethUsd: h.ethUsd,
       historyStart: h.clock(h.fromBlock),
       now: h.nowSec,
-      router: getDeployment(TARGET_CHAIN.id)?.forgeRouter,
+      ...giftContracts(),
     });
   }, [crystal, events.data, live]);
 

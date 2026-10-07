@@ -9,6 +9,7 @@ import {
   explorerTx,
   getDeployment,
   identicon,
+  joinedViaGift,
   xUrl,
   type ActivityItem,
   type BadgeId,
@@ -27,12 +28,13 @@ import { Stage } from '../components/Stage';
 import { Change, formatEth } from '../components/ui';
 import { GuideNote } from '../components/Viber';
 import { timeAgo, useBlockTimes, useCrystalEvents } from '../data/activity';
+import { giftContracts } from '../data/gifts';
 import { useTestnetTokens, type LiveToken } from '../data/chain';
 import { realCrystalHistory } from '../data/crystalHoldings';
 import { earliestForge, useMyCrystals, type OnchainCrystal } from '../data/crystals';
 import { valueCrystal, type MarketOf, type Valued } from '../data/crystalValue';
 import { profileCrumbs } from '../data/nav';
-import { OwnerChip, profileHref, profilesContract, shortAddress, useAddressOfName, useProfile, useProfiles, type Profile } from '../data/profiles';
+import { OwnerChip, atNameOrShort, profileHref, profilesContract, shortAddress, useAddressOfName, useProfile, useProfiles, type Profile } from '../data/profiles';
 import { TARGET_CHAIN } from '../wallet/config';
 import { WalletButton, useWallet } from '../wallet/WalletButton';
 
@@ -149,11 +151,15 @@ function ProfileView({ address, deep = false }: { address: Address; deep?: boole
   const histories = useMemo(() => new Map(owned.map((c) => [c.id, realCrystalHistory(live, c)])), [owned, live]);
   const seams = (id: bigint) => histories.get(id)?.drawdowns.filter((d) => d.recovered).length ?? 0;
 
-  const activity = useMemo(() => (events.data ? activityOf(events.data, address, deployment?.forgeRouter) : null), [events.data, address, deployment]);
+  const activity = useMemo(() => (events.data ? activityOf(events.data, address, giftContracts()) : null), [events.data, address, deployment]);
   const forged = activity?.filter((a) => a.kind === 'forged') ?? null;
   const times = useBlockTimes([...(activity ?? []).map((a) => a.block), ...owned.flatMap((c) => (c.forgedBlock ? [c.forgedBlock] : []))]);
   const timeOf = (b: bigint | null | undefined) => (b ? times.data?.get(b) : undefined);
-  const joined = forged && forged.length > 0 ? timeOf(forged[forged.length - 1]!.block) : undefined;
+  // the first PRISM moment: a forge, or a gift (e.g. a claimed gift link) for someone who joined that way
+  const firstGift = activity ? joinedViaGift(activity) : null;
+  const joined = firstGift ? timeOf(firstGift.block) : forged && forged.length > 0 ? timeOf(forged[forged.length - 1]!.block) : undefined;
+  const { profile: gifter } = useProfile(firstGift?.counterparty);
+  const joinedVia = firstGift?.counterparty ? atNameOrShort(firstGift.counterparty, gifter.name) : null;
   const oldest = owned.reduce<number | undefined>((m, c) => {
     const t = timeOf(c.forgedBlock);
     return t !== undefined && (m === undefined || t < m) ? t : m;
@@ -205,6 +211,7 @@ function ProfileView({ address, deep = false }: { address: Address; deep?: boole
             profile={profile}
             mine={mine}
             joined={joined}
+            joinedVia={joinedVia}
             forgedCount={forged ? forged.length : null}
             avatar={avatarCrystal ? { holdings: valued.get(avatarCrystal.id)!.holdings, history: histories.get(avatarCrystal.id), sealed: avatarCrystal.sealedUntil * 1000 > Date.now() } : null}
           />
@@ -313,11 +320,13 @@ function ProfileHeader(props: {
   profile: Profile;
   mine: boolean;
   joined?: number;
+  /** "@name" when their first PRISM moment was a gift from them */
+  joinedVia?: string | null;
   /** null while events load */
   forgedCount: number | null;
   avatar: { holdings: Valued['holdings']; history?: CrystalHistory; sealed: boolean } | null;
 }) {
-  const { address, profile, mine, joined, forgedCount, avatar } = props;
+  const { address, profile, mine, joined, joinedVia, forgedCount, avatar } = props;
   const editor = useProfileEditor();
   const gem = useMemo(() => identicon(address), [address]);
   const [copied, setCopied] = useState(false);
@@ -372,7 +381,7 @@ function ProfileHeader(props: {
           )}
           <span>
             {joined !== undefined
-              ? `Joined ${new Date(joined * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}`
+              ? `Joined ${joinedVia ? `via a gift from ${joinedVia}, ` : ''}${new Date(joined * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}`
               : forgedCount === 0
                 ? 'Hasn’t forged yet'
                 : 'Joined …'}

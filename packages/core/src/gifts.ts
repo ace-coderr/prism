@@ -165,38 +165,70 @@ export const opensIn = (unlock: number, now: number) => {
 
 export interface Gift {
   id: bigint;
+  /** who gave it (for a gift link: who made the link) */
   from: Address;
   to: Address;
+  /** the transfer that delivered it (for a gift link: the claim) */
   tx: Hash;
   block: bigint;
+  logIndex: number;
+  /** sent as a gift link (PrismGiftLinks) rather than straight to a wallet */
+  via?: 'link';
+  /** for a gift link: the transaction that made the link (its note is there) */
+  linkTx?: Hash;
 }
 
-/**
- * A crystal changing hands between two wallets: not a mint, not a burn, and not the forge
- * router handing over a crystal it just forged (Swap & forge mints to the router first).
- */
-export const isGiftTransfer = (e: CrystalEvent, router?: Address | null) =>
-  e.kind === 'transfer' &&
-  !!e.from &&
-  !!e.to &&
-  e.from.toLowerCase() !== ZERO &&
-  e.to.toLowerCase() !== ZERO &&
-  !(router && e.from.toLowerCase() === router.toLowerCase());
-
-/** The crystal's latest gift, if it was ever given. Pass the forge router so its hand-offs don't count. */
-export function giftOf(events: CrystalEvent[], id: bigint, router?: Address | null): Gift | null {
-  let last: CrystalEvent | null = null;
-  for (const e of events) if (e.id === id && isGiftTransfer(e, router)) last = e;
-  return last ? { id, from: last.from!, to: last.to!, tx: last.tx, block: last.block } : null;
+/** Contracts that move crystals without being a gift themselves. */
+export interface GiftContracts {
+  /** PrismForgeRouter: Swap & forge mints to it, then it hands the crystal over (not a gift) */
+  router?: Address | null;
+  /** PrismGiftLinks: a deposit makes a link (not yet a gift); the claim is the gift, from the link's maker; a cancel just returns it */
+  giftLinks?: Address | null;
 }
 
-/** Gifts `owner` holds right now: crystals whose latest gift went to them and that haven't moved on. */
-export function giftsReceived(events: CrystalEvent[], owner: Address, router?: Address | null): Map<bigint, Gift> {
-  const out = new Map<bigint, Gift>();
+const same = (a?: string | null, b?: string | null) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+
+/** Every gift in the log, oldest first: crystals changing hands between people (see GiftContracts). */
+export function allGifts(events: CrystalEvent[], contracts: GiftContracts = {}): Gift[] {
+  const out: Gift[] = [];
+  // per crystal: who put it into a gift link (and in which transaction)
+  const deposited = new Map<bigint, { from: Address; tx: Hash }>();
+  for (const e of events) {
+    if (e.kind !== 'transfer' || !e.from || !e.to) continue;
+    if (same(e.from, ZERO) || same(e.to, ZERO) || same(e.from, contracts.router)) continue;
+    if (same(e.to, contracts.giftLinks)) {
+      deposited.set(e.id, { from: e.from, tx: e.tx });
+      continue;
+    }
+    if (same(e.from, contracts.giftLinks)) {
+      const d = deposited.get(e.id);
+      deposited.delete(e.id);
+      // back to whoever made the link: a cancel, not a gift
+      if (d && !same(e.to, d.from)) out.push({ id: e.id, from: d.from, to: e.to, tx: e.tx, block: e.block, logIndex: e.logIndex, via: 'link', linkTx: d.tx });
+      continue;
+    }
+    out.push({ id: e.id, from: e.from, to: e.to, tx: e.tx, block: e.block, logIndex: e.logIndex });
+  }
+  return out;
+}
+
+/** The crystal's latest gift, if it was ever given. */
+export function giftOf(events: CrystalEvent[], id: bigint, contracts: GiftContracts = {}): Gift | null {
+  const gifts = allGifts(
+    events.filter((e) => e.id === id),
+    contracts,
+  );
+  return gifts[gifts.length - 1] ?? null;
+}
+
+/** Gifts `owner` holds right now: crystals whose latest move was a gift to them. */
+export function giftsReceived(events: CrystalEvent[], owner: Address, contracts: GiftContracts = {}): Map<bigint, Gift> {
   const latest = new Map<bigint, CrystalEvent>();
   for (const e of events) if (e.kind === 'transfer') latest.set(e.id, e);
-  for (const [id, e] of latest) {
-    if (isGiftTransfer(e, router) && e.to!.toLowerCase() === owner.toLowerCase()) out.set(id, { id, from: e.from!, to: e.to!, tx: e.tx, block: e.block });
+  const out = new Map<bigint, Gift>();
+  for (const g of allGifts(events, contracts)) {
+    const last = latest.get(g.id);
+    if (last && last.tx === g.tx && last.logIndex === g.logIndex && same(g.to, owner)) out.set(g.id, g);
   }
   return out;
 }

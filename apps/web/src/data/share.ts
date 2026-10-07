@@ -19,7 +19,14 @@ export const SHARE = {
   badge: (badge: string, link: string) => `Just earned the ${badge} badge on @holdprism 🔮 ${link}`,
   gift: (id: bigint) => `I just gifted a PRISM crystal 🎁🔮 ${SITE}/gift/${id} @holdprism`,
   replay: (id: bigint) => `My PRISM crystal's journey 🔮 ${SITE}/replay/${id} @holdprism`,
+  /** posting a gift link publicly makes it a giveaway: the first to open it keeps it */
+  giftLink: (link: string) => `I just sent a PRISM crystal as a gift link 🎁 first to open it keeps it… ${link} @holdprism`,
 };
+
+/** A gift link to share: the claim key rides in the fragment (#k=…), which never reaches a server. */
+export const giftLinkUrl = (path: string) => `${LIVE_URL}${path}`;
+/** The same link as typed in a post (no https://). */
+export const giftLinkText = (path: string) => `${SITE}${path}`;
 
 /** X's post composer with the text filled in: no login on our side, no API. */
 export const xIntent = (text: string) => `https://x.com/intent/post?text=${encodeURIComponent(text)}`;

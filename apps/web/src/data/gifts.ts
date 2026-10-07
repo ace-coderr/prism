@@ -1,25 +1,31 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { Address } from 'viem';
-import { getDeployment, giftOf, giftsReceived, noteFromInput, type Gift } from '@prism/core';
+import { getDeployment, giftOf, giftsReceived, linksFromLogs, noteFromInput, type Gift, type GiftContracts } from '@prism/core';
 import { TARGET_CHAIN } from '../wallet/config';
 import { useCrystalEvents } from './activity';
 import { testnetClient } from './chain';
 
-/** Swap & forge mints to the router, which then hands the crystal over: that's not a gift. */
-const router = () => getDeployment(TARGET_CHAIN.id)?.forgeRouter;
+/**
+ * Contracts that move crystals without being a gift themselves: Swap & forge's router (its
+ * hand-off isn't a gift) and PrismGiftLinks (a claimed link is a gift from the link's maker).
+ */
+export const giftContracts = (): GiftContracts => {
+  const d = getDeployment(TARGET_CHAIN.id);
+  return { router: d?.forgeRouter, giftLinks: d?.giftLinks };
+};
 
 /** Gifts `owner` holds right now (from the contract's Transfer events), by crystal id. */
 export function useReceivedGifts(owner: Address | undefined) {
   const events = useCrystalEvents();
-  const gifts = useMemo(() => (owner && events.data ? giftsReceived(events.data, owner, router()) : new Map<bigint, Gift>()), [owner, events.data]);
+  const gifts = useMemo(() => (owner && events.data ? giftsReceived(events.data, owner, giftContracts()) : new Map<bigint, Gift>()), [owner, events.data]);
   return { gifts, loading: events.isLoading };
 }
 
 /** Crystal `id`'s latest gift, or null if it was never given (undefined while loading). */
 export function useGift(id: bigint | null) {
   const events = useCrystalEvents();
-  const gift = useMemo(() => (id === null || !events.data ? undefined : giftOf(events.data, id, router())), [id, events.data]);
+  const gift = useMemo(() => (id === null || !events.data ? undefined : giftOf(events.data, id, giftContracts())), [id, events.data]);
   return { gift, error: events.isError };
 }
 
@@ -33,6 +39,12 @@ export function useGiftNote(gift: Gift | null | undefined) {
     enabled: !!gift,
     staleTime: Infinity,
     queryFn: async () => {
+      // a gift link's note is in the link's LinkCreated event
+      if (gift!.via === 'link' && gift!.linkTx) {
+        const receipt = await testnetClient.getTransactionReceipt({ hash: gift!.linkTx });
+        const link = linksFromLogs(receipt.logs).find((l) => l.crystalId === gift!.id);
+        return link?.note.trim() || null;
+      }
       const tx = await testnetClient.getTransaction({ hash: gift!.tx });
       return noteFromInput(tx.input, { from: gift!.from, to: gift!.to, id: gift!.id });
     },

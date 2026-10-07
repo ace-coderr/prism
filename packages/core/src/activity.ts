@@ -7,6 +7,7 @@
 import { parseEventLogs, type Address, type Hash, type PublicClient } from 'viem';
 import { prismCrystalAbi } from './abi/prismCrystal';
 import type { PrismDeployment } from './deployments';
+import { allGifts, type GiftContracts } from './gifts';
 import { blockRanges } from './onchain';
 import { LOG_RANGE } from './reader';
 
@@ -113,12 +114,19 @@ export interface ActivityItem {
   tx: Hash;
   /** gifted: to whom · received: from whom */
   counterparty?: Address;
+  /** gifted / received through a gift link */
+  via?: 'link';
   unlockTime?: number;
   assets?: number;
 }
 
-/** Everything `user` did (or received), newest first. */
-export function activityOf(events: CrystalEvent[], user: Address, router?: Address | null): ActivityItem[] {
+/**
+ * Everything `user` did (or received), newest first. Gifts follow `allGifts`: the router's
+ * forge hand-off isn't one, and a gift link counts when it's claimed (from its maker).
+ */
+export function activityOf(events: CrystalEvent[], user: Address, contracts: GiftContracts = {}): ActivityItem[] {
+  const router = contracts.router;
+  const gifts = new Map(allGifts(events, contracts).map((g) => [`${g.tx}:${g.logIndex}`, g]));
   const out: ActivityItem[] = [];
   const item = (e: CrystalEvent, kind: ActivityKind, extra: Partial<ActivityItem> = {}) =>
     out.push({ kind, id: e.id, block: e.block, logIndex: e.logIndex, tx: e.tx, unlockTime: e.unlockTime, assets: e.assets, ...extra });
@@ -127,12 +135,13 @@ export function activityOf(events: CrystalEvent[], user: Address, router?: Addre
       case 'forged':
         if (same(forgerOf(events, e, router), user)) item(e, 'forged');
         break;
-      case 'transfer':
-        // mints, burns and the router's forge hand-off are not gifts
-        if (same(e.from, ZERO) || same(e.to, ZERO) || same(e.from, router)) break;
-        if (same(e.from, user)) item(e, 'gifted', { counterparty: e.to });
-        else if (same(e.to, user)) item(e, 'received', { counterparty: e.from });
+      case 'transfer': {
+        const g = gifts.get(`${e.tx}:${e.logIndex}`);
+        if (!g) break;
+        if (same(g.from, user)) item(e, 'gifted', { counterparty: g.to, via: g.via });
+        else if (same(g.to, user)) item(e, 'received', { counterparty: g.from, via: g.via });
         break;
+      }
       case 'added':
         if (same(e.account, user)) item(e, 'added');
         break;
@@ -148,9 +157,15 @@ export function activityOf(events: CrystalEvent[], user: Address, router?: Addre
 
 /** Crystals `user` forged, oldest first. */
 export const forgedBy = (events: CrystalEvent[], user: Address, router?: Address | null) =>
-  activityOf(events, user, router)
+  activityOf(events, user, { router })
     .filter((a) => a.kind === 'forged')
     .reverse();
+
+/** "Joined via a gift from …": when someone's first PRISM moment was receiving a crystal. */
+export function joinedViaGift(activity: ActivityItem[]): ActivityItem | null {
+  const first = activity[activity.length - 1]; // activity is newest first
+  return first?.kind === 'received' ? first : null;
+}
 
 /** Block → unix seconds for the given blocks (one getBlock each, batched by the client). */
 export async function blockTimes(client: PublicClient, blocks: bigint[]): Promise<Map<bigint, number>> {

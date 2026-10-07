@@ -39,11 +39,14 @@ export function PageHeader({
   );
 }
 
-/** A page's content column: max 1200px, clear of the floating navbar (with the test-ETH note on top when needed). */
-export function PageScroll({ className = '', children }: { className?: string; children: ReactNode }) {
+/**
+ * A page's content column: max 1200px, clear of the floating navbar, with the test-ETH note on
+ * top when needed (`ethNote={false}` for a page that explains test ETH itself, like /claim).
+ */
+export function PageScroll({ className = '', ethNote = true, children }: { className?: string; ethNote?: boolean; children: ReactNode }) {
   return (
     <div className={`container-x flex flex-col gap-12 pb-20 pt-28 md:gap-16 md:pb-28 md:pt-36 ${className}`}>
-      <TestEthNote />
+      {ethNote && <TestEthNote />}
       {children}
     </div>
   );

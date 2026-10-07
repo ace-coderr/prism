@@ -9,6 +9,8 @@ import {
   prismCrystalBytecode,
   prismForgeRouterAbi,
   prismForgeRouterBytecode,
+  prismGiftLinksAbi,
+  prismGiftLinksBytecode,
   prismProfilesAbi,
   prismProfilesBytecode,
   routerDeployArgs,
@@ -106,6 +108,7 @@ export default function Deploy() {
 
       <RouterDeploy />
       <ProfilesDeploy />
+      <GiftLinksDeploy />
     </PageScroll>
   );
 }
@@ -278,6 +281,91 @@ function ProfilesDeploy() {
             <b>Next:</b> record this address as <code className="font-mono text-lime">prismProfiles</code> in{' '}
             <code className="font-mono text-lime">packages/core/src/deployments.ts</code>, which switches on profiles (names, avatars, bios,
             Edit profile), and verify the source on the explorer.
+          </p>
+        </Panel>
+      )}
+    </>
+  );
+}
+
+/** Deploys PrismGiftLinks (send a crystal as a link) from the connected wallet. */
+function GiftLinksDeploy() {
+  const { address, isConnected, onTarget } = useWallet();
+  const { steps, running, run } = useTxSteps();
+  const [deployed, setDeployed] = useState<{ address: Address; block: bigint; tx: string } | null>(null);
+  const d = getDeployment(TARGET_CHAIN.id);
+  const crystal = d?.prismCrystal;
+  const existing = d?.giftLinks;
+
+  const deploy = () =>
+    crystal &&
+    !existing &&
+    run([
+      {
+        label: 'Deploy PrismGiftLinks',
+        send: () => deployContract(wagmiConfig, { abi: prismGiftLinksAbi, bytecode: prismGiftLinksBytecode, args: [crystal], chainId: TARGET_CHAIN.id }),
+        after: (r) => r.contractAddress && setDeployed({ address: r.contractAddress, block: r.blockNumber, tx: r.transactionHash }),
+      },
+    ]);
+
+  return (
+    <>
+      <h2 className="headline mt-10 text-2xl">Deploy PrismGiftLinks</h2>
+      <p className="text-sm text-mist">
+        Gift links: send a crystal as a link to someone without a wallet. The sender deposits the crystal with a one-time claim key&apos;s
+        address; only that key can claim it (to any recipient) before the expiry, and the sender can take it back until it&apos;s claimed.
+        No owner, no admin, no fees, no upgrades. Tested but not audited (see contracts/SECURITY.md).
+      </p>
+      {existing && (
+        <Panel className="border-lime/40 p-4 text-sm">
+          Already deployed at{' '}
+          <a className="font-mono text-lime" href={explorerAddressUrl(existing)} target="_blank" rel="noreferrer">
+            {existing} ↗
+          </a>
+          .
+        </Panel>
+      )}
+      <Panel className="space-y-4 p-4">
+        <p className="label text-mist">Fixed at deploy (can never change)</p>
+        {crystal ? (
+          <p className="font-mono text-[11px] text-white/90">PrismCrystal (the only collection it accepts): {crystal}</p>
+        ) : (
+          <p className="text-sm text-down">Deploy PrismCrystal first.</p>
+        )}
+        <div className="flex flex-wrap items-center gap-3">
+          <button className="btn btn-primary" disabled={!crystal || !onTarget || running || !!deployed || !!existing} onClick={deploy}>
+            {existing ? 'Already deployed' : running ? 'Deploying…' : deployed ? 'Deployed' : 'Deploy PrismGiftLinks'}
+          </button>
+          {!isConnected && <span className="text-xs text-mist">Connect a wallet first.</span>}
+          {isConnected && !onTarget && <span className="text-xs text-mist">Switch to Robinhood Chain Testnet first.</span>}
+        </div>
+        <p className="text-xs text-mist/80">A contract-creation transaction of about 0.8M gas (a little test ETH). Deployer: {address ?? '—'}</p>
+        <StepList steps={steps} />
+      </Panel>
+      {deployed && (
+        <Panel className="space-y-2 border-lime/50 p-4">
+          <p className="label text-lime">PrismGiftLinks deployed</p>
+          <p className="break-all font-mono text-sm text-white">{deployed.address}</p>
+          <p className="text-xs text-mist">
+            Block {deployed.block.toString()} · tx <span className="break-all font-mono">{deployed.tx}</span>
+          </p>
+          <div className="flex flex-wrap gap-3 pt-1">
+            <a className="btn btn-secondary" href={explorerAddressUrl(deployed.address)} target="_blank" rel="noreferrer">
+              View on explorer ↗
+            </a>
+            <button
+              className="btn btn-secondary"
+              onClick={() => navigator.clipboard?.writeText(`giftLinks: ${deployed.address}
+giftLinksTx: ${deployed.tx}
+giftLinksFromBlock: ${deployed.block}n`)}
+            >
+              Copy for deployments.ts
+            </button>
+          </div>
+          <p className="pt-2 text-sm">
+            <b>Next:</b> record <code className="font-mono text-lime">giftLinks</code>, <code className="font-mono text-lime">giftLinksTx</code> and{' '}
+            <code className="font-mono text-lime">giftLinksFromBlock</code> in <code className="font-mono text-lime">packages/core/src/deployments.ts</code>,
+            which switches on &quot;Send as a link&quot; and /claim, and verify the source on the explorer.
           </p>
         </Panel>
       )}

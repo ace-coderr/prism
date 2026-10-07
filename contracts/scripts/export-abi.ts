@@ -11,6 +11,7 @@ const CONTRACTS = [
   { name: 'PrismCrystal', file: 'prismCrystal.ts', id: 'prismCrystal' },
   { name: 'PrismForgeRouter', file: 'prismForgeRouter.ts', id: 'prismForgeRouter' },
   { name: 'PrismProfiles', file: 'prismProfiles.ts', id: 'prismProfiles' },
+  { name: 'PrismGiftLinks', file: 'prismGiftLinks.ts', id: 'prismGiftLinks' },
 ];
 
 const outDir = path.join(__dirname, '../../packages/core/src/abi');

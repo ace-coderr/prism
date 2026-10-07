@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { formatUnits, type Address } from 'viem';
@@ -38,6 +38,9 @@ import { ClaimBanner } from '../components/ClaimBanner';
 import { TARGET_CHAIN, wagmiConfig } from '../wallet/config';
 import { DepositForm } from '../wallet/DepositForm';
 import { GiftForm, type SentGift } from '../wallet/GiftForm';
+import { GiftLinkForm, GiftLinkReady, type MadeLink } from '../wallet/GiftLinkForm';
+import { MyGiftLinks } from '../components/MyGiftLinks';
+import { giftLinksContract } from '../data/giftLinks';
 import { StepList, useTxSteps } from '../wallet/steps';
 import { SwitchNetworkButton, useWallet } from '../wallet/WalletButton';
 
@@ -105,6 +108,12 @@ export default function OnchainCrystals() {
   // gifts: one you just sent, and the ones you received (wrapped until you unwrap them)
   const queryClient = useQueryClient();
   const [sent, setSent] = useState<SentGift | null>(null);
+  const [linked, setLinked] = useState<MadeLink | null>(null);
+  // "Sent!" appears at the top while you're down at the form: bring it into view, once per gift
+  const sentRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (sent) sentRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [sent]);
   const received = useReceivedGifts(address);
   const opened = useOpenedGifts(address);
   const senders = useProfiles([...received.gifts.values()].map((g) => g.from));
@@ -112,6 +121,14 @@ export default function OnchainCrystals() {
   const onGifted = (g: SentGift) => {
     setSent(g);
     crystals.refetch();
+    queryClient.invalidateQueries({ queryKey: ['crystal-events'] });
+    queryClient.invalidateQueries({ queryKey: ['all-crystals'] });
+  };
+  const onLinked = (l: MadeLink) => {
+    setLinked(l);
+    setSent(null);
+    crystals.refetch();
+    queryClient.invalidateQueries({ queryKey: ['gift-links'] });
     queryClient.invalidateQueries({ queryKey: ['crystal-events'] });
     queryClient.invalidateQueries({ queryKey: ['all-crystals'] });
   };
@@ -162,7 +179,11 @@ export default function OnchainCrystals() {
       {header}
       {!onTarget && <SwitchNetworkButton />}
       {sent && (
-        <section aria-live="polite" className="flex flex-wrap items-center gap-4 rounded-[20px] border border-lime/40 bg-lime/[0.06] p-5">
+        <section
+          ref={sentRef}
+          aria-live="polite"
+          className="flex scroll-mt-28 flex-wrap items-center gap-4 rounded-[20px] border border-lime/40 bg-lime/[0.06] p-5"
+        >
           <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-lime/40 text-lime">
             <GiftIcon size={20} />
           </span>
@@ -177,6 +198,7 @@ export default function OnchainCrystals() {
           </div>
         </section>
       )}
+      {linked && <GiftLinkReady link={linked} onClose={() => setLinked(null)} />}
       {list.length > 0 && address && <ClaimBanner address={address} />}
       {crystals.isLoading && <LoadingStage label="Reading your crystals from the chain…" />}
       {crystals.isError && <p className="text-sm text-down">Couldn’t read crystals: {(crystals.error as Error).message.split('\n')[0]}</p>}
@@ -250,6 +272,7 @@ export default function OnchainCrystals() {
                   contract={deployment.prismCrystal}
                   onChanged={() => crystals.refetch()}
                   onGifted={onGifted}
+                  onLinked={onLinked}
                   gift={giftFor(selected)}
                   now={now}
                 />
@@ -258,6 +281,7 @@ export default function OnchainCrystals() {
           </div>
         </>
       )}
+      {address && <MyGiftLinks owner={address} />}
     </PageScroll>
   );
 }
@@ -359,6 +383,7 @@ function CrystalView(props: {
   contract: Address;
   onChanged: () => void;
   onGifted: (gift: SentGift) => void;
+  onLinked: (link: MadeLink) => void;
   gift?: ReceivedGift;
   now: number;
 }) {
@@ -451,7 +476,7 @@ function CrystalView(props: {
           {tab === 'add' && <AddForm {...form} />}
           {tab === 'seal' && <SealForm {...form} />}
           {tab === 'gift' && (
-            <GiftForm
+            <GiftTab
               crystal={crystal}
               owner={props.owner}
               ownerProfile={props.ownerProfile}
@@ -459,11 +484,52 @@ function CrystalView(props: {
               holdings={valued.holdings}
               history={history}
               onSent={props.onGifted}
+              onLinked={props.onLinked}
             />
           )}
           {tab === 'burn' && <BurnForm {...form} sealed={sealed} />}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Gift tab: send to an address (or @name), or as a link for someone without a wallet yet. */
+function GiftTab(props: Parameters<typeof GiftForm>[0] & { onLinked: (link: MadeLink) => void }) {
+  const links = giftLinksContract();
+  const [mode, setMode] = useState<'address' | 'link'>('address');
+  return (
+    <div className="space-y-5">
+      <div role="radiogroup" aria-label="How to send it" className="flex flex-wrap gap-2">
+        <button type="button" role="radio" aria-checked={mode === 'address'} className={`chip ${mode === 'address' ? 'chip-on' : ''}`} onClick={() => setMode('address')}>
+          Send to an address
+        </button>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={mode === 'link'}
+          disabled={!links}
+          title={links ? 'For someone without a wallet yet: they open the link, log in, and it’s theirs' : 'Turns on once its contract is deployed'}
+          className={`chip ${mode === 'link' ? 'chip-on' : ''}`}
+          onClick={() => setMode('link')}
+        >
+          Send as a link{!links && ' (soon)'}
+        </button>
+      </div>
+      {mode === 'link' && links ? (
+        <GiftLinkForm
+          crystal={props.crystal}
+          owner={props.owner}
+          ownerProfile={props.ownerProfile}
+          contract={props.contract}
+          giftLinks={links.address}
+          holdings={props.holdings}
+          history={props.history}
+          onLinked={props.onLinked}
+        />
+      ) : (
+        <GiftForm {...props} />
+      )}
     </div>
   );
 }
@@ -507,7 +573,7 @@ const TAB_HELP: Record<Tab, string> = {
   withdraw: 'Take some or all of the tokens out of this crystal and back into your wallet.',
   add: 'Put more tokens or ETH into this crystal. It keeps everything it already holds.',
   seal: 'Lock this crystal until a date, like a wrapped gift. You can still send it to someone.',
-  gift: 'Give this crystal to someone: an @username or a 0x address, with an optional note and opening date.',
+  gift: 'Give this crystal to someone: an @username or a 0x address, or a link for someone without a wallet yet. With an optional note and opening date.',
   burn: 'Take everything out and destroy the crystal. Use this when you are done with it.',
 };
 

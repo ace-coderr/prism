@@ -183,3 +183,54 @@ a PrismCrystal as avatar, a one-line bio and an X handle.
    is lost but gas.
 5. **Avatar reads cost a call.** `profileOf` makes one `ownerOf` call per read; fine for a view.
 6. **Unaudited.** Tests in `test/PrismProfiles.test.ts`. Testnet only.
+
+# PrismGiftLinks — security notes
+
+`contracts/PrismGiftLinks.sol` lets a crystal be sent as a link to someone who may not have a
+wallet yet. **Status: unaudited, not deployed, testnet only.**
+
+## Trust model, in plain words
+
+- **Links are bearer tokens.** Anyone holding the link (`/claim/<id>#k=<key>`) can claim the
+  crystal, to any address. Share a link privately unless you mean it as a giveaway: posting it
+  publicly (e.g. on X) means the first person to open it keeps it.
+- **The key never leaves the browser.** The sender's browser generates a fresh, one-time
+  keypair (the claim key). The contract stores only its **address**. The private key exists only
+  in the link's URL fragment (`#k=…`), which browsers never send to any server: not to PRISM's
+  host, not to the RPC, not to Privy. The sender's browser also keeps the key in localStorage so
+  it can show the link again and reclaim the gas money on cancel.
+- **Only the claim key can claim.** `claim(linkId, recipient)` requires `msg.sender == claimKey`,
+  so the claim is a transaction signed by the key itself. Someone watching the mempool can see
+  a pending claim but can't change its recipient or claim first without the key.
+- **No admin.** No owner, no fees, no pause, no upgrades, no rescue. A crystal in the contract
+  can leave in exactly two ways: `claim` (to the recipient the key names, before the expiry) or
+  `cancel` (back to the link's sender, any time before it's claimed, including after expiry).
+  Each link can end only once: double claims, claims after a cancel and cancels after a claim
+  revert with `NotOpen`.
+- **Creating a link** is one `safeTransferFrom(sender, giftLinks, id, data)` with
+  `data = abi.encode(claimKey, expiry, note)`, checked in `onERC721Received`: only PrismCrystal
+  can call it, the data must be present and valid (non-zero claim key, expiry in the future and
+  at most 365 days away, note ≤ 560 bytes). The link's sender is the crystal's owner (`from`),
+  even if an approved operator made the transfer.
+- **Sealed crystals** can be linked: the seal travels with the NFT, so the recipient owns it
+  sealed and can withdraw only after the unlock time.
+- **Gas money.** The app sends a little test ETH (0.0005 by default) to the claim key so the
+  claim can pay its own fee; after claiming, the recipient's browser sends whatever is left on
+  the key to the recipient. That ETH sits on the key, not in the contract: whoever holds the
+  link can also spend it.
+- **Re-entrancy.** `claim`, `cancel` and `onERC721Received` are `nonReentrant` and update the
+  link before transferring; tests try re-claiming, re-cancelling and creating a new link from
+  inside the transfer.
+
+## Known limitations
+
+1. **A plain `transferFrom` to the contract is lost.** It skips `onERC721Received`, so no link
+   is created and, with no admin, the crystal can never leave. The app only uses
+   `safeTransferFrom` with link data.
+2. **A leaked link is a lost gift.** If someone else gets the link first, they can claim it.
+   The sender can cancel while it's unclaimed.
+3. **Recipients that can't hold NFTs.** `claim` uses `safeTransferFrom`, so a recipient contract
+   without `onERC721Received` makes the claim revert; the link stays open for another recipient.
+4. **Notes are public.** The note is emitted in `LinkCreated` and visible to anyone.
+5. **Unaudited.** Tests in `test/PrismGiftLinks.test.ts` and `test/fork/PrismGiftLinks.fork.test.ts`.
+   Testnet only.

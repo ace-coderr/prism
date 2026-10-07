@@ -45,7 +45,7 @@ describe('activity from PrismCrystal events', () => {
   });
 
   it("lists alice's activity newest first", () => {
-    expect(activityOf(events, ALICE, ROUTER).map((a) => [a.kind, a.id, a.counterparty ?? null])).toEqual([
+    expect(activityOf(events, ALICE, { router: ROUTER }).map((a) => [a.kind, a.id, a.counterparty ?? null])).toEqual([
       ['gifted', 1n, CAROL],
       ['sealed', 1n, null],
       ['forged', 1n, null],
@@ -53,29 +53,29 @@ describe('activity from PrismCrystal events', () => {
   });
 
   it("lists bob's: the router hand-off and the burn's transfer are not gifts", () => {
-    expect(activityOf(events, BOB, ROUTER).map((a) => a.kind)).toEqual(['burned', 'withdrew', 'added', 'forged']);
+    expect(activityOf(events, BOB, { router: ROUTER }).map((a) => a.kind)).toEqual(['burned', 'withdrew', 'added', 'forged']);
   });
 
   it("lists carol's, including what she received", () => {
-    expect(activityOf(events, CAROL, ROUTER).map((a) => [a.kind, a.id, a.counterparty ?? null])).toEqual([
+    expect(activityOf(events, CAROL, { router: ROUTER }).map((a) => [a.kind, a.id, a.counterparty ?? null])).toEqual([
       ['forged', 3n, null],
       ['received', 1n, ALICE],
     ]);
   });
 
   it('matches addresses case-insensitively', () => {
-    expect(activityOf(events, ALICE.toUpperCase().replace('0X', '0x') as Address, ROUTER)).toHaveLength(3);
+    expect(activityOf(events, ALICE.toUpperCase().replace('0X', '0x') as Address, { router: ROUTER })).toHaveLength(3);
   });
 });
 
 describe('badges', () => {
   it('lights only what was earned', () => {
-    const alice = badgesOf({ activity: activityOf(events, ALICE, ROUTER), owned: [] });
+    const alice = badgesOf({ activity: activityOf(events, ALICE, { router: ROUTER }), owned: [] });
     const earned = (b: typeof alice) => b.filter((x) => x.isEarned).map((x) => x.id);
     expect(earned(alice)).toEqual(['first-forge', 'gifter', 'sealed']);
 
     const carol = badgesOf({
-      activity: activityOf(events, CAROL, ROUTER),
+      activity: activityOf(events, CAROL, { router: ROUTER }),
       owned: [
         { id: 1n, assets: 2, goldSeams: 1 },
         { id: 3n, assets: 5, goldSeams: 0 },

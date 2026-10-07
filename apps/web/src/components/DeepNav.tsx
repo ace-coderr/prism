@@ -73,15 +73,23 @@ export function CrystalLinks({ id, owner, ownerName, viewer }: { id: bigint; own
 }
 
 /** The end of a crystal's page, for anyone who doesn't own it: make one. */
-export function ForgeCta() {
+export function ForgeCta({
+  title = 'A stock basket you can hold.',
+  text = 'Pick a few test stocks and forge them into a crystal of your own, in one transaction from ETH.',
+  button = 'Forge your own crystal',
+}: {
+  title?: string;
+  text?: string;
+  button?: string;
+}) {
   return (
     <section className="card flex flex-col items-start gap-5 p-6 sm:flex-row sm:items-center sm:justify-between md:p-8">
       <div className="min-w-0">
-        <p className="font-display text-2xl font-bold tracking-[-0.02em]">A stock basket you can hold.</p>
-        <p className="mt-1.5 text-[15px] leading-relaxed text-mist">Pick a few test stocks and forge them into a crystal of your own, in one transaction from ETH.</p>
+        <p className="font-display text-2xl font-bold tracking-[-0.02em]">{title}</p>
+        <p className="mt-1.5 text-[15px] leading-relaxed text-mist">{text}</p>
       </div>
       <Link to="/forge" className="btn btn-primary btn-lg shrink-0">
-        Forge your own crystal
+        {button}
       </Link>
     </section>
   );

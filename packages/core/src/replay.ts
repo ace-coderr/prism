@@ -8,7 +8,7 @@
 import { formatUnits, type Address } from 'viem';
 import type { CrystalEvent } from './activity';
 import type { CrystalHistory, Holding } from './crystal';
-import { isGiftTransfer } from './gifts';
+import { giftOf } from './gifts';
 import { LIVE_CRACK_THRESHOLD, MAX_CRYSTAL_DROPS, priceAt } from './history';
 import type { PricePoint } from './pool';
 import { valueWeights } from './onchain';
@@ -122,6 +122,8 @@ export function buildReplay(input: {
   now: number;
   /** the forge router: its hand-off of a crystal it just forged isn't a gift */
   router?: Address | null;
+  /** PrismGiftLinks: a claimed link is the gift (from the link's maker), a deposit or cancel isn't */
+  giftLinks?: Address | null;
   keyframes?: number;
   samples?: number;
 }): ReplayTimeline {
@@ -178,7 +180,8 @@ export function buildReplay(input: {
     .sort((a, b) => a.openAt - b.openAt);
 
   // gift / seal: frost from the seal (or the gift) until it opens
-  const lastGift = [...evs].reverse().find((x) => isGiftTransfer(x.e, input.router));
+  const gift = giftOf(input.events, id, { router: input.router, giftLinks: input.giftLinks });
+  const lastGift = gift ? { t: clock(gift.block), e: { to: gift.to } } : null;
   const seals = evs.filter((x) => x.e.kind === 'sealed');
   const lastSeal = seals[seals.length - 1];
   const unlock = lastSeal?.e.unlockTime ?? 0;

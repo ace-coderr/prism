@@ -23,6 +23,14 @@ export interface PrismDeployment {
   prismProfiles?: Address;
   /** PrismProfiles' creation transaction (for scripts/check-deployment.ts). */
   prismProfilesTx?: `0x${string}`;
+  /**
+   * PrismGiftLinks (send a crystal as a link). Empty until deployed via /deploy; "Send as a
+   * link" and /claim stay off until then.
+   */
+  giftLinks?: Address;
+  /** PrismGiftLinks' creation transaction and block (link events are read from there). */
+  giftLinksTx?: `0x${string}`;
+  giftLinksFromBlock?: bigint;
 }
 
 export const DEPLOYMENTS: Partial<Record<number, PrismDeployment>> = {

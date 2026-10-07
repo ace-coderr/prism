@@ -166,6 +166,16 @@ export function OwnerChip({
   link?: boolean;
   className?: string;
 }) {
+  // a crystal waiting in a gift link is "owned" by the PrismGiftLinks contract
+  const giftLinks = getDeployment(TARGET_CHAIN.id)?.giftLinks;
+  if (giftLinks && address.toLowerCase() === giftLinks.toLowerCase()) {
+    return (
+      <span className={`inline-flex min-w-0 items-center gap-1.5 align-middle ${className}`} title={`In a gift link, waiting to be claimed (${address})`}>
+        <span aria-hidden>🎁</span>
+        <span className="truncate">a gift link</span>
+      </span>
+    );
+  }
   const label = profile?.name ? atName(profile.name) : shortAddress(address);
   const body = (
     <>

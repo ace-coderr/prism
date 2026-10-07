@@ -97,6 +97,30 @@ My Crystals → **Gift** sends a crystal with the existing PrismCrystal function
 - `/gift/<id>` is the shareable gift page, and "Share on X" appears after sending.
 - Tests: `packages/core/test/gifts.test.ts`, plus `contracts/test/fork/PrismGift.fork.test.ts` (seal + send with a note on a fork of the testnet, read back with the app's reader).
 
+## Gift links (PrismGiftLinks)
+
+Send a crystal to anyone as a link, even someone with no wallet and no test ETH:
+
+- **My Crystals → Gift → Send as a link.** Your browser makes a one-time claim key. The crystal goes
+  into `PrismGiftLinks` with one `safeTransferFrom(you, giftLinks, id, abi.encode(claimKey, expiry, note))`
+  (sealed first if you pick an opening date), then a little test ETH (0.0005 by default) goes to the
+  claim key so the claim can pay its own fee. You get `prism-crystal.vercel.app/claim/<id>#k=<key>`
+  with Copy, Share on X and a QR code.
+- **The key lives only in the URL fragment** (`#k=…`), which browsers never send to a server, and in
+  your browser's storage (to show the link again, or take the crystal and the gas money back).
+  **Anyone with the link can claim the crystal**: share it privately, or post it as a giveaway.
+- **`/claim/<id>`** shows the crystal in ice, the note and who it's from. "Claim with email or wallet"
+  logs in with Privy, then the claim key sends `claim(id, yourAddress)` and the key's leftover ETH goes to
+  you. States: claimed (by whom), cancelled, expired, missing or wrong key, sealed (claim now, opens later).
+- **My gift links** (My Crystals) shows each link: waiting, claimed by @name, cancelled or expired, with
+  Copy link and Cancel. A claimed link counts toward the Gifter badge, and the recipient's profile says
+  "Joined via a gift from @name".
+- Contract: no owner, no admin, no fees, no upgrades; only the claim key can claim, only the sender can
+  cancel (any time before it's claimed). See `contracts/SECURITY.md`. Tests:
+  `contracts/test/PrismGiftLinks.test.ts`, `contracts/test/fork/PrismGiftLinks.fork.test.ts`,
+  `packages/core/test/giftLinks.test.ts`. Deploy it from `/deploy`, then add `giftLinks`,
+  `giftLinksTx` and `giftLinksFromBlock` to `packages/core/src/deployments.ts`.
+
 ## Replays
 
 `/replay/<id>` (and **▶ Replay** on My Crystals, the Gallery, profiles and gift pages) plays a crystal's life as an 8–15 s time-lapse built from real data: its on-chain events and the price history from the forge block to now (the last 48 h, or back to the forge block when it's newer; history reaches back about 14 days).

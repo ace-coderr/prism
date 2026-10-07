@@ -17,6 +17,12 @@ Status: **Done** · **In progress** · **Not started**
 - **Done** · Share on X buttons (after a forge, on your profile, for new badges, after a gift, on replays)
 - **Done** · X launch: [@holdprism](https://x.com/holdprism)
 
+## Growth (founder guidance)
+- **Done** · Privy login: email, Google, X or a wallet; an embedded wallet for anyone without one
+- **In progress** · Gift links: send a crystal as a link to someone with no wallet (PrismGiftLinks + /claim). Built and tested; goes live once PrismGiftLinks is deployed from /deploy
+- **Not started** · Referrals + leaderboard
+- **Not started** · Stock pairs: vibe/vibe launches per stock
+
 ## Phase 2
 - **Not started** · Crystal Circles (group crystals, scheduled contributions, color veins per member)
 - **Not started** · Crystal chemistry (fuse/split with preview)

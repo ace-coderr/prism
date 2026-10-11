@@ -141,15 +141,15 @@ function TestnetStatus() {
   );
 }
 
-/** Two slim rows: logo and links, then the testnet notice. */
+/** One slim row: logo and links on the left, the testnet notice on the right (two left-aligned lines on phones). */
 export function Footer() {
   const a = 'inline-flex min-h-6 items-center text-mist transition-colors hover:text-white';
   const dot = <span aria-hidden className="text-white/20">·</span>;
   const reviews = getDeployment(TARGET_CHAIN.id)?.prismReviews;
   return (
     <footer className="border-t border-white/[0.06] bg-ink">
-      <div className="container-x flex flex-col gap-3 py-6 text-[12px]">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <div className="container-x flex flex-col gap-3 py-6 text-[12px] md:flex-row md:items-center md:justify-between md:gap-4">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 md:shrink-0 md:flex-nowrap md:gap-x-1.5 md:whitespace-nowrap xl:gap-x-3">
           <NavLink to="/" aria-label="PRISM — home" className="inline-flex min-h-6 items-center gap-1.5 text-white">
             <Logo size={18} />
             <span className="font-display text-[13px] font-bold tracking-[-0.02em]">PRISM</span>
@@ -183,7 +183,7 @@ export function Footer() {
             Built by ace
           </a>
         </div>
-        <p className="text-mist/70">Robinhood Chain Testnet · test assets only, no real value · PRISM never holds your money</p>
+        <p className="text-mist/70 md:text-right">Robinhood Chain Testnet · test assets only, no real value · PRISM never holds your money</p>
       </div>
     </footer>
   );

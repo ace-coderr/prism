@@ -66,7 +66,7 @@ export function reviewState(r: Pick<ReviewRecord, 'status' | 'heldAtPost'>, bala
   if (isBelowHalf(balance, r.heldAtPost)) return { kind: 'sold', marked: false };
   if (balance >= r.heldAtPost) return { kind: 'holding' };
   // whole percent dropped, never shown as 0 for a real drop
-  const percent = Math.max(1, Number(((r.heldAtPost - balance) * 100n) / r.heldAtPost));
+  const percent = Math.max(1, Math.round(Number(((r.heldAtPost - balance) * 1000n) / r.heldAtPost) / 10));
   return { kind: 'trimmed', percent };
 }
 

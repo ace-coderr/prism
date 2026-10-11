@@ -1,0 +1,217 @@
+/**
+ * The site's read-only data, one function for every route (the launch index and the review state
+ * load once per instance and are shared):
+ *
+ *   /api/launches[?q=…|?token=0x…]   reviewable assets: test stocks + every vibe/vibe launch, search
+ *   /api/token?address=0x…           one asset: setup (from its contracts), true colors, reviews
+ *   /api/review?id=N                 one review, its token and score
+ *   /api/reviewer?address=0x…        honesty rep, counts, badges, reviews
+ *   /api/feed                        Home: latest, caught selling, top launches, top reviewers
+ *   /api/leaderboards                launches, reviewers, truth keepers
+ *   /api/stocks                      the test stocks, their scores and the launches paired with them
+ *   /badge/0x….svg                   a live true colors badge for creators
+ *
+ * Everything comes from the chain (public RPC, read-only): the launch index (see launchIndex.ts),
+ * PrismReviews and live balances. `?fresh=1` skips the caches (used right after posting).
+ * Packaged as a Vercel function by scripts/vercel-output.mjs; served by Vite in dev.
+ */
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { getAddress, isAddress, type Address } from 'viem';
+import {
+  MIN_LEADERBOARD_REVIEWS,
+  REVIEWABLE_STOCK_IDS,
+  filterReviews,
+  rankLaunches,
+  readLaunchSetup,
+  reviewableStocks,
+  searchAssets,
+  setupLines,
+  tokenById,
+  tokenScore,
+  type LaunchSetup,
+  type ReviewableAsset,
+} from '@prism/core';
+import { client, json } from './chain';
+import { currentIndex } from './launchIndex';
+import { reviewState, type ReviewState } from './reviewState';
+import { badgeSvg } from './svg';
+
+export const CACHE_CONTROL = 'public, max-age=0, s-maxage=20, stale-while-revalidate=120';
+
+class HttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+const int = (v: string | null, def: number, max: number) => {
+  const n = Number.parseInt(v ?? '', 10);
+  return Number.isFinite(n) && n >= 0 ? Math.min(n, max) : def;
+};
+
+function addressParam(url: URL, name = 'address'): Address {
+  const v = url.searchParams.get(name);
+  if (!v || !isAddress(v, { strict: false })) throw new HttpError(400, `${name} must be a 0x address.`);
+  return getAddress(v.toLowerCase());
+}
+
+const setups = new Map<string, { at: number; setup: LaunchSetup }>();
+async function setupOf(asset: ReviewableAsset, s: ReviewState): Promise<LaunchSetup> {
+  if (asset.kind === 'stock') return { kind: 'stock' };
+  const key = asset.token.toLowerCase();
+  const hit = setups.get(key);
+  if (hit && Date.now() - hit.at < 60_000) return hit.setup;
+  const launch = s.index.launchByToken.get(key)!;
+  const setup = await readLaunchSetup(client, launch);
+  setups.set(key, { at: Date.now(), setup });
+  return setup;
+}
+
+const pairedWith = (s: ReviewState, stock: Address) => {
+  const k = stock.toLowerCase();
+  return s.index.assets.filter((a) => a.kind === 'launch' && a.quote?.address?.toLowerCase() === k);
+};
+
+/** One handler per route: returns a JSON-able body. */
+const routes: Record<string, (url: URL, fresh: boolean) => Promise<unknown>> = {
+  async launches(url) {
+    const { index, stale, assets } = await currentIndex();
+    const meta = { block: index.toBlock, generatedAt: index.generatedAt, stale, launches: index.launches.length };
+    const token = url.searchParams.get('token');
+    if (token !== null) {
+      const asset = assets.find((a) => a.token.toLowerCase() === addressParam(url, 'token').toLowerCase());
+      if (!asset) throw new HttpError(404, 'Not a test stock or a vibe/vibe launch.');
+      return { ...meta, asset };
+    }
+    const q = url.searchParams.get('q');
+    if (q !== null) return { ...meta, items: searchAssets(assets, q, int(url.searchParams.get('limit'), 20, 50)) };
+    const limit = int(url.searchParams.get('limit'), 24, 100);
+    const offset = int(url.searchParams.get('offset'), 0, Number.MAX_SAFE_INTEGER);
+    return { ...meta, stocks: reviewableStocks(), items: assets.filter((a) => a.kind === 'launch').slice(offset, offset + limit) };
+  },
+
+  async token(url, fresh) {
+    const address = addressParam(url);
+    const s = await reviewState(fresh);
+    const asset = s.index.assetByToken.get(address.toLowerCase());
+    if (!asset) throw new HttpError(404, 'Not a test stock or a vibe/vibe launch.');
+    const setup = await setupOf(asset, s).catch(() => null);
+    const pair = asset.quote?.symbol ?? 'ETH';
+    const reviews = s.world.views.filter((v) => v.token.toLowerCase() === address.toLowerCase()).sort((a, b) => b.id - a.id);
+    const launch = s.index.launchByToken.get(address.toLowerCase());
+    return {
+      asset,
+      launch: launch ? { curve: launch.curve, gen: launch.gen, block: launch.block, graduatedBlock: launch.graduatedBlock } : null,
+      setup,
+      setupLines: setup ? setupLines(setup, `$${asset.symbol}`, pair) : null,
+      score: tokenScore(s.world, address, s.balances),
+      reviews,
+      paired: asset.kind === 'stock' ? { count: pairedWith(s, address).length } : null,
+    };
+  },
+
+  async review(url, fresh) {
+    const id = int(url.searchParams.get('id'), -1, Number.MAX_SAFE_INTEGER);
+    const s = await reviewState(fresh);
+    const review = s.world.byId.get(id);
+    if (!review) throw new HttpError(404, 'No review with that number.');
+    const asset = s.index.assetByToken.get(review.token.toLowerCase()) ?? null;
+    // the whole chain of this author's reviews of this token, newest first
+    const history = s.world.views.filter((v) => v.author === review.author && v.token === review.token).sort((a, b) => b.id - a.id);
+    return { review, asset, score: tokenScore(s.world, review.token, s.balances), history };
+  },
+
+  async reviewer(url, fresh) {
+    const address = addressParam(url);
+    const s = await reviewState(fresh);
+    const summary = s.reviewers.get(address.toLowerCase()) ?? null;
+    const reviews = s.world.views.filter((v) => v.author.toLowerCase() === address.toLowerCase()).sort((a, b) => b.id - a.id);
+    return { summary, reviews };
+  },
+
+  async feed(_url, fresh) {
+    const s = await reviewState(fresh);
+    return { ...s.feeds, launches: s.index.index.launches.length, reviews: filterReviews(s.world.views, 'all').length };
+  },
+
+  async leaderboards() {
+    const s = await reviewState();
+    const tokens = [...new Map(s.world.views.map((v) => [v.token.toLowerCase(), v])).values()];
+    const reviewers = [...s.reviewers.values()];
+    return {
+      launches: rankLaunches(s.world, tokens, s.balances).slice(0, 50),
+      reviewers: reviewers
+        .filter((r) => r.reviews >= MIN_LEADERBOARD_REVIEWS && r.rep !== null)
+        .sort((a, b) => b.rep! - a.rep! || b.decided - a.decided || b.reviews - a.reviews)
+        .slice(0, 50),
+      truthKeepers: reviewers.filter((r) => r.marks > 0).sort((a, b) => b.marks - a.marks).slice(0, 50),
+    };
+  },
+
+  async stocks(url) {
+    const s = await reviewState();
+    const only = url.searchParams.get('symbol');
+    return {
+      stocks: REVIEWABLE_STOCK_IDS.filter((id) => !only || id === only).map((id) => {
+        const asset = s.index.assetByToken.get(tokenById(id)!.address.toLowerCase())!;
+        const paired = pairedWith(s, asset.token);
+        // graduated launches first, then the newest
+        const top = [...paired].sort((a, b) => Number(b.status === 'graduated') - Number(a.status === 'graduated') || (b.block ?? 0) - (a.block ?? 0));
+        return {
+          asset,
+          score: tokenScore(s.world, asset.token, s.balances),
+          paired: top.slice(0, int(url.searchParams.get('limit'), 12, 100)),
+          pairedCount: paired.length,
+        };
+      }),
+    };
+  },
+};
+
+function send(res: ServerResponse, req: IncomingMessage, status: number, body: string, type: string, cache: string) {
+  res.statusCode = status;
+  res.setHeader('content-type', type);
+  res.setHeader('cache-control', cache);
+  res.end(req.method === 'HEAD' ? undefined : body);
+}
+
+export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.statusCode = 405;
+    res.setHeader('allow', 'GET, HEAD');
+    res.end();
+    return;
+  }
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  // the route comes from the rewrite (?route=…) or, if the platform passes the original URL, its path
+  const route =
+    url.searchParams.get('route') ??
+    (/^\/badge\//.test(url.pathname) ? 'badge' : url.pathname.replace(/^\/api\//, '').replace(/\/$/, ''));
+  if (route === 'badge' && !url.searchParams.get('address')) {
+    const m = /^\/badge\/(0x[0-9a-fA-F]{40})\.svg$/.exec(url.pathname);
+    if (m) url.searchParams.set('address', m[1]!);
+  }
+  const fresh = url.searchParams.get('fresh') === '1';
+  try {
+    if (route === 'badge') {
+      const address = addressParam(url);
+      const s = await reviewState();
+      const asset = s.index.assetByToken.get(address.toLowerCase());
+      if (!asset) throw new HttpError(404, 'Not a test stock or a vibe/vibe launch.');
+      return send(res, req, 200, badgeSvg(asset.symbol, tokenScore(s.world, address, s.balances)), 'image/svg+xml; charset=utf-8', 'public, max-age=300, s-maxage=300, stale-while-revalidate=3600');
+    }
+    const fn = routes[route];
+    if (!fn) throw new HttpError(404, 'Not found');
+    const body = await fn(url, fresh);
+    return send(res, req, 200, json(body), 'application/json; charset=utf-8', fresh ? 'no-store' : CACHE_CONTROL);
+  } catch (e) {
+    const status = e instanceof HttpError ? e.status : 503;
+    const message = e instanceof HttpError ? e.message : 'Data isn’t available right now. Try again in a minute.';
+    const detail = e instanceof HttpError ? undefined : String((e as Error).message ?? e).split('\n')[0];
+    // never cache a failure
+    return send(res, req, status, json({ error: message, detail }), 'application/json; charset=utf-8', 'no-store');
+  }
+}

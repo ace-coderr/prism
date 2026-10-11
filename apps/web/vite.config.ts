@@ -3,57 +3,47 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
-/** The API routes (server/routes.json, shared with scripts/vercel-output.mjs). */
-interface ApiRoute {
-  /** e.g. /api/launches */
-  path: string;
-  /** e.g. server/launches.ts: its default export is a Node (req, res) handler */
-  source: string;
-  /** seconds the dev server keeps a 200 response, standing in for the CDN cache */
-  cacheSeconds: number;
-  maxDuration: number;
+/** Server functions and the routes to them (server/routes.json, shared with scripts/vercel-output.mjs). */
+interface RouteTable {
+  /** name → /api/<name>, served by `source` (its default export is a Node (req, res) handler) */
+  functions: Array<{ name: string; source: string; maxDuration: number; assets?: string[] }>;
+  /** `src` regex on the path → `dest` (with $1, $2 … from the match); devSkip: production only */
+  routes: Array<{ src: string; dest: string; devSkip?: boolean }>;
 }
-const API_ROUTES = JSON.parse(readFileSync(new URL('./server/routes.json', import.meta.url), 'utf8')) as ApiRoute[];
+const TABLE = JSON.parse(readFileSync(new URL('./server/routes.json', import.meta.url), 'utf8')) as RouteTable;
 
 /**
- * Dev only: serve each API route from its server/*.ts handler, as Vercel does in production,
- * with an in-memory copy per URL standing in for the CDN cache; any other /api/* path gets
- * server/notFound.ts's 404 (not the SPA's index.html), as in production.
+ * Dev only: route requests to the server/*.ts handlers as Vercel does in production (same table);
+ * any other /api/* path gets server/notFound.ts's 404 (not the SPA's index.html), as in production.
  */
 function api(): Plugin {
-  const cache = new Map<string, { at: number; body: string; headers: Record<string, string> }>();
   return {
     name: 'prism-api',
     configureServer(server) {
-      for (const route of API_ROUTES) {
-        server.middlewares.use(route.path, async (req, res, next) => {
-          // exact path only (connect matches prefixes): /api/x/y is a 404, as on Vercel
-          if (req.url && !/^\/?(\?|$)/.test(req.url)) return next();
-          const key = `${route.path}${req.url ?? ''}`;
-          const hit = cache.get(key);
-          if (hit && Date.now() - hit.at < route.cacheSeconds * 1000) {
-            for (const [k, v] of Object.entries(hit.headers)) res.setHeader(k, v);
-            res.end(hit.body);
-            return;
+      server.middlewares.use(async (req, res, next) => {
+        const url = new URL(req.url ?? '/', 'http://localhost');
+        let target: URL | null = null;
+        for (const r of TABLE.routes) {
+          if (r.devSkip) continue;
+          const m = new RegExp(r.src).exec(url.pathname);
+          if (!m) continue;
+          target = new URL(r.dest.replace(/\$(\d)/g, (_, i: string) => m[Number(i)] ?? ''), 'http://localhost');
+          break;
+        }
+        if (!target && /^\/api\/[^/]+$/.test(url.pathname)) target = new URL(url.pathname, 'http://localhost');
+        const fn = target && TABLE.functions.find((f) => target!.pathname === `/api/${f.name}`);
+        if (!fn) {
+          if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
+            const mod = await server.ssrLoadModule('/server/notFound.ts');
+            return mod.default(req, res);
           }
-          const mod = await server.ssrLoadModule(`/${route.source}`);
-          const headers: Record<string, string> = {};
-          const setHeader = res.setHeader.bind(res);
-          res.setHeader = (k: string, v: number | string | readonly string[]) => {
-            headers[k] = String(v);
-            return setHeader(k, v);
-          };
-          const end = res.end.bind(res);
-          res.end = ((body?: string) => {
-            if (res.statusCode === 200 && typeof body === 'string') cache.set(key, { at: Date.now(), body, headers });
-            return end(body);
-          }) as typeof res.end;
-          await mod.default(req, res);
-        });
-      }
-      server.middlewares.use('/api', async (req, res) => {
-        const mod = await server.ssrLoadModule('/server/notFound.ts');
-        mod.default(req, res);
+          return next();
+        }
+        // the original query, plus what the route adds
+        for (const [k, v] of url.searchParams) if (!target!.searchParams.has(k)) target!.searchParams.set(k, v);
+        req.url = `${target!.pathname}${target!.search}`;
+        const mod = await server.ssrLoadModule(`/${fn.source}`);
+        await mod.default(req, res);
       });
     },
   };

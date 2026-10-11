@@ -62,14 +62,9 @@ Deployed from the owner's browser wallet via the dev-only `/deploy` page, source
 `npx tsx packages/core/scripts/check-deployment.ts` re-checks, read-only, that PrismReviews' creation
 transaction and on-chain code match this repo's compiled contract byte for byte.
 
-## vibe/vibe referral (disclosure)
+## vibe/vibe referral
 
-"Buy on vibe/vibe" links include PRISM's vibe/vibe invite (`ref=_ace_won`,
-`refWallet=VV1-ETAM4H6SGFH3U6ESHPQCRJEPTJ87WL92`), and the footer links PRISM's invite to vibe/vibe.
-vibe/vibe's web app reads these parameters on every page, token pages included (its referral handler
-wraps all of its routes). Every such link says "vibe/vibe links include PRISM's invite." The invite
-is never added for PRISM's own wallet. The settings live in one place: `VIBE_REFERRAL` in
-`packages/core/src/site.ts`.
+"Buy on vibe/vibe" links carry PRISM's vibe/vibe invite (never for PRISM's own wallet); it's set in `VIBE_REFERRAL` in `packages/core/src/site.ts`.
 
 ## The launch index
 

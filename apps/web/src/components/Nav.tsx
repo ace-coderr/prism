@@ -5,7 +5,6 @@ import { PRISM_TOKEN, X_HANDLE, explorerAddressUrl, getDeployment, tokenPath } f
 import { WalletButton } from '../wallet/WalletButton';
 import { TARGET_CHAIN } from '../wallet/config';
 import { PrismMark } from './Prism';
-import { JoinVibe, ReferralNote } from './vibe';
 
 // Home is the logo; the pill lists the destinations ($PRISM once its token exists)
 const LINKS: Array<{ to: string; label: string; soon?: boolean }> = [
@@ -142,7 +141,7 @@ function TestnetStatus() {
   );
 }
 
-/** Two slim rows: logo and links, then the invite and the testnet notice. */
+/** Two slim rows: logo and links, then the testnet notice. */
 export function Footer() {
   const a = 'inline-flex min-h-6 items-center text-mist transition-colors hover:text-white';
   const dot = <span aria-hidden className="text-white/20">·</span>;
@@ -184,13 +183,7 @@ export function Footer() {
             Built by ace
           </a>
         </div>
-        <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-          <p className="flex flex-wrap items-center gap-x-2">
-            <JoinVibe className={a} />
-            <ReferralNote />
-          </p>
-          <p className="text-mist/70">Robinhood Chain Testnet · test assets only, no real value · PRISM never holds your money</p>
-        </div>
+        <p className="text-mist/70">Robinhood Chain Testnet · test assets only, no real value · PRISM never holds your money</p>
       </div>
     </footer>
   );

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getAddress } from 'viem';
-import { REFERRAL_DISCLOSURE, SHARE_TEXT, SITE_URL, VIBE_REFERRAL, badgePath, cashtag, formatScore, vibeInviteUrl, vibeTokenUrl, xIntent } from '../src';
+import { SHARE_TEXT, SITE_URL, VIBE_REFERRAL, badgePath, cashtag, formatScore, vibeTokenUrl, xIntent } from '../src';
 
 const TOKEN = getAddress('0xa56dd43b6b2963990e852d3144f689b8e3f26afb');
 const SOMEONE = '0x7Ed162246748A218E0404542683eeE0FC08fE4bD';
@@ -13,14 +13,11 @@ describe('site links', () => {
   it('“Buy on vibe/vibe” carries PRISM’s invite, kept in one place', () => {
     expect(vibeTokenUrl(TOKEN)).toBe(`https://testnet.vibevibe.fun/token/${TOKEN}?ref=_ace_won&refWallet=VV1-ETAM4H6SGFH3U6ESHPQCRJEPTJ87WL92`);
     expect(vibeTokenUrl(TOKEN, SOMEONE)).toContain('ref=_ace_won');
-    expect(vibeInviteUrl()).toBe('https://testnet.vibevibe.fun/guilds?ref=_ace_won&refWallet=VV1-ETAM4H6SGFH3U6ESHPQCRJEPTJ87WL92');
-    expect(REFERRAL_DISCLOSURE).toBe('vibe/vibe links include PRISM’s invite.');
   });
 
   it('never refers PRISM’s own wallet to itself', () => {
     expect(vibeTokenUrl(TOKEN, VIBE_REFERRAL.owner)).toBe(`https://testnet.vibevibe.fun/token/${TOKEN}`);
     expect(vibeTokenUrl(TOKEN, VIBE_REFERRAL.owner.toLowerCase())).not.toContain('ref=');
-    expect(vibeInviteUrl(VIBE_REFERRAL.owner)).toBe('https://testnet.vibevibe.fun/guilds');
   });
 
   it('writes the share posts word for word', () => {

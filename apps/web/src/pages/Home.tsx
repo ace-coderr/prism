@@ -8,7 +8,6 @@ import { Stars, StatusPill } from '../components/reviews';
 import { Reveal, SectionLabel } from '../components/design';
 import { TestEthNote } from '../components/TestEthNote';
 import { GuideNote } from '../components/Viber';
-import { JoinVibe, ReferralNote } from '../components/vibe';
 import { useFeed } from '../data/api';
 import { ago, daysText, plural, repText } from '../data/format';
 import { OwnerChip, useProfiles } from '../data/profiles';
@@ -76,11 +75,8 @@ export default function Home() {
                 </li>
               ))}
             </ol>
-            <GuideNote index={0} action={<JoinVibe className="btn btn-outline" />}>
+            <GuideNote index={0}>
               New here? Find a launch you hold, read what other holders say, and add your own review. Don’t hold anything yet? Buy on vibe/vibe first.
-              <span className="mt-2 block">
-                <ReferralNote />
-              </span>
             </GuideNote>
           </section>
         </Reveal>

@@ -63,7 +63,7 @@ export default function ReviewPage() {
                   All ${r.symbol} reviews
                 </Link>
               </div>
-              <BuyOnVibe token={r.token} className="btn btn-outline" />
+              <BuyOnVibe token={r.token} className="btn btn-outline self-start" />
             </div>
           </div>
           {q.data.history.length > 1 && (

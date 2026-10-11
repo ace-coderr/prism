@@ -18,7 +18,7 @@ export const PRISM_TOKEN: Address | null = null;
 /**
  * PRISM's vibe/vibe invite. vibe/vibe's web app reads `ref` and `refWallet` on every page it serves
  * (its referral handler wraps all routes, /token/:address included), so "Buy on vibe/vibe" links
- * carry them. Disclosed next to every such link (REFERRAL_DISCLOSURE).
+ * carry them.
  */
 export const VIBE_REFERRAL = {
   app: 'https://testnet.vibevibe.fun',
@@ -28,8 +28,6 @@ export const VIBE_REFERRAL = {
   owner: '0xd5Ed2e8Cf80401e5594f9E18509d46ed88fA9a9e' as Address,
 } as const;
 
-export const REFERRAL_DISCLOSURE = 'vibe/vibe links include PRISM’s invite.';
-
 const isOwner = (viewer?: string | null) => !!viewer && viewer.toLowerCase() === VIBE_REFERRAL.owner.toLowerCase();
 const refParams = () => `ref=${encodeURIComponent(VIBE_REFERRAL.ref)}&refWallet=${encodeURIComponent(VIBE_REFERRAL.refWallet)}`;
 
@@ -37,11 +35,6 @@ const refParams = () => `ref=${encodeURIComponent(VIBE_REFERRAL.ref)}&refWallet=
 export function vibeTokenUrl(token: Address, viewer?: string | null): string {
   const base = `${VIBE_REFERRAL.app}/token/${token}`;
   return isOwner(viewer) ? base : `${base}?${refParams()}`;
-}
-
-/** Join vibe/vibe with PRISM's invite (plain vibe/vibe for PRISM's own wallet). */
-export function vibeInviteUrl(viewer?: string | null): string {
-  return isOwner(viewer) ? `${VIBE_REFERRAL.app}/guilds` : `${VIBE_REFERRAL.app}/guilds?${refParams()}`;
 }
 
 // ------------------------------------------------------------------ links on PRISM

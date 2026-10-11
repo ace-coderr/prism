@@ -64,7 +64,7 @@ function Launch({ data }: { data: TokenData }) {
         <ReviewList
           reviews={data.reviews}
           empty={
-            <GuideNote index={3} action={<BuyOnVibe token={token} className="btn btn-outline" note={false} />}>
+            <GuideNote index={3} action={<BuyOnVibe token={token} className="btn btn-outline" />}>
               No reviews here yet. If you hold ${a.symbol}, you can be the first. Reviews stay forever, and if you sell, yours will say SOLD.
             </GuideNote>
           }

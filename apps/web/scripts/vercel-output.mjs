@@ -1,13 +1,13 @@
 /**
  * Writes Vercel's Build Output (v3) at the repo root, after `vite build`:
  *   .vercel/output/static/                     the site (apps/web/dist)
- *   .vercel/output/functions/api/snapshot.func the /api/snapshot Node function (one bundled file)
+ *   .vercel/output/functions/api/<name>.func   one Node function per route in server/routes.json (one bundled file each)
  *   .vercel/output/functions/api/not-found.func a JSON 404 for every other /api/* path
  *   .vercel/output/config.json                 routes: files and functions, unknown /api/* → 404, then the SPA
  * Bundling the function ourselves (esbuild) keeps the shared TypeScript in packages/core
  * working on the server exactly as it does in the browser.
  */
-import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
@@ -39,7 +39,10 @@ async function fn(route, source, maxDuration) {
   );
 }
 
-await fn('api/snapshot', 'server/snapshot.ts', 60);
+// server/routes.json: { path: '/api/x', source: 'server/x.ts', maxDuration }, shared with vite.config.ts
+for (const route of JSON.parse(readFileSync(join(web, 'server/routes.json'), 'utf8'))) {
+  await fn(route.path.replace(/^\//, ''), route.source, route.maxDuration);
+}
 await fn('api/not-found', 'server/notFound.ts', 5);
 writeFileSync(
   join(out, 'config.json'),

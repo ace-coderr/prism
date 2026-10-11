@@ -1,41 +1,24 @@
-# PRISM — Phase Plan
+# PRISM — Plan
+
+**PRISM: see every launch's true colors.** Holder-only reviews of vibe/vibe launches and test
+stocks, with SOLD marks, a true colors score and honesty rep.
 
 Status: **Done** · **In progress** · **Not started**
 
-## Phase 1 (testnet launch)
-- **Done** · Core PRISM (forge, view, gallery)
-- **Done** · Living crystal with kintsugi gold seams
-- **Done** · Sealed gifts (frost-wrapped, optional time-lock): send to an @username or address with a note, optional seal, ice wrap and unwrap animation, /gift/<id> page
-- **Done** · Shareable replays (crystal time-lapse to video clip for X): /replay/<id>, MP4 made in the browser (1080×1080 or 1920×1080, with sound)
+The first PRISM (crystals) is archived at the `crystal-v1` tag and the `archive/crystal-v1`
+branch; its old plan is in `PLAN.md` there.
 
-## Shipped beyond the plan
-- **Done** · Forge from ETH (PrismForgeRouter: swap ETH into the picked stocks and forge in one transaction)
-- **Done** · On-chain profiles (PrismProfiles): usernames, crystal avatars, bios, X handles
-- **Done** · Badges and activity feed on profiles
-- **Done** · vibers as guides through the app
-- **Done** · Explainer video (40s) with an original soundtrack and synced sound effects
-- **Done** · Share on X buttons (after a forge, on your profile, for new badges, after a gift, on replays)
-- **Done** · X launch: [@holdprism](https://x.com/holdprism)
+## Foundation (prompt 1)
+- **Done** · Archive the crystal app; placeholder Home so the live site never breaks
+- **In progress** · Launch index from the chain (every vibe/vibe factory generation + the test stocks), search, live holder checks
+- **In progress** · PrismReviews contract (holder-only, permanent reviews, SOLD marks); deployed from /deploy when ready
+- **In progress** · Scoring: review status, true colors score, honesty rep
 
-## Growth (founder guidance)
-- **Done** · Privy login: email, Google, X or a wallet; an embedded wallet for anyone without one
-- **In progress** · Gift links: send a crystal as a link to someone with no wallet (PrismGiftLinks + /claim). Built and tested; goes live once PrismGiftLinks is deployed from /deploy
-- **Not started** · Referrals + leaderboard
-- **Not started** · Stock pairs: vibe/vibe launches per stock
-
-## Phase 2
-- **Not started** · Crystal Circles (group crystals, scheduled contributions, color veins per member)
-- **Not started** · Crystal chemistry (fuse/split with preview)
-- **Not started** · Seasons + Hall of top crystals (risk-adjusted ranking); badges are the groundwork
-
-## Phase 3
-- **In progress** · Agent-guarded rule rings (agent proposes rebalance, user approves): read-only analysis is live; approve / rebalance is not built yet
-- **Not started** · AR + shared space
-
-## Next
-- $PRISM token launch on vibe/vibe (design pending)
+## Product (prompt 2)
+- **Not started** · Token pages, writing and reading reviews, reviewer profiles
 
 ## Non-negotiables
+- Never hold people's money: no contract or server ever takes custody of user funds
 - No admin keys
 - No upgradeable contracts
-- User always controls withdrawals
+- vibe/vibe data is read from the chain, not from their API

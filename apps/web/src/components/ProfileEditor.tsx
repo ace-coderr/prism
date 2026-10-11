@@ -2,11 +2,9 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { encodeFunctionData, type Address, type Hex } from 'viem';
 import { simulateContract } from 'wagmi/actions';
-import { BIO_MAX_BYTES, NAME_MAX, X_MAX, atName, bioBytes, bioProblem, identicon, normalizeX, prismProfilesAbi, xProblem } from '@prism/core';
-import { CrystalThumb } from './CrystalThumb';
+import { BIO_MAX_BYTES, NAME_MAX, X_MAX, atName, bioBytes, bioProblem, normalizeX, prismProfilesAbi, xProblem } from '@prism/core';
 import { EditorContext } from './editorContext';
-import { useMyCrystals } from '../data/crystals';
-import { profilesContract, useCrystalShapes, useNameAvailability, useProfile, type Profile } from '../data/profiles';
+import { Avatar, profilesContract, useNameAvailability, useProfile, type Profile } from '../data/profiles';
 import { TARGET_CHAIN, wagmiConfig } from '../wallet/config';
 import { StepList, useTxSteps } from '../wallet/steps';
 import { SwitchNetworkButton, WalletButton, useWallet } from '../wallet/WalletButton';
@@ -105,13 +103,9 @@ function Fields({
 }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(profile.name ?? '');
-  const [avatar, setAvatar] = useState<bigint | null>(profile.avatarId);
   const [bio, setBio] = useState(profile.bio ?? '');
   const [x, setX] = useState(profile.x ?? '');
   const tx = useTxSteps();
-  const crystals = useMyCrystals(address);
-  const shapes = useCrystalShapes();
-  const gem = useMemo(() => identicon(address), [address]);
 
   const nameChanged = name !== (profile.name ?? '');
   const check = useNameAvailability(nameChanged ? name : '', address);
@@ -119,7 +113,6 @@ function Fields({
   const xErr = xProblem(x);
   const changes = {
     name: nameChanged,
-    avatar: avatar !== profile.avatarId,
     bio: bio !== (profile.bio ?? ''),
     x: x !== (profile.x ?? ''),
   };
@@ -128,29 +121,27 @@ function Fields({
   const canSave = dirty && nameOk && !bioErr && !xErr && !tx.running;
 
   const save = async () => {
-    // one transaction: setProfile for new values; removed fields are cleared in the same multicall
+    // one transaction: setProfile for new values (avatar 0 = left as it is); removed fields are cleared in the same multicall
     const set = {
       name: changes.name && name ? name : '',
-      avatar: changes.avatar && avatar ? avatar : 0n,
       bio: changes.bio && bio ? bio : '',
       x: changes.x && x ? x : '',
     };
     const clears = [
       changes.name && !name && ('clearName' as const),
-      changes.avatar && !avatar && ('clearAvatar' as const),
       changes.bio && !bio && ('clearBio' as const),
       changes.x && !x && ('clearX' as const),
-    ].filter((c): c is 'clearName' | 'clearAvatar' | 'clearBio' | 'clearX' => !!c);
-    const hasSet = !!(set.name || set.avatar || set.bio || set.x);
+    ].filter((c): c is 'clearName' | 'clearBio' | 'clearX' => !!c);
+    const hasSet = !!(set.name || set.bio || set.x);
     const base = { address: contract, abi: prismProfilesAbi, chainId: TARGET_CHAIN.id, account: address } as const;
     setSaved(false);
     const ok = await tx.run([
       {
         label: 'Saving your profile',
-        tx: { description: 'Save your PRISM profile on-chain: username, avatar crystal, bio and X handle.', action: 'Save profile', contract: 'PrismProfiles' },
+        tx: { description: 'Save your PRISM profile on-chain: username, bio and X handle.', action: 'Save profile', contract: 'PrismProfiles' },
         send: async (write) => {
           if (hasSet && clears.length === 0) {
-            const { request } = await simulateContract(wagmiConfig, { ...base, functionName: 'setProfile', args: [set.name, set.avatar, set.bio, set.x] });
+            const { request } = await simulateContract(wagmiConfig, { ...base, functionName: 'setProfile', args: [set.name, 0n, set.bio, set.x] });
             return write(request);
           }
           if (!hasSet && clears.length === 1) {
@@ -158,7 +149,7 @@ function Fields({
             return write(request);
           }
           const calls: Hex[] = [
-            ...(hasSet ? [encodeFunctionData({ abi: prismProfilesAbi, functionName: 'setProfile', args: [set.name, set.avatar, set.bio, set.x] })] : []),
+            ...(hasSet ? [encodeFunctionData({ abi: prismProfilesAbi, functionName: 'setProfile', args: [set.name, 0n, set.bio, set.x] })] : []),
             ...clears.map((fn) => encodeFunctionData({ abi: prismProfilesAbi, functionName: fn })),
           ];
           const { request } = await simulateContract(wagmiConfig, { ...base, functionName: 'multicall', args: [calls] });
@@ -200,24 +191,10 @@ function Fields({
         <span className={`mt-1.5 block min-h-[1rem] text-[12px] ${nameStatus?.tone ?? ''}`}>{nameStatus?.text}</span>
       </label>
 
-      <fieldset>
-        <legend className="section-label text-[11px]">Avatar</legend>
-        <p className="mt-1 text-[12px] text-mist">One of your crystals. It stops being your avatar if you give it away.</p>
-        <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-5">
-          <AvatarOption selected={avatar === null} label="Gem (from your address)" onClick={() => setAvatar(null)}>
-            <CrystalThumb holdings={gem.holdings} hue={gem.hue} size={48} />
-          </AvatarOption>
-          {(crystals.data ?? []).map((c) => {
-            const s = shapes.get(c.id);
-            return (
-              <AvatarOption key={c.id.toString()} selected={avatar === c.id} label={`Crystal #${c.id}`} onClick={() => setAvatar(c.id)}>
-                {s ? <CrystalThumb holdings={s.holdings} history={s.history} sealed={s.sealed} size={48} /> : <span className="font-mono text-[11px] text-mist">#{c.id.toString()}</span>}
-              </AvatarOption>
-            );
-          })}
-        </div>
-        {crystals.isLoading && <p className="mt-2 text-[12px] text-mist">Reading your crystals…</p>}
-      </fieldset>
+      <div className="flex items-center gap-3">
+        <Avatar address={address} size={48} />
+        <p className="text-[12px] leading-snug text-mist">Your avatar is made from your wallet address, so it’s the same everywhere and nobody can copy it.</p>
+      </div>
 
       <label className="block">
         <span className="flex items-baseline justify-between">
@@ -267,22 +244,5 @@ function Fields({
       {saved && !tx.running && <p className="-mt-3 text-right text-sm text-up">Saved. Your profile is updated everywhere.</p>}
       <StepList steps={tx.steps} />
     </div>
-  );
-}
-
-function AvatarOption({ selected, label, onClick, children }: { selected: boolean; label: string; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      className={`grid aspect-square place-items-center rounded-2xl border bg-ink transition-colors ${
-        selected ? 'border-lime ring-1 ring-lime' : 'border-white/10 hover:border-white/30'
-      }`}
-    >
-      {children}
-    </button>
   );
 }

@@ -11,7 +11,7 @@ import { PRIVY_APP_ID, TARGET_CHAIN, wagmiConfig } from './config';
 export interface TxDescription {
   /** one plain sentence: what this transaction does */
   description: string;
-  /** a few words, e.g. "Swap & forge" */
+  /** a few words, e.g. "Post review" */
   action: string;
   /** the contract being called, by name */
   contract?: string;

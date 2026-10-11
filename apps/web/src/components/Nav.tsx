@@ -1,17 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion, useMotionValueEvent, useScroll } from 'motion/react';
-import { explorerAddressUrl, getDeployment } from '@prism/core';
-import { TARGET_CHAIN } from '../wallet/config';
 import { WalletButton } from '../wallet/WalletButton';
 
-// Home is the logo; the pill only lists the four destinations
-const LINKS: Array<{ to: string; label: string; soon?: boolean }> = [
-  { to: '/forge', label: 'Forge' },
-  { to: '/my-crystals', label: 'My Crystals' },
-  { to: '/gallery', label: 'Gallery' },
-  { to: '/agent', label: 'Agent', soon: true },
-];
+// Home is the logo; the pill lists the destinations (none yet: the new PRISM is on its way)
+const LINKS: Array<{ to: string; label: string; soon?: boolean }> = [];
 
 const Soon = () => (
   <span className="ml-1.5 rounded-full bg-amber-400/15 px-1.5 py-px align-[1px] font-mono text-[8px] font-bold tracking-[0.12em] text-amber-300">
@@ -108,18 +101,20 @@ export function Nav() {
 
           <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:ml-0">
             <WalletButton />
-            <button
-              type="button"
-              className="grid h-9 w-9 place-items-center rounded-full text-mist transition hover:bg-white/5 hover:text-white sm:hidden"
-              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-              aria-expanded={menuOpen}
-              aria-controls="mobile-menu"
-              onClick={() => setMenuOpen((o) => !o)}
-            >
-              <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                {menuOpen ? <path d="M5 5l10 10M15 5L5 15" /> : <path d="M3 6h14M3 10h14M3 14h14" />}
-              </svg>
-            </button>
+            {LINKS.length > 0 && (
+              <button
+                type="button"
+                className="grid h-9 w-9 place-items-center rounded-full text-mist transition hover:bg-white/5 hover:text-white sm:hidden"
+                aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+                aria-expanded={menuOpen}
+                aria-controls="mobile-menu"
+                onClick={() => setMenuOpen((o) => !o)}
+              >
+                <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  {menuOpen ? <path d="M5 5l10 10M15 5L5 15" /> : <path d="M3 6h14M3 10h14M3 14h14" />}
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 
@@ -164,8 +159,6 @@ function TestnetStatus() {
 
 /** One slim row: logo and small links on the left, the testnet notice on the right. */
 export function Footer() {
-  const d = getDeployment(TARGET_CHAIN.id);
-  const contract = d ? `${explorerAddressUrl(d.prismCrystal)}#code` : null;
   const a = 'text-mist transition-colors hover:text-white';
   const dot = <span aria-hidden className="text-white/20">·</span>;
   return (
@@ -188,14 +181,6 @@ export function Footer() {
           <a className={a} href="https://github.com/ace-coderr/prism" target="_blank" rel="noreferrer">
             GitHub
           </a>
-          {contract && (
-            <>
-              {dot}
-              <a className={a} href={contract} target="_blank" rel="noreferrer">
-                Contract
-              </a>
-            </>
-          )}
         </div>
         <p className="text-mist/70">Robinhood Chain Testnet · test assets only, no real value</p>
       </div>

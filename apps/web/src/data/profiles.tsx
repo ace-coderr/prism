@@ -3,13 +3,10 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useReadContract, useReadContracts } from 'wagmi';
 import type { Address } from 'viem';
-import { atName, getDeployment, identicon, nameProblem, prismProfilesAbi, type CrystalHistory, type Holding } from '@prism/core';
-import { CrystalThumb } from '../components/CrystalThumb';
+import { IDENTICON_SIZE, atName, getDeployment, identicon, nameProblem, prismProfilesAbi } from '@prism/core';
 import { TARGET_CHAIN } from '../wallet/config';
-import { testnetClient, useTestnetTokens } from './chain';
+import { testnetClient } from './chain';
 import { profileHref } from './share';
-import { holdingsFromAssets, marketLookup, realCrystalHistory } from './crystalHoldings';
-import { earliestForge, useGalleryCrystals } from './crystals';
 
 export const shortAddress = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 /** "@name" once they have one, else the short address. */
@@ -20,17 +17,15 @@ export const profilesContract = (): Address | undefined => getDeployment(TARGET_
 
 export interface Profile {
   name: string | null;
-  /** a crystal the address still owns, or null */
-  avatarId: bigint | null;
   bio: string | null;
   x: string | null;
 }
 
-export const NO_PROFILE: Profile = { name: null, avatarId: null, bio: null, x: null };
+export const NO_PROFILE: Profile = { name: null, bio: null, x: null };
 
+// the contract's avatarId points at a legacy crystal: ignored (avatars are identicons now)
 type RawProfile = { name: string; avatarId: bigint; bio: string; x: string };
-const toProfile = (r: RawProfile | undefined): Profile =>
-  r ? { name: r.name || null, avatarId: r.avatarId > 0n ? r.avatarId : null, bio: r.bio || null, x: r.x || null } : NO_PROFILE;
+const toProfile = (r: RawProfile | undefined): Profile => (r ? { name: r.name || null, bio: r.bio || null, x: r.x || null } : NO_PROFILE);
 
 export { profileHref };
 
@@ -108,44 +103,22 @@ export function useNameAvailability(wanted: string, me: Address | undefined) {
   return state;
 }
 
-/** Shape of every existing crystal by id (live prices; snapshot until then), for avatars. */
-export function useCrystalShapes() {
-  const gallery = useGalleryCrystals();
-  const live = useTestnetTokens(earliestForge(gallery.crystals ?? undefined));
-  return useMemo(() => {
-    const marketOf = marketLookup(live.status === 'live' ? live.tokens : undefined);
-    const m = new Map<bigint, { holdings: Holding[]; history?: CrystalHistory; sealed: boolean }>();
-    for (const c of gallery.crystals ?? []) {
-      m.set(c.id, {
-        holdings: holdingsFromAssets(c.assets, marketOf).holdings,
-        history: realCrystalHistory(live, c) ?? gallery.snapshotHistory.get(c.id) ?? undefined,
-        sealed: c.sealedUntil * 1000 > Date.now(),
-      });
-    }
-    return m;
-  }, [gallery.crystals, gallery.snapshotHistory, live]);
-}
-
-/**
- * A small avatar: the address's chosen crystal (drawn flat), or its voxel gem identicon.
- * Rounded square, on the page's ink.
- */
-export function Avatar({ address, avatarId, size = 24, className = '' }: { address: Address; avatarId?: bigint | null; size?: number; className?: string }) {
-  const shapes = useCrystalShapes();
-  const shape = avatarId ? shapes.get(avatarId) : undefined;
-  const gem = useMemo(() => identicon(address), [address]);
+/** The avatar: a pixel pattern generated from the address (identicon.ts). Rounded square. */
+export function Avatar({ address, size = 24, className = '' }: { address: Address; size?: number; className?: string }) {
+  const { cells, hue, bgHue } = useMemo(() => identicon(address), [address]);
+  const n = IDENTICON_SIZE;
   return (
-    <span
+    <svg
       aria-hidden
-      className={`inline-grid shrink-0 place-items-center overflow-hidden rounded-[30%] bg-ink ring-1 ring-white/10 ${className}`}
-      style={{ width: size, height: size }}
+      viewBox={`-1 -1 ${n + 2} ${n + 2}`}
+      width={size}
+      height={size}
+      shapeRendering="crispEdges"
+      className={`inline-block shrink-0 overflow-hidden rounded-[30%] ring-1 ring-white/10 ${className}`}
+      style={{ background: `hsl(${bgHue} 30% 16%)` }}
     >
-      {shape ? (
-        <CrystalThumb holdings={shape.holdings} history={shape.history} sealed={shape.sealed} size={Math.round(size * 0.9)} />
-      ) : (
-        <CrystalThumb holdings={gem.holdings} hue={gem.hue} size={Math.round(size * 0.9)} />
-      )}
-    </span>
+      {cells.map((on, i) => (on ? <rect key={i} x={i % n} y={Math.floor(i / n)} width={1} height={1} fill={`hsl(${hue} 75% 62%)`} /> : null))}
+    </svg>
   );
 }
 
@@ -166,20 +139,10 @@ export function OwnerChip({
   link?: boolean;
   className?: string;
 }) {
-  // a crystal waiting in a gift link is "owned" by the PrismGiftLinks contract
-  const giftLinks = getDeployment(TARGET_CHAIN.id)?.giftLinks;
-  if (giftLinks && address.toLowerCase() === giftLinks.toLowerCase()) {
-    return (
-      <span className={`inline-flex min-w-0 items-center gap-1.5 align-middle ${className}`} title={`In a gift link, waiting to be claimed (${address})`}>
-        <span aria-hidden>🎁</span>
-        <span className="truncate">a gift link</span>
-      </span>
-    );
-  }
   const label = profile?.name ? atName(profile.name) : shortAddress(address);
   const body = (
     <>
-      <Avatar address={address} avatarId={profile?.avatarId} size={size} />
+      <Avatar address={address} size={size} />
       <span className="truncate">{label}</span>
     </>
   );

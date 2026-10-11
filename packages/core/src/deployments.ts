@@ -1,53 +1,48 @@
 import type { Address } from 'viem';
 
 /**
- * Deployed PRISM contracts, keyed by chain id. Filled in after the owner deploys
- * PrismCrystal from their own wallet via the web app's /deploy page.
- * `fromBlock` is the deployment block — event scans start there.
+ * Deployed PRISM contracts, keyed by chain id. Every contract is deployed by the owner from
+ * their own browser wallet via the web app's dev-only /deploy page; no key ever touches PRISM.
  */
 export interface PrismDeployment {
-  prismCrystal: Address;
-  fromBlock: bigint;
-  txHash?: `0x${string}`;
   /**
-   * PrismForgeRouter (forge from ETH in one transaction). Empty until it's deployed from
-   * the owner's wallet via /deploy; the Forge page's "Start with ETH" stays off until then.
-   */
-  forgeRouter?: Address;
-  /** The router's creation transaction (for scripts/check-deployment.ts). */
-  forgeRouterTx?: `0x${string}`;
-  /**
-   * PrismProfiles (usernames, crystal avatars, bios, X handles). Empty until deployed via
-   * /deploy; everything profile-related in the app stays off until then.
+   * PrismProfiles (usernames, bios, X handles), deployed for the crystal app and kept: the
+   * new PRISM reads usernames from it. Its avatar field points at legacy crystals and is
+   * ignored; avatars are generated from the address (identicon.ts).
    */
   prismProfiles?: Address;
-  /** PrismProfiles' creation transaction (for scripts/check-deployment.ts). */
+  /** PrismProfiles' creation transaction. */
   prismProfilesTx?: `0x${string}`;
   /**
-   * PrismGiftLinks (send a crystal as a link). Empty until deployed via /deploy; "Send as a
-   * link" and /claim stay off until then.
+   * LEGACY: the archived crystal app's contracts (branch archive/crystal-v1, tag crystal-v1).
+   * Kept for the record only. They still work on-chain and nobody can turn them off, but
+   * nothing in this app reads them or links to them.
    */
-  giftLinks?: Address;
-  /** PrismGiftLinks' creation transaction and block (link events are read from there). */
-  giftLinksTx?: `0x${string}`;
-  giftLinksFromBlock?: bigint;
+  legacy?: {
+    prismCrystal: Address;
+    prismCrystalTx: `0x${string}`;
+    prismCrystalFromBlock: bigint;
+    forgeRouter: Address;
+    forgeRouterTx: `0x${string}`;
+  };
 }
 
 export const DEPLOYMENTS: Partial<Record<number, PrismDeployment>> = {
-  // Robinhood Chain Testnet — deployed 2026-10-04 from the owner's browser wallet
-  // (deployer 0xd5Ed2e8Cf80401e5594f9E18509d46ed88fA9a9e) via the /deploy page.
+  // Robinhood Chain Testnet: deployed from the owner's browser wallet
+  // (0xd5Ed2e8Cf80401e5594f9E18509d46ed88fA9a9e) via the /deploy page.
   46630: {
-    prismCrystal: '0x59ce49dE3782FA87E94850b23FEB1457009f9f40',
-    fromBlock: 128575215n,
-    txHash: '0xd2a73a5619ff9e3ac90ecb3ed9e02963af34ec360b41614a4b0fe0f480c86b57',
-    // 2026-10-05, from the same wallet via /deploy; source verified on the explorer, and the
-    // runtime code checked byte for byte against the compiled contracts with these
-    // constructor args (scripts/check-deployment.ts). Router: block 128964670.
-    forgeRouter: '0xD1340ad67A4b5C0995CC050bE773ee74293fD24D',
-    forgeRouterTx: '0xefc1917f96d9ba23bca006d564ec85214e78fe15eccbc73a7cab02b570f8a7e7',
-    // PrismProfiles: block 128964290.
+    // 2026-10-05, block 128964290
     prismProfiles: '0xf7Da2Ee9dF52422eB87E8FBc3Be347a4B5611300',
     prismProfilesTx: '0x4b51aa09788555c4acfa10609f9c4bd49ee529d3693706d9e3829aa4e06d7717',
+    legacy: {
+      // 2026-10-04
+      prismCrystal: '0x59ce49dE3782FA87E94850b23FEB1457009f9f40',
+      prismCrystalTx: '0xd2a73a5619ff9e3ac90ecb3ed9e02963af34ec360b41614a4b0fe0f480c86b57',
+      prismCrystalFromBlock: 128575215n,
+      // 2026-10-05, block 128964670
+      forgeRouter: '0xD1340ad67A4b5C0995CC050bE773ee74293fD24D',
+      forgeRouterTx: '0xefc1917f96d9ba23bca006d564ec85214e78fe15eccbc73a7cab02b570f8a7e7',
+    },
   },
 };
 

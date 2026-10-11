@@ -24,7 +24,7 @@ export interface StepDef {
   send: (write: Writer, transfer: Transfer) => Promise<Hash>;
   /** What the transaction does, for an embedded wallet's confirmation (defaults to the label). */
   tx?: Partial<TxDescription>;
-  /** Optional follow-up once mined (e.g. read the new crystal id from logs). */
+  /** Optional follow-up once mined (e.g. read the new review id from logs). */
   after?: (receipt: TransactionReceipt) => void;
   /** What the error messages should know (e.g. the slippage picked). */
   errorContext?: ErrorContext;

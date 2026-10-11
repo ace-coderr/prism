@@ -14,12 +14,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test:rpc": "npm run test:rpc -w @prism/core",
     "verify:tokens": "npx tsx packages/core/scripts/verify-tokens.ts",
-    "check:liquidity": "npx tsx packages/core/scripts/check-liquidity.ts",
-    "test:contracts": "npm test -w @prism/contracts",
-    "video:audio": "npm run audio -w @prism/video",
-    "video:render": "npm run render -w @prism/video",
-    "brand": "npm run brand -w @prism/web --",
-    "video:studio": "npm run studio -w @prism/video"
+    "test:contracts": "npm test -w @prism/contracts"
   },
   "engines": {
     "node": "22.x"

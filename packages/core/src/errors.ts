@@ -1,7 +1,6 @@
 /**
- * Readable errors: wallet / RPC failures and every PRISM contract custom error
- * (PrismCrystal, PrismForgeRouter, PrismProfiles), decoded with their arguments so the
- * app can say "ANTHROPIC's price moved more than 1%…" instead of "reverted".
+ * Readable errors: wallet / RPC failures and every PRISM contract custom error, decoded
+ * with their arguments so the app can say what happened in plain words instead of "reverted".
  */
 import {
   BaseError,
@@ -14,103 +13,37 @@ import {
   type Abi,
   type Hex,
 } from 'viem';
-import { prismCrystalAbi } from './abi/prismCrystal';
-import { prismForgeRouterAbi } from './abi/prismForgeRouter';
 import { prismProfilesAbi } from './abi/prismProfiles';
-import { TESTNET_TOKENS } from './tokens';
 
 /** What the app knows that the error itself doesn't carry. */
 export interface ErrorContext {
-  /** The slippage the user picked, in basis points (100 = 1%). */
-  slippageBps?: number;
+  /** The token the action is about, as people know it ("BULO"). */
+  symbol?: string;
 }
 
 type Args = readonly unknown[];
 type AbiError = Extract<Abi[number], { type: 'error' }>;
 type Explain = string | ((args: Args, ctx: ErrorContext) => string);
 
-const tokenOf = (a: unknown) =>
-  typeof a === 'string' ? TESTNET_TOKENS.find((t) => t.address.toLowerCase() === a.toLowerCase()) : undefined;
-const tokenName = (a: unknown) =>
-  tokenOf(a)?.id ?? (typeof a === 'string' && a.length > 10 ? `${a.slice(0, 6)}…${a.slice(-4)}` : 'a token');
-
 /** A token amount for a sentence: up to 4 significant digits ("0.01767", "12.35"). */
 export function formatAmount(v: bigint, decimals = 18): string {
   const n = Number(formatUnits(v, decimals));
   return n === 0 ? '0' : n.toLocaleString('en-US', { maximumSignificantDigits: 4 });
 }
-const amountOf = (v: unknown, token?: unknown) => (typeof v === 'bigint' ? formatAmount(v, tokenOf(token)?.decimals ?? 18) : null);
-export const slippageText = (ctx: ErrorContext) => (ctx.slippageBps !== undefined ? `${ctx.slippageBps / 100}%` : 'your slippage');
 
 const MESSAGES: Record<string, Explain> = {
-  // ---------------------------------------------------------------- PrismForgeRouter
-  InsufficientOutput: ([token, got, minimum], ctx) => {
-    const g = amountOf(got, token);
-    const m = amountOf(minimum, token);
-    return g && m
-      ? `${tokenName(token)}'s price moved more than ${slippageText(ctx)} since your quote: you'd get ${g} ${tokenName(token)}, below your minimum of ${m}. Nothing was swapped. Try again with a fresh quote, or raise slippage.`
-      : `A price moved more than ${slippageText(ctx)} since your quote, so nothing was swapped. Try again with a fresh quote, or raise slippage.`;
-  },
-  NotEnoughEth: ([sent, needed]) =>
-    typeof sent === 'bigint' && typeof needed === 'bigint'
-      ? `This needs ${formatAmount(needed)} ETH, but ${formatAmount(sent)} ETH was sent.`
-      : 'Not enough ETH was sent with the transaction.',
-  UnknownToken: ([token]) => `${token ? tokenName(token) : 'That token'} isn’t one of the stocks the router can buy.`,
-  ZeroMinimum: ([token]) => `Every swap needs a minimum above zero${token ? ` (${tokenName(token)} had none)` : ''}.`,
-  BadSwapCount: 'Pick between 1 and 5 stocks to swap into.',
-  BadTokenList: 'The router was deployed with a bad token list.',
-  NotDelivered: 'The new crystal didn’t reach your wallet, so nothing happened.',
-  NotEmpty: 'The router would have kept leftover funds, so it stopped and nothing happened.',
-  NotForging: 'The router only swaps while it is forging a crystal.',
-  NotPoolManager: 'Only the Uniswap pool manager can call the router back.',
-  RefundFailed: 'Your wallet couldn’t take back the unspent ETH, so nothing happened.',
-  UnexpectedDelta: 'A pool returned an unexpected swap result, so nothing happened.',
-  UnexpectedNFT: 'The router only accepts the crystal it is forging.',
   // ---------------------------------------------------------------- shared
-  DuplicateToken: ([token]) => (token ? `${tokenName(token)} is listed twice.` : 'The same token is listed twice.'),
-  LengthMismatch: 'Token and amount lists don’t match.',
-  ZeroAmount: 'Amounts must be greater than zero.',
   ZeroAddress: 'Invalid address.',
-  ReentrancyGuardReentrantCall: 'Blocked a re-entrant call.',
-  SafeERC20FailedOperation: ([token]) => `A ${token ? tokenName(token) : 'token'} transfer failed, so nothing happened.`,
-  NotCrystalOwner: 'Only the crystal’s current owner can do that.',
-  // ---------------------------------------------------------------- PrismCrystal
-  CrystalSealed: 'This crystal is sealed — withdrawals unlock at the seal date.',
-  EmptyDeposit: 'Add at least one token amount or some ETH.',
-  NothingToWithdraw: 'Choose something to withdraw.',
-  TooManyAssets: 'A crystal holds at most 8 assets (ETH counts as one).',
-  NothingReceived: ([token]) => `The ${token ? tokenName(token) : 'token'} transfer delivered nothing.`,
-  InsufficientBalance: ([token, available]) => {
-    const a = amountOf(available, token);
-    return a !== null
-      ? `The crystal holds only ${a} ${tokenName(token)}.`
-      : 'The crystal doesn’t hold that much of this token.';
-  },
-  InsufficientEth: ([available]) => {
-    const a = amountOf(available);
-    return a !== null ? `The crystal holds only ${a} ETH.` : 'The crystal doesn’t hold that much ETH.';
-  },
-  SealMustBeInFuture: 'The seal date must be in the future.',
-  SealCanOnlyBeExtended: 'A seal can only be extended, never shortened.',
-  SealTooLong: 'Seals are limited to 100 years.',
-  EthTransferFailed: 'The ETH transfer to the recipient failed.',
-  ERC721NonexistentToken: 'That crystal doesn’t exist (or was burned).',
-  ERC721IncorrectOwner: 'That wallet doesn’t own this crystal.',
-  ERC721InsufficientApproval: 'You’re not allowed to move this crystal.',
-  ERC721InvalidApprover: 'You can’t approve this crystal.',
-  ERC721InvalidOperator: 'That address can’t be approved to manage crystals.',
-  ERC721InvalidOwner: 'That isn’t a valid crystal owner.',
-  ERC721InvalidReceiver: 'That address can’t receive crystals (it’s a contract without NFT support).',
-  ERC721InvalidSender: 'That isn’t a valid sender for this crystal.',
   // ---------------------------------------------------------------- tokens (OpenZeppelin ERC-20)
   ERC20InsufficientBalance: 'Not enough tokens in your wallet.',
-  ERC20InsufficientAllowance: 'Token approval is too low — approve again.',
+  ERC20InsufficientAllowance: 'Token approval is too low: approve again.',
   // ---------------------------------------------------------------- PrismProfiles
   InvalidName: 'Usernames are 3–20 characters: lowercase letters, numbers and _.',
   NameTaken: 'Someone else just took that username. Try another.',
   AlreadyYours: 'That username is already yours.',
   NoName: 'You don’t have a username to remove.',
   NoAvatar: 'You don’t have an avatar to remove.',
+  NotCrystalOwner: 'Only the crystal’s current owner can use it as an avatar.',
   InvalidBio: 'Bios are one line of up to 120 bytes.',
   NoBio: 'You don’t have a bio to remove.',
   InvalidX: 'X handles are up to 15 letters, numbers or _ (no @, no link).',
@@ -133,7 +66,7 @@ export function prismErrorsAbi(): AbiError[] {
   if (!errorsAbi) {
     const seen = new Set<string>();
     errorsAbi = [];
-    for (const abi of [prismForgeRouterAbi, prismCrystalAbi, prismProfilesAbi, tokenErrorsAbi] as Abi[]) {
+    for (const abi of [prismProfilesAbi, tokenErrorsAbi] as Abi[]) {
       for (const item of abi) {
         if (item.type !== 'error') continue;
         const selector = selectorOf(item);

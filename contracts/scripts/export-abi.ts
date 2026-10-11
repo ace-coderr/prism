@@ -7,12 +7,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 
-const CONTRACTS = [
-  { name: 'PrismCrystal', file: 'prismCrystal.ts', id: 'prismCrystal' },
-  { name: 'PrismForgeRouter', file: 'prismForgeRouter.ts', id: 'prismForgeRouter' },
-  { name: 'PrismProfiles', file: 'prismProfiles.ts', id: 'prismProfiles' },
-  { name: 'PrismGiftLinks', file: 'prismGiftLinks.ts', id: 'prismGiftLinks' },
-];
+const CONTRACTS = [{ name: 'PrismProfiles', file: 'prismProfiles.ts', id: 'prismProfiles' }];
 
 const outDir = path.join(__dirname, '../../packages/core/src/abi');
 mkdirSync(outDir, { recursive: true });

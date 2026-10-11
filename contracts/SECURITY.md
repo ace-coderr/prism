@@ -1,7 +1,10 @@
-# PRISM Crystal — security notes
+# PRISM Crystal (legacy) — security notes
 
 `contracts/PrismCrystal.sol` is an ERC-721 where each NFT (a "crystal") holds its own
-basket of ERC-20 tokens and ETH. **Status: unaudited, not deployed, testnet only.**
+basket of ERC-20 tokens and ETH. **Status: legacy.** It belongs to the archived crystal app
+(tag `crystal-v1`): deployed on testnet at 0x59ce49dE3782FA87E94850b23FEB1457009f9f40, unaudited,
+no longer used by the app. It stays in this folder because PrismProfiles' tests deploy it. Owners
+keep full control of their crystals and can still withdraw on-chain (e.g. the explorer's Write tab).
 
 ## Trust model, in plain words
 
@@ -73,70 +76,6 @@ state before making external calls.
 
 ---
 
-# PrismForgeRouter — security notes
-
-`contracts/PrismForgeRouter.sol` forges a crystal from ETH in one transaction: it swaps ETH
-into the chosen test stocks through their Uniswap V4 pools, checks each output against the
-caller's minimum, forges a PrismCrystal holding exactly those outputs (plus any ETH the caller
-keeps as ETH), and transfers the NFT to the caller.
-
-## Trust model, in plain words
-
-- **No admin, no state.** No owner, no fees, no pause, no upgrades, and no storage variables.
-  Everything it depends on is fixed at deploy as an immutable: the PoolManager, the
-  PrismCrystal, the pool fee (3000) and tick spacing (60), and up to five allowed tokens.
-- **Only the known test stocks.** `forgeFromETH` rejects any token that isn't one of the
-  deploy-time tokens (`UnknownToken`), so it can't be pointed at an arbitrary contract.
-  Hooks are always `address(0)`, and ETH is always `currency0`.
-- **All or nothing.** If any swap returns less than its `minAmountsOut` entry, the whole call
-  reverts (`InsufficientOutput`): no swap, no crystal, the ETH stays with the caller. Minimums
-  must be above zero (`ZeroMinimum`), so every call has slippage protection.
-- **Ends empty, every time.** After forging, the router sends any leftover ETH (unused swap
-  input, overpayment, ETH someone force-sent) and any balance of the swapped tokens back to the
-  caller, then asserts it holds zero ETH and zero of those tokens (`NotEmpty`). Sweeping strays
-  to the caller (instead of failing) means nobody can block forges by sending dust to it.
-- **The NFT ends with the caller.** The crystal is minted to the router, transferred with
-  `safeTransferFrom` to `msg.sender`, and `ownerOf(id) == msg.sender` is checked
-  (`NotDelivered`).
-- **Reentrancy.** `forgeFromETH` uses OpenZeppelin's `ReentrancyGuardTransient` (EIP-1153,
-  cleared at the end of the call). `unlockCallback` only runs when called by the PoolManager
-  *and* while a forge is in progress (`NotPoolManager`, `NotForging`). `onERC721Received` only
-  accepts a fresh mint from the PrismCrystal during a forge (`UnexpectedNFT`), so stray NFTs
-  can't get stuck in it. It has no `receive`, so plain ETH sends revert.
-- **Swaps go straight through the PoolManager** (`unlock` → `swap` → `settle` → `take`), with no
-  Universal Router or Permit2 approvals involved; the router never holds token approvals beyond
-  the exact amounts the PrismCrystal pulls during `forge` (reset to zero afterwards if anything
-  were left).
-
-## Tested
-
-- `test/PrismForgeRouter.test.ts` (mock PoolManager with V4-style settlement checks): happy
-  path, single token, slippage revert, ETH refund, partial fills, stray dust swept, unknown /
-  zero tokens, input validation, a caller re-entering on the NFT and on the refund, a caller
-  refusing ETH, a token re-entering mid-swap, stray `unlockCallback` calls, stray NFTs and ETH,
-  constructor validation, ABI export drift.
-- `test/fork/PrismForgeRouter.fork.test.ts` (`npm run test:fork`): a fork of Robinhood Chain
-  Testnet at the latest block. Real swaps through the real pools into the real PrismCrystal;
-  outputs match the V4Quoter exactly; slippage revert; refund; all five stocks; USDG (a real
-  token with a pool, but not allowed) rejected; reentrancy on the NFT stopped; the router is
-  empty after every call.
-
-## Known limitations
-
-1. **Price impact is the caller's problem.** The router enforces the minimums it is given; the
-   app quotes with the V4Quoter and applies the chosen slippage (default 1%). Thin pools
-   (OPENAI, ANTHROPIC) move quickly with size; the app warns above 3% impact.
-2. **Forged event owner.** PrismCrystal's `Forged` event records the router as `owner` (it is
-   the minter). The real owner is in the `Transfer` to the caller and `ownerOf`; the router also
-   emits `ForgedFromETH(id, owner, …)`.
-3. **Contract callers** must implement `onERC721Received` and accept ETH if they overpay;
-   otherwise the call reverts (nothing is lost).
-4. **Fixed list.** New test stocks need a new router deployment (it's stateless, so that is
-   cheap and safe).
-5. **Unaudited.** Testnet only, no real funds.
-
----
-
 # PrismProfiles — security notes
 
 `contracts/PrismProfiles.sol` stores optional public profiles, one per address: a username,
@@ -183,54 +122,3 @@ a PrismCrystal as avatar, a one-line bio and an X handle.
    is lost but gas.
 5. **Avatar reads cost a call.** `profileOf` makes one `ownerOf` call per read; fine for a view.
 6. **Unaudited.** Tests in `test/PrismProfiles.test.ts`. Testnet only.
-
-# PrismGiftLinks — security notes
-
-`contracts/PrismGiftLinks.sol` lets a crystal be sent as a link to someone who may not have a
-wallet yet. **Status: unaudited, not deployed, testnet only.**
-
-## Trust model, in plain words
-
-- **Links are bearer tokens.** Anyone holding the link (`/claim/<id>#k=<key>`) can claim the
-  crystal, to any address. Share a link privately unless you mean it as a giveaway: posting it
-  publicly (e.g. on X) means the first person to open it keeps it.
-- **The key never leaves the browser.** The sender's browser generates a fresh, one-time
-  keypair (the claim key). The contract stores only its **address**. The private key exists only
-  in the link's URL fragment (`#k=…`), which browsers never send to any server: not to PRISM's
-  host, not to the RPC, not to Privy. The sender's browser also keeps the key in localStorage so
-  it can show the link again and reclaim the gas money on cancel.
-- **Only the claim key can claim.** `claim(linkId, recipient)` requires `msg.sender == claimKey`,
-  so the claim is a transaction signed by the key itself. Someone watching the mempool can see
-  a pending claim but can't change its recipient or claim first without the key.
-- **No admin.** No owner, no fees, no pause, no upgrades, no rescue. A crystal in the contract
-  can leave in exactly two ways: `claim` (to the recipient the key names, before the expiry) or
-  `cancel` (back to the link's sender, any time before it's claimed, including after expiry).
-  Each link can end only once: double claims, claims after a cancel and cancels after a claim
-  revert with `NotOpen`.
-- **Creating a link** is one `safeTransferFrom(sender, giftLinks, id, data)` with
-  `data = abi.encode(claimKey, expiry, note)`, checked in `onERC721Received`: only PrismCrystal
-  can call it, the data must be present and valid (non-zero claim key, expiry in the future and
-  at most 365 days away, note ≤ 560 bytes). The link's sender is the crystal's owner (`from`),
-  even if an approved operator made the transfer.
-- **Sealed crystals** can be linked: the seal travels with the NFT, so the recipient owns it
-  sealed and can withdraw only after the unlock time.
-- **Gas money.** The app sends a little test ETH (0.0005 by default) to the claim key so the
-  claim can pay its own fee; after claiming, the recipient's browser sends whatever is left on
-  the key to the recipient. That ETH sits on the key, not in the contract: whoever holds the
-  link can also spend it.
-- **Re-entrancy.** `claim`, `cancel` and `onERC721Received` are `nonReentrant` and update the
-  link before transferring; tests try re-claiming, re-cancelling and creating a new link from
-  inside the transfer.
-
-## Known limitations
-
-1. **A plain `transferFrom` to the contract is lost.** It skips `onERC721Received`, so no link
-   is created and, with no admin, the crystal can never leave. The app only uses
-   `safeTransferFrom` with link data.
-2. **A leaked link is a lost gift.** If someone else gets the link first, they can claim it.
-   The sender can cancel while it's unclaimed.
-3. **Recipients that can't hold NFTs.** `claim` uses `safeTransferFrom`, so a recipient contract
-   without `onERC721Received` makes the claim revert; the link stays open for another recipient.
-4. **Notes are public.** The note is emitted in `LinkCreated` and visible to anyone.
-5. **Unaudited.** Tests in `test/PrismGiftLinks.test.ts` and `test/fork/PrismGiftLinks.fork.test.ts`.
-   Testnet only.

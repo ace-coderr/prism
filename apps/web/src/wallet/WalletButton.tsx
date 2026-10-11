@@ -6,9 +6,8 @@ import { useExportWallet, usePrivy, useWallets } from '@privy-io/react-auth';
 import { explorerAddressUrl, friendlyError } from '@prism/core';
 import { isEmbeddedWallet, loginInfo, type LoginInfo } from './account';
 import { PRIVY_APP_ID, TARGET_CHAIN } from './config';
-import { AssetDots } from '../components/AssetDots';
 import { useProfileEditor } from '../components/editorContext';
-import { Avatar, useCrystalShapes, useProfile } from '../data/profiles';
+import { Avatar, useProfile } from '../data/profiles';
 
 export const shortAddress = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
@@ -57,23 +56,6 @@ function useDismiss(open: boolean, close: () => void) {
     };
   }, [open, close]);
   return ref;
-}
-
-/** Top of the wallet menu: the avatar crystal bigger, with the key to its colours (too small to read in the pill). */
-function AvatarKey({ address, avatarId }: { address: Address; avatarId: bigint }) {
-  const shape = useCrystalShapes().get(avatarId);
-  if (!shape) return null;
-  return (
-    <div className="mb-1 flex items-center gap-3 border-b border-white/[0.06] px-3 pb-3 pt-2">
-      <Avatar address={address} avatarId={avatarId} size={44} />
-      <div className="min-w-0">
-        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-mist" title={`Your avatar is crystal #${avatarId}`}>
-          Avatar · #{avatarId.toString()}
-        </p>
-        <AssetDots holdings={shape.holdings} sealed={shape.sealed} className="mt-2" />
-      </div>
-    </div>
-  );
 }
 
 type Variant = 'nav' | 'hero';
@@ -173,7 +155,7 @@ function AccountPill({
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <Avatar address={address} avatarId={profile.avatarId} size={variant === 'hero' ? 26 : 22} className="-ml-2" />
+        <Avatar address={address} size={variant === 'hero' ? 26 : 22} className="-ml-2" />
         <span className="normal-case tracking-[0.06em]">{name ? `@${name}` : shortAddress(address)}</span>
         <span className={`text-mist ${variant === 'hero' ? '' : 'hidden md:inline'}`}>
           {eth === null ? '…' : `${eth < 0.0001 && eth > 0 ? '<0.0001' : eth.toFixed(4)} ETH`}
@@ -182,7 +164,6 @@ function AccountPill({
       {open && (
         <div role="menu" className={`${MENU} ${align(variant)} w-64`}>
           {login && <SignedInAs login={login} embedded={embedded} />}
-          {profile.avatarId !== null && <AvatarKey address={address} avatarId={profile.avatarId} />}
           <Link role="menuitem" to="/profile" className={ITEM} onClick={() => setOpen(false)}>
             My profile
           </Link>

@@ -1,29 +1,31 @@
 /**
- * The default avatar: a voxel gem generated from an address. Same address → same gem.
- * Shape (how many facets, their sizes, how spiky) and colour (one hue per address) come
- * from the address's keccak hash. It uses the crystal builder, but it is not a crystal:
- * no prices, no seams.
+ * The avatar everyone gets: a 5×5 mirrored pixel pattern generated from the address. Same
+ * address → same picture, everywhere. The pattern and both colours come from the address's
+ * keccak hash, so nobody picks or uploads anything.
  */
 import { hexToBytes, keccak256, type Address } from 'viem';
-import type { Holding } from './crystal';
+
+export const IDENTICON_SIZE = 5;
 
 export interface Identicon {
-  holdings: Holding[];
-  /** 0..1 hue the gem is tinted with */
+  /** 25 cells, row by row; true = filled. Columns 3–4 mirror columns 1–0. */
+  cells: boolean[];
+  /** Fill colour hue, 0–359. */
   hue: number;
+  /** Background hue, opposite-ish to the fill so the pattern always reads. */
+  bgHue: number;
 }
 
 export function identicon(address: Address): Identicon {
   const b = hexToBytes(keccak256(address.toLowerCase() as Address));
-  const n = 3 + (b[0]! % 3); // 3–5 facets
-  const raw = Array.from({ length: n }, (_, i) => 1 + b[1 + i]! / 64);
-  const total = raw.reduce((s, x) => s + x, 0);
-  const holdings = raw.map((w, i) => ({
-    symbol: `id${i}`,
-    weight: w / total,
-    // ±1–6 "moves" only vary the lightness of each facet once tinted
-    change24h: (b[8 + i]! % 2 ? 1 : -1) * (1 + (b[12 + i]! % 6)),
-    volatility: 0.1 + (b[16 + i]! / 255) * 0.5,
-  }));
-  return { holdings, hue: b[24]! / 255 };
+  const cells: boolean[] = [];
+  for (let y = 0; y < IDENTICON_SIZE; y++) {
+    const half = [0, 1, 2].map((x) => b[y * 3 + x]! % 2 === 0);
+    cells.push(half[0]!, half[1]!, half[2]!, half[1]!, half[0]!);
+  }
+  // never blank, never a solid block: flip the centre if the pattern is either
+  const filled = cells.filter(Boolean).length;
+  if (filled === 0 || filled === cells.length) cells[12] = !cells[12];
+  const hue = ((b[20]! << 8) | b[21]!) % 360;
+  return { cells, hue, bgHue: (hue + 150 + (b[22]! % 60)) % 360 };
 }

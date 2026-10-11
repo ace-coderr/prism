@@ -15,7 +15,7 @@ const CONTROL_RE = /[\u0000-\u001f\u007f]/;
 
 /** Impersonation guard: usernames may not contain these (app-side only). */
 export const RESERVED_WORDS = ['vibevibe', 'vibe_vibe', 'prism', 'admin', 'official', 'robinhood'] as const;
-/** Bios may say "prism" ("Collecting PRISM crystals"); the rest stays refused. */
+/** Bios may say "prism" ("Reviewing on PRISM"); the rest stays refused. */
 export const BIO_RESERVED_WORDS = RESERVED_WORDS.filter((w) => w !== 'prism');
 /** Basic profanity, refused anywhere in a name or bio. */
 const PROFANITY_ANYWHERE = ['fuck', 'shit', 'cunt', 'nigger', 'nigga', 'faggot', 'bitch', 'whore', 'slut', 'retard', 'asshole', 'motherf'];

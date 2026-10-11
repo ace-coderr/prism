@@ -172,9 +172,9 @@ export function cleanText(s: string): string {
 
 // ------------------------------------------------------------------ the index
 
-/** 2: adds gen 0 (an index without it is rebuilt from scratch). */
+/** 2: adds gen 0 (a version 1 index is upgraded by scanning gen 0 alone: see backfillGenerations). */
 export const LAUNCH_INDEX_VERSION = 2;
-/** Older versions still readable for serving while the scheduled job rebuilds (never resumed from). */
+/** Older versions the site can still serve while the scheduled job upgrades them. */
 export const READABLE_INDEX_VERSIONS = [1, LAUNCH_INDEX_VERSION];
 
 export interface LaunchIndex {

@@ -5,6 +5,7 @@ import {
   LAUNCH_INDEX_VERSION,
   allAssets,
   applyScan,
+  backfillGenerations,
   balancesOf,
   cleanText,
   decodeGraduationLog,
@@ -286,6 +287,26 @@ describe('reading the chain (fake RPC)', () => {
     expect(s.graduations.map((g) => g.by)).toEqual(['token', 'curve', 'curve']);
     const i = applyScan(base(), s);
     expect(i.launches.find((l) => l.token === VIBEVIBE)!.graduatedBlock).toBe(126079452); // the stray curve is ignored
+  });
+
+  it('backfills only the missing generation into an older index, and marks it current when done', async () => {
+    const asked: string[] = [];
+    const client = {
+      request: async ({ params }: { params: [{ address?: string[]; fromBlock: string; toBlock: string }] }) => {
+        asked.push((params[0].address ?? ['(any)']).join(','));
+        const all = [{ ...V.gen0! }, { ...V.gradGen0! }];
+        return all.filter((l) => params[0].address?.some((a) => a.toLowerCase() === l.address.toLowerCase()) && Number(l.blockNumber) >= Number(params[0].fromBlock) && Number(l.blockNumber) <= Number(params[0].toBlock));
+      },
+      multicall: async ({ contracts }: { contracts: unknown[] }) => contracts.map(() => ({ status: 'success', result: 'X' })),
+    } as unknown as PublicClient;
+    const v1 = { ...emptyIndex(46630, 133_000_000), version: 1 };
+    const saved: number[] = [];
+    const out = await backfillGenerations(client, v1, [0], { onStep: (i) => void saved.push(i.version) });
+    expect(new Set(asked)).toEqual(new Set(['0x4FEbC267e0C24440bcDEF72B5DBC5FE7BED091dF', '0x1fD0f2BD38ADa69e2eF138FAf5377c5a5A574e8f']));
+    expect(saved.every((v) => v === 1)).toBe(true); // saved midway: still version 1
+    expect(out.version).toBe(LAUNCH_INDEX_VERSION);
+    expect(out.toBlock).toBe(133_000_000);
+    expect(out.launches.map((l) => l.gen)).toEqual([0]);
   });
 
   it('reads names in batches, halving a batch the node refuses, down to single tokens', async () => {

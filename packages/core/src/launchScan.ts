@@ -5,6 +5,7 @@
 import { erc20Abi, type Address, type Hex, type PublicClient } from 'viem';
 import {
   FIRST_LAUNCH_BLOCK,
+  LAUNCH_INDEX_VERSION,
   LAUNCH_TOPICS,
   TOPICS,
   V6_FROM_BLOCK,
@@ -16,6 +17,7 @@ import {
   quotesNeedingSymbols,
   tokensNeedingNames,
   type Graduation,
+  type LaunchGen,
   type LaunchIndex,
   type RawLog,
   type ScanResult,
@@ -24,6 +26,8 @@ import { blockRanges } from './onchain';
 
 /** The public RPC answers eth_getLogs for at most 100k blocks and ~10 MB per response. */
 export const LOG_BLOCKS = 100_000n;
+/** …and at most 30k blocks for a query without an address filter. */
+export const LOG_BLOCKS_NO_ADDRESS = 25_000n;
 
 const TOO_BIG = /too large|exceed|limit|too many|range|10000|response size|timed out|timeout/i;
 /** Errors a smaller range won't fix. */
@@ -34,7 +38,8 @@ type GetLogsArgs = { address?: Address | Address[]; topics: (Hex | Hex[] | null)
 /** eth_getLogs over [from, to], halving the range whenever the node says the answer is too big. */
 export async function getLogsSplit(client: PublicClient, args: GetLogsArgs, from: bigint, to: bigint): Promise<RawLog[]> {
   const out: RawLog[] = [];
-  for (const [a, b] of blockRanges(from, to, LOG_BLOCKS)) out.push(...(await getRange(client, args, a, b)));
+  const size = args.address ? LOG_BLOCKS : LOG_BLOCKS_NO_ADDRESS;
+  for (const [a, b] of blockRanges(from, to, size)) out.push(...(await getRange(client, args, a, b)));
   return out;
 }
 
@@ -74,19 +79,22 @@ const normalize = (l: RawLog): RawLog => ({
   logIndex: l.logIndex === null ? null : Number(l.logIndex as unknown as string),
 });
 
-/** Every launch and graduation event in [from, to]. */
-export async function scanLaunches(client: PublicClient, from: bigint, to: bigint): Promise<ScanResult> {
-  const start = from < FIRST_LAUNCH_BLOCK ? FIRST_LAUNCH_BLOCK : from;
+/** Every launch and graduation event in [from, to] (of every factory generation, or only ). */
+export async function scanLaunches(client: PublicClient, from: bigint, to: bigint, gens?: readonly LaunchGen[]): Promise<ScanResult> {
+  const included = VIBE_FACTORIES.filter((f) => !gens || gens.includes(f.gen));
+  const first = included.reduce((m, f) => (f.fromBlock < m ? f.fromBlock : m), included[0]?.fromBlock ?? FIRST_LAUNCH_BLOCK);
+  const start = from < first ? first : from;
   const empty = { fromBlock: Number(from), toBlock: Number(to), launches: [], graduations: [] };
-  if (to < start) return empty;
-  const factories = VIBE_FACTORIES.map((f) => f.factory);
-  const adapters = VIBE_FACTORIES.flatMap((f) => (f.adapter ? [f.adapter] : []));
+  if (to < start || included.length === 0) return empty;
+  const factories = included.map((f) => f.factory);
+  const adapters = included.flatMap((f) => (f.adapter ? [f.adapter] : []));
   const v6Start = start < V6_FROM_BLOCK ? V6_FROM_BLOCK : start;
+  const withV6 = included.some((f) => f.gen === 6);
   const [launchLogs, adapterLogs, curveLogs] = await Promise.all([
     getLogsSplit(client, { address: factories, topics: [[...LAUNCH_TOPICS]] }, start, to),
-    getLogsSplit(client, { address: adapters, topics: [TOPICS.poolGraduated] }, start, to),
+    adapters.length ? getLogsSplit(client, { address: adapters, topics: [TOPICS.poolGraduated] }, start, to) : Promise.resolve([]),
     // any contract may emit this topic: graduations are matched to known v6 curves later
-    to >= v6Start ? getLogsSplit(client, { topics: [TOPICS.curveGraduated] }, v6Start, to) : Promise.resolve([]),
+    withV6 && to >= v6Start ? getLogsSplit(client, { topics: [TOPICS.curveGraduated] }, v6Start, to) : Promise.resolve([]),
   ]);
   return {
     fromBlock: Number(from),
@@ -143,11 +151,42 @@ export async function updateIndex(
   opts: { to?: bigint; step?: bigint; onStep?: (index: LaunchIndex) => void | Promise<void> } = {},
 ): Promise<LaunchIndex> {
   const to = opts.to ?? (await client.getBlockNumber());
-  let index = prev ?? emptyIndex(client.chain?.id ?? 46630, Number(FIRST_LAUNCH_BLOCK) - 1);
+  const start = prev ?? emptyIndex(client.chain?.id ?? 46630, Number(FIRST_LAUNCH_BLOCK) - 1);
+  return scanInto(client, start, BigInt(start.toBlock) + 1n, to, undefined, opts);
+}
+
+/**
+ * Add generations an index was built without (`gens`, e.g. [0] for a version 1 index), over the
+ * blocks it already covers; the result is a current-version index. Much cheaper than a rebuild.
+ */
+export async function backfillGenerations(
+  client: PublicClient,
+  index: LaunchIndex,
+  gens: readonly LaunchGen[],
+  opts: { step?: bigint; onStep?: (index: LaunchIndex) => void | Promise<void> } = {},
+): Promise<LaunchIndex> {
+  const from = VIBE_FACTORIES.filter((f) => gens.includes(f.gen)).reduce((m, f) => (f.fromBlock < m ? f.fromBlock : m), BigInt(index.toBlock));
+  const out = await scanInto(client, index, from, BigInt(index.toBlock), gens, {
+    step: opts.step ?? 4_000_000n,
+    // a step saved midway keeps the old version, so an interrupted backfill starts over next time
+    onStep: (i) => opts.onStep?.({ ...i, version: index.version }),
+  });
+  return { ...out, version: LAUNCH_INDEX_VERSION };
+}
+
+async function scanInto(
+  client: PublicClient,
+  start: LaunchIndex,
+  from: bigint,
+  to: bigint,
+  gens: readonly LaunchGen[] | undefined,
+  opts: { step?: bigint; onStep?: (index: LaunchIndex) => void | Promise<void> },
+): Promise<LaunchIndex> {
+  let index = start;
   const step = opts.step ?? 2_000_000n;
-  for (let a = BigInt(index.toBlock) + 1n; a <= to; a += step) {
+  for (let a = from; a <= to; a += step) {
     const b = a + step - 1n > to ? to : a + step - 1n;
-    const scan = await scanLaunches(client, a, b);
+    const scan = await scanLaunches(client, a, b, gens);
     const names = await readTokenNames(client, tokensNeedingNames(scan, index));
     index = applyScan(index, scan, names);
     const quotes = quotesNeedingSymbols(index);

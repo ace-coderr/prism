@@ -210,6 +210,8 @@ describe('building the index', () => {
     expect(decodeIndex(null)).toBeNull();
     expect(decodeIndex({ version: LAUNCH_INDEX_VERSION + 1, toBlock: 1, rows: [] })).toBeNull();
     expect(decodeIndex({ ...encodeIndex(i), rows: [['nope']] })).toBeNull();
+    // a version 1 index (no gen 0) is still served while the scheduled job rebuilds it, and says so
+    expect(decodeIndex({ ...encodeIndex(i), version: 1 })?.version).toBe(1);
   });
 });
 

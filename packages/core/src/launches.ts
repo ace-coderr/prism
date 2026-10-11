@@ -174,9 +174,11 @@ export function cleanText(s: string): string {
 
 /** 2: adds gen 0 (an index without it is rebuilt from scratch). */
 export const LAUNCH_INDEX_VERSION = 2;
+/** Older versions still readable for serving while the scheduled job rebuilds (never resumed from). */
+export const READABLE_INDEX_VERSIONS = [1, LAUNCH_INDEX_VERSION];
 
 export interface LaunchIndex {
-  version: typeof LAUNCH_INDEX_VERSION;
+  version: number;
   chainId: number;
   /** every block up to and including this one has been scanned */
   toBlock: number;
@@ -299,7 +301,7 @@ export function quoteOf(launch: Pick<Launch, 'quote'>, index: Pick<LaunchIndex, 
 export type LaunchRow = [string, string, string, string, string, string, number, number, number, number, number];
 
 export interface LaunchIndexWire {
-  version: typeof LAUNCH_INDEX_VERSION;
+  version: number;
   chainId: number;
   toBlock: number;
   generatedAt: number;
@@ -323,7 +325,7 @@ const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 /** The index from its wire form; null when it isn't one this code understands. */
 export function decodeIndex(json: unknown): LaunchIndex | null {
   const w = json as Partial<LaunchIndexWire> | null;
-  if (!w || w.version !== LAUNCH_INDEX_VERSION || typeof w.toBlock !== 'number' || !Array.isArray(w.rows)) return null;
+  if (!w || !READABLE_INDEX_VERSIONS.includes(w.version as number) || typeof w.toBlock !== 'number' || !Array.isArray(w.rows)) return null;
   const launches: Launch[] = [];
   for (const r of w.rows) {
     if (!Array.isArray(r) || r.length !== 11 || !ADDRESS.test(r[0]) || !ADDRESS.test(r[4]) || !ADDRESS.test(r[5])) return null;
@@ -343,7 +345,7 @@ export function decodeIndex(json: unknown): LaunchIndex | null {
     });
   }
   return {
-    version: LAUNCH_INDEX_VERSION,
+    version: w.version as number,
     chainId: Number(w.chainId),
     toBlock: w.toBlock,
     generatedAt: Number(w.generatedAt ?? 0),

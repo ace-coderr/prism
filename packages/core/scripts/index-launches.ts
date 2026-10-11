@@ -10,7 +10,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { createPublicClient, http, type PublicClient } from 'viem';
-import { decodeIndex, encodeIndex, robinhoodChainTestnet, updateIndex, type LaunchIndex } from '../src';
+import { LAUNCH_INDEX_VERSION, decodeIndex, encodeIndex, robinhoodChainTestnet, updateIndex, type LaunchIndex } from '../src';
 
 const [a, b] = process.argv.slice(2);
 const prevPath = b ? a : undefined;
@@ -29,7 +29,11 @@ function load(path: string | undefined): LaunchIndex | null {
   for (const p of [path, outPath]) {
     if (!p || !existsSync(p)) continue;
     const index = decodeIndex(JSON.parse(gunzipSync(readFileSync(p)).toString('utf8')));
-    if (index) return index;
+    if (index && index.version === LAUNCH_INDEX_VERSION) return index;
+    if (index) {
+      console.warn(`${p} is an older index (version ${index.version}): rebuilding from scratch`);
+      continue;
+    }
     console.warn(`${p} is not a launch index this code understands; ignoring it`);
   }
   return null;

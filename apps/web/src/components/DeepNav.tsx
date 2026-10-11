@@ -30,7 +30,7 @@ export function DeepNav({ crumbs }: { crumbs: Crumb[] }) {
               <Link
                 to={c.to}
                 aria-current={last ? 'page' : undefined}
-                className={`truncate transition-colors hover:text-lime ${last ? 'text-white' : ''}`}
+                className={`truncate py-1 transition-colors hover:text-lime ${last ? 'text-white' : ''}`}
               >
                 {c.label}
               </Link>

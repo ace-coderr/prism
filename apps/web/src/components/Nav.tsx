@@ -159,13 +159,13 @@ function TestnetStatus() {
 
 /** One slim row: logo and small links on the left, the testnet notice on the right. */
 export function Footer() {
-  const a = 'text-mist transition-colors hover:text-white';
+  const a = 'inline-flex min-h-6 items-center text-mist transition-colors hover:text-white';
   const dot = <span aria-hidden className="text-white/20">·</span>;
   return (
     <footer className="border-t border-white/[0.06] bg-ink">
       <div className="container-x flex flex-col gap-2 py-5 text-[12px] md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <NavLink to="/" aria-label="PRISM — home" className="inline-flex items-center gap-1.5 text-white">
+          <NavLink to="/" aria-label="PRISM — home" className="inline-flex min-h-6 items-center gap-1.5 text-white">
             <Logo size={16} />
             <span className="font-display text-[13px] font-bold tracking-[-0.02em]">PRISM</span>
           </NavLink>

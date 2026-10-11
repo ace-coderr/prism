@@ -38,10 +38,14 @@ export async function getLogsSplit(client: PublicClient, args: GetLogsArgs, from
 
 async function getRange(client: PublicClient, args: GetLogsArgs, a: bigint, b: bigint): Promise<RawLog[]> {
   try {
-    return (await client.request({
-      method: 'eth_getLogs',
-      params: [{ address: args.address, topics: args.topics, fromBlock: `0x${a.toString(16)}`, toBlock: `0x${b.toString(16)}` }],
-    })) as unknown as RawLog[];
+    return (await client.request(
+      {
+        method: 'eth_getLogs',
+        params: [{ address: args.address, topics: args.topics, fromBlock: `0x${a.toString(16)}`, toBlock: `0x${b.toString(16)}` }],
+      },
+      // one retry, then split: retrying a range the node can't answer in time only wastes minutes
+      { retryCount: 1 },
+    )) as unknown as RawLog[];
   } catch (e) {
     if (b <= a || !TOO_BIG.test(errorText(e))) throw e;
     const m = (a + b) / 2n;

@@ -14,6 +14,10 @@ npm run test:fork -w @prism/contracts   # PrismReviews on a fork: real curve + s
 npm run export-abi -w @prism/contracts  # after changing a contract: refresh packages/core/src/abi
 ```
 
+`scripts/seed-fork.ts` fills a **local fork** with a realistic review scenario (real launch and test
+stock buys, reviews, a trim, sales, a SOLD made permanent) for checking the website. It refuses any
+network but a local fork of the testnet: PRISM never generates activity on the real chain.
+
 **Deploying:** there are no private keys in this repo. Deploy from your own browser wallet on
 the web app's hidden `/deploy` page, then record the address in
 `packages/core/src/deployments.ts`.

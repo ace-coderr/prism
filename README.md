@@ -1,6 +1,6 @@
 # PRISM
 
-**Live:** https://prism-crystal.vercel.app
+**Live:** https://seeprism.vercel.app
 
 **PRISM: see every launch's true colors.** Reviews of vibe/vibe launches (and test stocks)
 that can't lie:

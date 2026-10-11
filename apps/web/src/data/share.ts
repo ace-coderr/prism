@@ -1,7 +1,7 @@
 import type { Address } from 'viem';
 
 /** Where the app lives. */
-export const LIVE_URL = 'https://prism-crystal.vercel.app';
+export const LIVE_URL = 'https://seeprism.vercel.app';
 
 /** Where an address's public profile lives: /u/name once it has one, else /u/0x…. */
 export const profileHref = (address: Address, name?: string | null) => `/u/${name ?? address}`;
@@ -9,7 +9,7 @@ export const profileHref = (address: Address, name?: string | null) => `/u/${nam
 /** The site as people type it in a post (no https://; X links it anyway). */
 const SITE = LIVE_URL.replace(/^https?:\/\//, '');
 
-/** Someone's public profile as a link inside a post: prism-crystal.vercel.app/u/name (or /u/0x…). */
+/** Someone's public profile as a link inside a post: seeprism.vercel.app/u/name (or /u/0x…). */
 export const profileLink = (address: Address, name?: string | null) => `${SITE}${profileHref(address, name)}`;
 
 /** Ready-made posts for "Share on X". */

@@ -5,12 +5,12 @@ const ME = '0xd5Ed2e8Cf80401e5594f9E18509d46ed88fA9a9e';
 
 describe('Share on X', () => {
   it('links to the public profile by name, else by address', () => {
-    expect(profileLink(ME, 'ace')).toBe('prism-crystal.vercel.app/u/ace');
-    expect(profileLink(ME, null)).toBe(`prism-crystal.vercel.app/u/${ME}`);
+    expect(profileLink(ME, 'ace')).toBe('seeprism.vercel.app/u/ace');
+    expect(profileLink(ME, null)).toBe(`seeprism.vercel.app/u/${ME}`);
   });
 
   it('writes each post word for word', () => {
-    expect(SHARE.profile(profileLink(ME, 'ace'))).toBe('My PRISM profile: prism-crystal.vercel.app/u/ace  @holdprism');
+    expect(SHARE.profile(profileLink(ME, 'ace'))).toBe('My PRISM profile: seeprism.vercel.app/u/ace  @holdprism');
   });
 
   it("opens X's post composer with the text encoded (emoji, @, spaces, ·)", () => {

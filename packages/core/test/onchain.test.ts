@@ -48,3 +48,12 @@ describe('deployments', () => {
     expect(prismProfilesBytecode.startsWith('0x60')).toBe(true);
   });
 });
+
+describe('PrismReviews deployment', () => {
+  it('records the testnet deployment: address, creation transaction and block', () => {
+    const d = getDeployment(46630)!;
+    expect(d.prismReviews).toBe('0xb6f28fa52DE204cB6CccbA1dF43c52a01B9f08C3');
+    expect(d.prismReviewsTx).toBe('0xaf4a702931d482394da5c1b52bd6fecedac09bb3258f590d5a7899e169ca66c2');
+    expect(d.prismReviewsFromBlock).toBe(132977970n);
+  });
+});

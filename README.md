@@ -89,7 +89,7 @@ LAUNCH_INDEX_FILE=launches.json.gz npm run dev     # /api/launches serves that f
 - `markSold(id)`: anyone can call it; below half of `heldAtPost`, the review is SOLD for good.
   An update can't hide a sale (the old review is checked first).
 - No owner, admin, fees or upgrades; it holds no funds and refuses ETH. See `contracts/SECURITY.md`.
-- Not deployed yet: deploy it from your wallet on the dev-only `/deploy` page.
+- Deployed and verified at [`0xb6f28fa52DE204cB6CccbA1dF43c52a01B9f08C3`](https://explorer.testnet.chain.robinhood.com/address/0xb6f28fa52DE204cB6CccbA1dF43c52a01B9f08C3#code) (block 132977970).
 
 ## Scoring
 
@@ -124,9 +124,13 @@ verified on the explorer:
 
 | Contract | Address | Block |
 | --- | --- | --- |
+| PrismReviews | [`0xb6f28fa52DE204cB6CccbA1dF43c52a01B9f08C3`](https://explorer.testnet.chain.robinhood.com/address/0xb6f28fa52DE204cB6CccbA1dF43c52a01B9f08C3#code) | 132977970 |
 | PrismProfiles | [`0xf7Da2Ee9dF52422eB87E8FBc3Be347a4B5611300`](https://explorer.testnet.chain.robinhood.com/address/0xf7Da2Ee9dF52422eB87E8FBc3Be347a4B5611300#code) | 128964290 |
 | PrismCrystal (legacy) | [`0x59ce49dE3782FA87E94850b23FEB1457009f9f40`](https://explorer.testnet.chain.robinhood.com/address/0x59ce49dE3782FA87E94850b23FEB1457009f9f40#code) | 128575215 |
 | PrismForgeRouter (legacy) | [`0xD1340ad67A4b5C0995CC050bE773ee74293fD24D`](https://explorer.testnet.chain.robinhood.com/address/0xD1340ad67A4b5C0995CC050bE773ee74293fD24D#code) | 128964670 |
+
+`npx tsx packages/core/scripts/check-deployment.ts` re-checks, read-only, that PrismReviews' creation
+transaction and on-chain code match this repo's compiled contract byte for byte.
 
 ## Wallet
 

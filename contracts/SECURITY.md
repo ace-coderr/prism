@@ -1,7 +1,8 @@
 # PrismReviews — security notes
 
 `contracts/PrismReviews.sol` stores holder-only reviews of tokens. **Status: tested (unit + fork
-tests), not audited, not deployed yet.**
+tests), not audited. Deployed on Robinhood Chain Testnet at
+0xb6f28fa52DE204cB6CccbA1dF43c52a01B9f08C3 (block 132977970), source verified on the explorer.**
 
 ## Trust model, in plain words
 

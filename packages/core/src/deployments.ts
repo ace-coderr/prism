@@ -42,6 +42,10 @@ export const DEPLOYMENTS: Partial<Record<number, PrismDeployment>> = {
     // 2026-10-05, block 128964290
     prismProfiles: '0xf7Da2Ee9dF52422eB87E8FBc3Be347a4B5611300',
     prismProfilesTx: '0x4b51aa09788555c4acfa10609f9c4bd49ee529d3693706d9e3829aa4e06d7717',
+    // 2026-10-11; creation input and runtime code checked byte for byte against the compiled contract
+    prismReviews: '0xb6f28fa52DE204cB6CccbA1dF43c52a01B9f08C3',
+    prismReviewsTx: '0xaf4a702931d482394da5c1b52bd6fecedac09bb3258f590d5a7899e169ca66c2',
+    prismReviewsFromBlock: 132977970n,
     legacy: {
       // 2026-10-04
       prismCrystal: '0x59ce49dE3782FA87E94850b23FEB1457009f9f40',

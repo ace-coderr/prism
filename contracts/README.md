@@ -4,7 +4,7 @@ Hardhat + TypeScript. No admin, no pause, no upgrades, no fees. See [SECURITY.md
 
 | Contract | What |
 | --- | --- |
-| `PrismReviews.sol` | Holder-only reviews with SOLD marks (not deployed yet) |
+| `PrismReviews.sol` | Holder-only reviews with SOLD marks (deployed: 0xb6f28fa52DE204cB6CccbA1dF43c52a01B9f08C3) |
 | `PrismProfiles.sol` | Usernames, bios, X handles (deployed, kept from the first PRISM) |
 | `PrismCrystal.sol` | **Legacy**: the archived crystal app's NFT; kept because PrismProfiles' tests deploy it |
 

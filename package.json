@@ -14,7 +14,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test:rpc": "npm run test:rpc -w @prism/core",
     "verify:tokens": "npx tsx packages/core/scripts/verify-tokens.ts",
-    "test:contracts": "npm test -w @prism/contracts"
+    "test:contracts": "npm test -w @prism/contracts",
+    "brand": "npm run brand -w @prism/web"
   },
   "engines": {
     "node": "22.x"

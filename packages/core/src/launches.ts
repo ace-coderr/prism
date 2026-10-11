@@ -1,10 +1,11 @@
 /**
  * vibe/vibe launches, read from the chain only (their launch contracts' events, never their API).
  *
- * Three factory generations launch tokens on Robinhood Chain Testnet, each a bonding curve that
+ * Four factory generations launch tokens on Robinhood Chain Testnet, each a bonding curve that
  * later "graduates" into a Uniswap V4 pool:
  *
- * - gen 1: factory 0xB5B7…9eb9 (2026-08-27) and gen 2: factory 0x40f1…DF59 (2026-09-07). They emit
+ * - gen 0: factory 0x4FEb…91dF (the first, still in use), gen 1: factory 0xB5B7…9eb9 (2026-08-27)
+ *   and gen 2: factory 0x40f1…DF59 (2026-09-07). They emit
  *   `TokenLaunched(launchId, token, curve, creator, …, metadataURI)` and their launches are paired
  *   with ETH (gen 2 emitted one stock-paired launch, with its quote asset in the data). Their
  *   graduation adapters emit `PoolGraduated(token, curve, poolId, …)`. Name and symbol aren't in
@@ -14,46 +15,51 @@
  *   stock, USDG, VIBEVIBE or another launch's token) and creator. Each curve emits its own
  *   graduation event.
  *
- * The factories are unverified on the explorer. The gen 1/2 events above are exact (their topic
- * hashes match these signatures); the v6 and stock-paired gen 2 layouts were worked out from real
- * logs (see packages/core/test/launches.test.ts, which decodes real events).
+ * The factories are unverified on the explorer. The gen 0/1/2 events above are exact (their topic
+ * hashes match these signatures, and the explorer decodes them so); the v6 layout is vibe/vibe's own
+ * published ABI (LaunchCreated, from their web app); the stock-paired gen 2 layout was worked out
+ * from a real log. packages/core/test/launches.test.ts decodes real events of every kind.
  *
  * Everything here is pure; ./launchScan.ts does the RPC reads.
  */
 import { getAddress, hexToBigInt, hexToString, type Address, type Hex } from 'viem';
 import { TESTNET_TOKENS, type TestnetToken } from './tokens';
 
-export type LaunchGen = 1 | 2 | 6;
+export type LaunchGen = 0 | 1 | 2 | 6;
 
 export interface VibeFactory {
   gen: LaunchGen;
   factory: Address;
   /** first block worth scanning (the factory's deployment) */
   fromBlock: bigint;
-  /** gen 1/2: the graduation adapter that emits PoolGraduated; v6 curves emit their own */
+  /** gen 0/1/2: the graduation adapter that emits PoolGraduated; v6 curves emit their own */
   adapter: Address | null;
 }
 
-/** Addresses from vibe/vibe's published chain config, each checked on-chain (code + events). */
+/**
+ * Addresses from vibe/vibe's published chain config (gen 1, 2, v6) and their web app's listing config
+ * (gen 0), each checked on-chain: code, launch events and graduation events.
+ */
 export const VIBE_FACTORIES: readonly VibeFactory[] = [
+  { gen: 0, factory: '0x4FEbC267e0C24440bcDEF72B5DBC5FE7BED091dF', fromBlock: 95_916_239n, adapter: '0x1fD0f2BD38ADa69e2eF138FAf5377c5a5A574e8f' },
   { gen: 1, factory: '0xB5B7A2f6c4EAFa2D73918fcA32d50e2126339eb9', fromBlock: 108_435_450n, adapter: '0x1eD9E88AE14713ca4bc964BADe2Bc1e3f5CD501a' },
   { gen: 2, factory: '0x40f1be6faf8DAB9C143cce1a0A04c2075Fb2DF59', fromBlock: 115_025_604n, adapter: '0xA6a5D4C098dA8f79eae1203A8E42ff9AC7a17F06' },
   { gen: 6, factory: '0xe794217880011f9cA6961340eD5c16EC9559Fea0', fromBlock: 123_503_237n, adapter: null },
 ];
 
 /** The first block any vibe/vibe launch can be in. */
-export const FIRST_LAUNCH_BLOCK = VIBE_FACTORIES[0]!.fromBlock;
+export const FIRST_LAUNCH_BLOCK = VIBE_FACTORIES.reduce((m, f) => (f.fromBlock < m ? f.fromBlock : m), VIBE_FACTORIES[0]!.fromBlock);
 /** v6 curves exist from here on. */
-export const V6_FROM_BLOCK = VIBE_FACTORIES[2]!.fromBlock;
+export const V6_FROM_BLOCK = VIBE_FACTORIES.find((f) => f.gen === 6)!.fromBlock;
 
 export const TOPICS = {
-  /** gen 1/2: TokenLaunched(uint256 indexed launchId, address indexed token, address indexed curve, address creator, address creatorFeeRecipient, address creatorVault, uint256 initialBuy, uint256 initialTokensBought, uint16 metadataSchemaVersion, bytes32 metadataDigest, string metadataURI) */
+  /** gen 0/1/2: TokenLaunched(uint256 indexed launchId, address indexed token, address indexed curve, address creator, address creatorFeeRecipient, address creatorVault, uint256 initialBuy, uint256 initialTokensBought, uint16 metadataSchemaVersion, bytes32 metadataDigest, string metadataURI) */
   tokenLaunched: '0x56eef5c350583250e71791d6d659f4d181796c9deb08b977252efc3995aa9279',
   /** gen 2, paired with a quote asset: same topics; data (creator, feeRecipient, vault, quote, …, metadataURI) */
   tokenLaunchedWithQuote: '0x34041bc557672fe6a73853ece671e7715108f75e25427bfddf3e2f8e2085a0e7',
-  /** v6: topics (launchId, creator, token); data (curve, name, symbol, uri, quote, …, creator, …) */
+  /** v6: LaunchCreated(uint256 indexed launchId, address indexed launcher, address indexed token, address curve, string name, string symbol, string metadataURI, address pairCurrency, uint16 taxBps, uint64 packedWeights, address projectTreasury, uint256 targetPairUnits, uint256 netPersonal, uint256 giftNetTotal, bytes32 giftRoot, uint256 giftCount) */
   v6Launched: '0xa7e8032bfd07a9fbcde50eabe91eb2901faee6dbddd9cced579491d9b07ef5c8',
-  /** gen 1/2 adapters: PoolGraduated(address indexed token, address indexed curve, bytes32 indexed poolId, …) */
+  /** gen 0/1/2 adapters: PoolGraduated(address indexed token, address indexed curve, bytes32 indexed poolId, …) */
   poolGraduated: '0xb085a27251b4f22bc3b1efdffb548e1857dd368d1998cdd133291040c2276f1c',
   /** v6 curves: graduated into a pool (topic1 = poolId), emitted by the curve itself */
   curveGraduated: '0xab164bba6f9a29b6722f18be5ea821368fedba444c4f8733118f3557d77ab2ae',
@@ -61,7 +67,7 @@ export const TOPICS = {
 
 export const LAUNCH_TOPICS = [TOPICS.tokenLaunched, TOPICS.tokenLaunchedWithQuote, TOPICS.v6Launched] as const;
 
-/** A launch as its event tells it (gen 1/2 events carry no name or symbol: null until read). */
+/** A launch as its event tells it (gen 0/1/2 events carry no name or symbol: null until read). */
 export interface DecodedLaunch {
   token: Address;
   name: string | null;
@@ -86,7 +92,7 @@ export interface Launch extends Omit<DecodedLaunch, 'name' | 'symbol'> {
 export type Lifecycle = 'curve' | 'graduated';
 export const lifecycleOf = (l: Pick<Launch, 'graduatedBlock'>): Lifecycle => (l.graduatedBlock === null ? 'curve' : 'graduated');
 
-/** A graduation: by token (gen 1/2 adapters) or by the curve that emitted it (v6). */
+/** A graduation: by token (gen 0/1/2 adapters) or by the curve that emitted it (v6). */
 export type Graduation = { by: 'token'; token: Address; block: number } | { by: 'curve'; curve: Address; block: number };
 
 /** The log fields the decoders need (viem's Log has them all). */
@@ -145,7 +151,7 @@ export function decodeLaunchLog(log: RawLog): DecodedLaunch | null {
   return null;
 }
 
-/** A graduation event: PoolGraduated from a gen 1/2 adapter, or a v6 curve's own event. */
+/** A graduation event: PoolGraduated from a gen 0/1/2 adapter, or a v6 curve's own event. */
 export function decodeGraduationLog(log: RawLog): Graduation | null {
   if (log.blockNumber === null) return null;
   const block = Number(log.blockNumber);
@@ -166,7 +172,8 @@ export function cleanText(s: string): string {
 
 // ------------------------------------------------------------------ the index
 
-export const LAUNCH_INDEX_VERSION = 1;
+/** 2: adds gen 0 (an index without it is rebuilt from scratch). */
+export const LAUNCH_INDEX_VERSION = 2;
 
 export interface LaunchIndex {
   version: typeof LAUNCH_INDEX_VERSION;
@@ -212,7 +219,7 @@ export const tokensNeedingNames = (scan: ScanResult, index?: LaunchIndex | null)
  * - one entry per token address, across every factory generation and overlapping scans: the
  *   earliest launch event wins (an address can't launch twice; a repeat is a re-scan);
  * - names from the event (v6) or from `names` (read from the token), else the address's start;
- * - graduations set `graduatedBlock` (by token for gen 1/2, by curve for v6); a graduation for
+ * - graduations set `graduatedBlock` (by token for gen 0/1/2, by curve for v6); a graduation for
  *   a curve or token the index doesn't know is ignored.
  */
 export function applyScan(

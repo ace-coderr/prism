@@ -52,6 +52,11 @@ describe('decoding launch events (real logs)', () => {
     });
   });
 
+  it('gen 0 (the first factory) uses the same TokenLaunched event, and its adapter the same PoolGraduated', () => {
+    expect(decodeLaunchLog(log('gen0'))).toMatchObject({ gen: 0, quote: null, name: null, token: getAddress('0x932ad386c019f098caa4e4e54a56cfd47410cf77') });
+    expect(decodeGraduationLog(log('gradGen0'))).toMatchObject({ by: 'token', token: getAddress('0xd00a6cec79a31a1839490789f6adae18b1597655'), block: 116872583 });
+  });
+
   it('gen 2’s stock-paired launch carries its quote asset', () => {
     expect(decodeLaunchLog(log('gen2quote'))).toMatchObject({
       gen: 2,
@@ -263,7 +268,7 @@ describe('reading the chain (fake RPC)', () => {
       request: async ({ params }: { params: [{ address?: string | string[]; topics: unknown[]; fromBlock: string; toBlock: string }] }) => {
         const { address, topics, fromBlock, toBlock } = params[0];
         const all =
-          Array.isArray(address) && address.length === 3
+          Array.isArray(address) && address.length === 4
             ? [raw('gen1'), raw('v6eth')]
             : Array.isArray(address)
               ? [raw('gradLegacy')]

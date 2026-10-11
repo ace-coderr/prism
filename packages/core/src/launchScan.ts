@@ -26,6 +26,8 @@ import { blockRanges } from './onchain';
 export const LOG_BLOCKS = 100_000n;
 
 const TOO_BIG = /too large|exceed|limit|too many|range|10000|response size|timed out|timeout/i;
+/** Errors a smaller range won't fix. */
+const NOT_RANGE = /execution reverted|method not found|invalid argument|unauthorized|forbidden/i;
 
 type GetLogsArgs = { address?: Address | Address[]; topics: (Hex | Hex[] | null)[] };
 
@@ -47,11 +49,15 @@ async function getRange(client: PublicClient, args: GetLogsArgs, a: bigint, b: b
       { retryCount: 1 },
     )) as unknown as RawLog[];
   } catch (e) {
-    if (b <= a || !TOO_BIG.test(errorText(e))) throw e;
+    if (b <= a || NOT_RANGE.test(errorText(e))) throw e;
+    // too big or too slow: split at once; anything else (a hiccup, a rate limit): wait a moment, then split
+    if (!TOO_BIG.test(errorText(e))) await sleep(1500);
     const m = (a + b) / 2n;
     return [...(await getRange(client, args, a, m)), ...(await getRange(client, args, m + 1n, b))];
   }
 }
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const errorText = (e: unknown) => {
   const parts: string[] = [];
@@ -96,8 +102,13 @@ export async function scanLaunches(client: PublicClient, from: bigint, to: bigin
 /** name() and symbol() of many tokens (Multicall3, a few hundred per call); failures read as ''. */
 export async function readTokenNames(client: PublicClient, tokens: readonly Address[], batch = 300): Promise<Map<string, { name: string; symbol: string }>> {
   const out = new Map<string, { name: string; symbol: string }>();
-  for (let i = 0; i < tokens.length; i += batch) {
-    const slice = tokens.slice(i, i + batch);
+  for (let i = 0; i < tokens.length; i += batch) await readNameBatch(client, tokens.slice(i, i + batch), out);
+  return out;
+}
+
+/** One multicall; if the whole call fails (too much gas, a hiccup), halve it, down to one token (then ''). */
+async function readNameBatch(client: PublicClient, slice: readonly Address[], out: Map<string, { name: string; symbol: string }>): Promise<void> {
+  try {
     const res = await client.multicall({
       contracts: slice.flatMap((address) => [
         { address, abi: erc20Abi, functionName: 'name' } as const,
@@ -109,8 +120,16 @@ export async function readTokenNames(client: PublicClient, tokens: readonly Addr
       const s = (r: (typeof res)[number] | undefined) => (r?.status === 'success' && typeof r.result === 'string' ? r.result : '');
       out.set(t.toLowerCase(), { name: s(res[j * 2]), symbol: s(res[j * 2 + 1]) });
     });
+  } catch {
+    if (slice.length === 1) {
+      out.set(slice[0]!.toLowerCase(), { name: '', symbol: '' });
+      return;
+    }
+    await sleep(1000);
+    const half = Math.ceil(slice.length / 2);
+    await readNameBatch(client, slice.slice(0, half), out);
+    await readNameBatch(client, slice.slice(half), out);
   }
-  return out;
 }
 
 /**

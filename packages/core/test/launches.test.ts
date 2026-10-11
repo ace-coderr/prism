@@ -16,6 +16,7 @@ import {
   lifecycleOf,
   quoteOf,
   quotesNeedingSymbols,
+  readTokenNames,
   reviewableStocks,
   scanLaunches,
   searchAssets,
@@ -285,6 +286,20 @@ describe('reading the chain (fake RPC)', () => {
     expect(s.graduations.map((g) => g.by)).toEqual(['token', 'curve', 'curve']);
     const i = applyScan(base(), s);
     expect(i.launches.find((l) => l.token === VIBEVIBE)!.graduatedBlock).toBe(126079452); // the stray curve is ignored
+  });
+
+  it('reads names in batches, halving a batch the node refuses, down to single tokens', async () => {
+    const client = {
+      multicall: async ({ contracts }: { contracts: Array<{ address: string; functionName: string }> }) => {
+        if (contracts.length > 2) throw new Error('out of gas');
+        if (contracts[0]!.address === A(3)) throw new Error('broken token');
+        return contracts.map((c) => ({ status: 'success', result: `${c.functionName}-${c.address.slice(-1)}` }));
+      },
+    } as unknown as PublicClient;
+    const names = await readTokenNames(client, [A(1), A(2), A(3)], 3);
+    expect(names.get(A(1).toLowerCase())).toEqual({ name: 'name-1', symbol: 'symbol-1' });
+    expect(names.get(A(2).toLowerCase())).toEqual({ name: 'name-2', symbol: 'symbol-2' });
+    expect(names.get(A(3).toLowerCase())).toEqual({ name: '', symbol: '' });
   });
 
   it('reads many live balances in one multicall (null where a read failed)', async () => {

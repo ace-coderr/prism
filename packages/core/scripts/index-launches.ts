@@ -45,13 +45,25 @@ const prev = load(prevPath);
 const head = await client.getBlockNumber();
 const started = Date.now();
 console.log(prev ? `updating from block ${prev.toBlock + 1} (${prev.launches.length} launches)` : 'first build', `to ${head}`);
-const index = await updateIndex(client, prev, {
-  to: head,
-  onStep: (i) => {
-    save(i);
-    const graduated = i.launches.filter((l) => l.graduatedBlock !== null).length;
-    console.log(`  block ${i.toBlock}: ${i.launches.length} launches, ${graduated} graduated (${Math.round((Date.now() - started) / 1000)}s)`);
-  },
-});
+// a long build survives RPC hiccups: each step is saved, and a failed step is retried from the last save
+let current = prev;
+let index: LaunchIndex | null = null;
+for (let attempt = 1; !index; attempt++) {
+  try {
+    index = await updateIndex(client, current, {
+      to: head,
+      onStep: (i) => {
+        current = i;
+        save(i);
+        const graduated = i.launches.filter((l) => l.graduatedBlock !== null).length;
+        console.log(`  block ${i.toBlock}: ${i.launches.length} launches, ${graduated} graduated (${Math.round((Date.now() - started) / 1000)}s)`);
+      },
+    });
+  } catch (e) {
+    console.error(`attempt ${attempt} failed at block ${current ? current.toBlock + 1 : 'start'}: ${String((e as Error).message ?? e).split('\n')[0]}`);
+    if (attempt >= 6) throw e;
+    await new Promise((r) => setTimeout(r, 15_000 * attempt));
+  }
+}
 save(index);
 console.log(`done: ${index.launches.length} launches up to block ${index.toBlock} → ${outPath}`);

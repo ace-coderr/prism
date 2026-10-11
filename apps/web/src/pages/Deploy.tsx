@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import type { Abi, Address, Hex } from 'viem';
 import { deployContract } from 'wagmi/actions';
-import { explorerAddressUrl } from '@prism/core';
+import { explorerAddressUrl, getDeployment, prismReviewsAbi, prismReviewsBytecode } from '@prism/core';
 import { Panel } from '../components/ui';
 import { TARGET_CHAIN, wagmiConfig } from '../wallet/config';
 import { StepList, useTxSteps } from '../wallet/steps';
@@ -26,7 +26,23 @@ export default function Deploy() {
         <span className="label text-mist">Wallet</span>
         <WalletButton />
       </Panel>
-      <Panel className="p-4 text-sm text-mist">No contract is waiting to be deployed.</Panel>
+      <DeploySection
+        name="PrismReviews"
+        existing={getDeployment(TARGET_CHAIN.id)?.prismReviews}
+        abi={prismReviewsAbi}
+        bytecode={prismReviewsBytecode}
+        fixed={null}
+        gas="about 0.8M gas"
+        about={
+          <p>
+            Holder-only reviews: only an address holding a token can review it (rating 1–5, up to 280 bytes), each review
+            records the balance held, and anyone can mark a review SOLD once its author holds less than half of that. Reviews
+            are permanent. No owner, no admin, no fees, no upgrades; it holds no funds and refuses ETH. Tested (unit + fork
+            tests) but not audited (see contracts/SECURITY.md).
+          </p>
+        }
+        record={(d) => `prismReviews: '${d.address}',\nprismReviewsTx: '${d.tx}',\nprismReviewsFromBlock: ${d.block}n,`}
+      />
     </PageScroll>
   );
 }

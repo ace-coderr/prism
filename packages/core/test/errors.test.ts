@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BaseError, ContractFunctionRevertedError, UserRejectedRequestError, encodeErrorResult, type Abi, type Hex } from 'viem';
-import { explainedErrors, formatAmount, friendlyError, messageForRevertData, prismErrorsAbi, prismProfilesAbi, revertDataOf, revertMessage } from '../src';
+import { explainedErrors, formatAmount, friendlyError, messageForRevertData, prismErrorsAbi, prismProfilesAbi, prismReviewsAbi, revertDataOf, revertMessage } from '../src';
 
 const setNameOnly = prismProfilesAbi.filter((i) => i.type === 'function' && i.name === 'setName');
 const revertOf = (abi: Abi, data: Hex) =>
@@ -8,11 +8,19 @@ const revertOf = (abi: Abi, data: Hex) =>
 const taken = () => encodeErrorResult({ abi: prismProfilesAbi, errorName: 'NameTaken', args: ['0x00000000000000000000000000000000000000aa'] });
 
 describe('contract errors in plain words', () => {
-  it('has a sentence for every custom error of PrismProfiles', () => {
+  it('has a sentence for every custom error of PrismProfiles and PrismReviews', () => {
     const names = new Set(explainedErrors());
-    for (const item of prismProfilesAbi as Abi) if (item.type === 'error') expect(names, item.name).toContain(item.name);
+    for (const abi of [prismProfilesAbi, prismReviewsAbi] as Abi[]) for (const item of abi) if (item.type === 'error') expect(names, item.name).toContain(item.name);
     // and none of them falls back to viem's "The contract function … reverted."
     for (const item of prismErrorsAbi()) expect(revertMessage(item.name, [], {})).toBeTruthy();
+  });
+
+  it('explains review errors with their arguments and the token', () => {
+    const data = (errorName: string, args: readonly unknown[]) => encodeErrorResult({ abi: prismReviewsAbi, errorName, args } as never);
+    expect(messageForRevertData(data('NotHolder', ['0x00000000000000000000000000000000000000aa']), { symbol: 'BULO' })).toBe('Only holders can review: you don’t hold any BULO right now.');
+    expect(messageForRevertData(data('TextTooLong', [284n]))).toMatch(/this one is 284/);
+    expect(messageForRevertData(data('StillHolding', [500n, 1000n]))).toMatch(/at least half/);
+    expect(messageForRevertData(data('InvalidRating', [0]))).toBe('Pick a rating from 1 to 5 stars.');
   });
 
   it('decodes a contract error', () => {

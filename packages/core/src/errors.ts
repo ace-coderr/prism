@@ -14,6 +14,7 @@ import {
   type Hex,
 } from 'viem';
 import { prismProfilesAbi } from './abi/prismProfiles';
+import { prismReviewsAbi } from './abi/prismReviews';
 
 /** What the app knows that the error itself doesn't carry. */
 export interface ErrorContext {
@@ -50,6 +51,19 @@ const MESSAGES: Record<string, Explain> = {
   NoX: 'You don’t have an X handle to remove.',
   AddressEmptyCode: 'That address has no contract code.',
   FailedCall: 'A call inside the contract failed.',
+  // ---------------------------------------------------------------- PrismReviews
+  InvalidRating: 'Pick a rating from 1 to 5 stars.',
+  TextTooLong: ([length]) =>
+    `Reviews are up to 280 bytes${typeof length === 'bigint' ? ` (this one is ${length}; emoji and accents count double or more)` : ''}.`,
+  NotAToken: 'That address isn’t a token PRISM can check.',
+  NotHolder: (_, ctx) => `Only holders can review: you don’t hold any ${ctx.symbol ?? 'of this token'} right now.`,
+  TooSoon: ([at]) =>
+    typeof at === 'bigint'
+      ? `You reviewed this token less than an hour ago. You can post again after ${new Date(Number(at) * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}.`
+      : 'You reviewed this token less than an hour ago. Try again later.',
+  UnknownReview: 'That review doesn’t exist.',
+  NotActive: 'That review was already replaced or marked SOLD.',
+  StillHolding: 'The reviewer still holds at least half of what they held when posting, so it can’t be marked SOLD.',
 };
 
 /** Standard errors the PRISM contracts can bubble up from the tokens they move. */
@@ -66,7 +80,7 @@ export function prismErrorsAbi(): AbiError[] {
   if (!errorsAbi) {
     const seen = new Set<string>();
     errorsAbi = [];
-    for (const abi of [prismProfilesAbi, tokenErrorsAbi] as Abi[]) {
+    for (const abi of [prismReviewsAbi, prismProfilesAbi, tokenErrorsAbi] as Abi[]) {
       for (const item of abi) {
         if (item.type !== 'error') continue;
         const selector = selectorOf(item);

@@ -1,3 +1,56 @@
+# PrismReviews — security notes
+
+`contracts/PrismReviews.sol` stores holder-only reviews of tokens. **Status: tested (unit + fork
+tests), not audited, not deployed yet.**
+
+## Trust model, in plain words
+
+**It holds no money, ever.** Nothing in it is payable and it has no `receive` or `fallback`, so
+any ETH sent to it (on its own or with a call) is refused. It never takes, moves or approves
+tokens: it only *reads* balances, with `balanceOf` through STATICCALL, so a token can't call back
+into it or change anything while it's read. (As with any contract, ETH could still be forced in
+by `selfdestruct`; there is no way to take it out, and nothing reads it.)
+
+**There is no admin.** No owner, no pause, no upgrade path (no proxy), no fees, no allow-list, no
+"rescue" function. Once deployed, nobody — including whoever deployed it — can change a rule,
+edit or delete a review, or undo a SOLD mark.
+
+**The rules, all enforced on-chain:**
+
+- **Holders only.** `post(token, rating, text)` reverts unless the caller holds more than 0 of
+  `token` right now. The review stores `heldAtPost`, the caller's balance at that moment. Rating
+  is 1–5; text is at most 280 bytes (UTF-8, so emoji count 4) and lives only in the event.
+- **One current review per author per token.** Posting again links the new review to the one it
+  replaces (`previous`), which stays readable with status `Replaced`. Allowed only while still
+  holding, and only `UPDATE_COOLDOWN` (1 hour) after the author's last review of that token (spam
+  limit).
+- **Reviews are permanent.** There is no delete and no edit; every review and its text stay
+  readable forever.
+- **The SOLD rule.** `markSold(id)` can be called by anyone. If the author now holds *less than
+  half* of `heldAtPost` (exactly half is still holding), the review becomes `Sold` with a
+  timestamp and a `ReviewSold` event, permanently. Otherwise it reverts with `StillHolding`. Only
+  the author's current review can be marked. An update can't hide a sale either: if the author is
+  below half when posting again, the old review is marked SOLD in the same transaction. Smaller
+  drops aren't recorded on-chain; the app shows them as "trimmed X%" from live balances.
+
+## Known limitations
+
+- **SOLD is checked, not watched.** Nothing happens until someone calls `markSold`. A reviewer who
+  sells and **buys back before anyone checks** keeps an Active review; the app compares live
+  balances to `heldAtPost` on every view, so it shows the review as sold or trimmed while the
+  balance is low, but only an on-chain `markSold` makes it permanent.
+- **Balance, not ownership history.** A holder can move tokens to another wallet they control and
+  review from both, or borrow tokens for a moment to post. The review records how much they held,
+  so tiny positions carry little weight off-chain, but the contract can't tell people apart.
+- **Any ERC-20 can be reviewed.** The contract accepts any address that answers `balanceOf`,
+  including a token someone deployed to fake balances. The app only shows reviews of indexed
+  vibe/vibe launches and the five test stocks.
+- **Tokens decide balances.** A token with a broken or malicious `balanceOf` can make reviews of
+  that token wrong (or `markSold` revert); it can't affect reviews of other tokens.
+- **Rebasing / fee-on-transfer tokens** change balances on their own; a big negative rebase can
+  make a review markable as SOLD without a sale.
+- Unaudited. Testnet only.
+
 # PRISM Crystal (legacy) — security notes
 
 `contracts/PrismCrystal.sol` is an ERC-721 where each NFT (a "crystal") holds its own

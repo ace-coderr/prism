@@ -10,9 +10,9 @@ branch; its old plan is in `PLAN.md` there.
 
 ## Foundation (prompt 1)
 - **Done** · Archive the crystal app; placeholder Home so the live site never breaks
-- **In progress** · Launch index from the chain (every vibe/vibe factory generation + the test stocks), search, live holder checks
-- **In progress** · PrismReviews contract (holder-only, permanent reviews, SOLD marks); deployed from /deploy when ready
-- **In progress** · Scoring: review status, true colors score, honesty rep
+- **Done** · Launch index from the chain (every vibe/vibe factory generation + the test stocks), search, live holder checks; refreshed every 30 minutes by a GitHub Action, served by /api/launches
+- **In progress** · PrismReviews contract (holder-only, permanent reviews, SOLD marks): built and tested (unit + fork); goes live once deployed from /deploy
+- **Done** · Scoring: review status, true colors score, honesty rep
 
 ## Product (prompt 2)
 - **Not started** · Token pages, writing and reading reviews, reviewer profiles

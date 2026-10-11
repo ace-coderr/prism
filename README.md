@@ -40,7 +40,70 @@ npm run test:rpc         # + live read-only checks against the testnet RPC
 npm run verify:tokens    # re-verify the test stock addresses on chain 46630
 npm run dev              # http://localhost:5173
 npm run test:contracts   # Hardhat tests
+npm run test:fork -w @prism/contracts   # PrismReviews against real tokens on a fork of the testnet
 ```
+
+## Launch index (from the chain)
+
+Every vibe/vibe launch is read from vibe/vibe's own launch contracts on Robinhood Chain Testnet,
+never from their API (`packages/core/src/launches.ts`, `launchScan.ts`, `assets.ts`):
+
+| Generation | Factory | Launch event | Graduation |
+| --- | --- | --- | --- |
+| gen 1 | `0xB5B7…9eb9` (from block 108435450) | `TokenLaunched` (ETH-paired) | `PoolGraduated` from its adapter `0x1eD9…501a` |
+| gen 2 | `0x40f1…DF59` (from block 115025604) | `TokenLaunched` (ETH; one stock-paired variant) | `PoolGraduated` from its adapter `0xA6a5…7F06` |
+| v6 | `0xe794…Fea0` (from block 123503237), the one stock-paired launches use | carries name, symbol, curve and quote asset | each curve's own event |
+
+For each launch: token, name, symbol (read from the token for gen 1/2), quote asset (ETH, a test
+stock, USDG, VIBEVIBE or another launch's token), lifecycle (on curve / graduated), creator,
+launch block and generation. One entry per token address across generations and re-scans.
+Together with the five test stocks (AAPL, NVDA, SPCX, ANTHROPIC, OPENAI) that's everything
+reviewable. Holder checks are live `balanceOf` reads (`balancesOf` batches them in one
+Multicall3 call).
+
+**Kept fresh for free, with no secrets:**
+
+1. `.github/workflows/launch-index.yml` runs every 30 minutes (free for public repos): it
+   downloads the last index, reads the new blocks (`packages/core/scripts/index-launches.ts`) and
+   republishes `launches.json.gz` as an asset of the `launch-index` release. Its only credential
+   is the workflow's own short-lived `GITHUB_TOKEN`.
+2. `GET /api/launches` (`apps/web/server/launches.ts`) loads that file, reads the blocks since
+   (a few `eth_getLogs` calls), and answers with the stocks + newest launches, `?q=` search by
+   name, symbol or address, or `?token=0x…`. Vercel's CDN caches each answer for 60 s.
+
+Build an index locally (a first build reads ~207k launches):
+
+```bash
+npx tsx packages/core/scripts/index-launches.ts launches.json.gz
+LAUNCH_INDEX_FILE=launches.json.gz npm run dev     # /api/launches serves that file
+```
+
+## Reviews (PrismReviews)
+
+`contracts/contracts/PrismReviews.sol`, holder-only reviews:
+
+- `post(token, rating 1–5, text ≤ 280 bytes)` only while holding the token; stores the balance
+  held (`heldAtPost`), time and status; the text is in the `ReviewPosted` event.
+- One current review per author per token: posting again (still holding, 1 hour after the last
+  one) adds a new review linked to the one it replaces. Reviews are never deleted or edited.
+- `markSold(id)`: anyone can call it; below half of `heldAtPost`, the review is SOLD for good.
+  An update can't hide a sale (the old review is checked first).
+- No owner, admin, fees or upgrades; it holds no funds and refuses ETH. See `contracts/SECURITY.md`.
+- Not deployed yet: deploy it from your wallet on the dev-only `/deploy` page.
+
+## Scoring
+
+`packages/core/src/scoring.ts`, pure and fully tested:
+
+- **Review status**: holding / trimmed X% / SOLD, from the author's live balance against
+  `heldAtPost` (SOLD on-chain is final).
+- **True colors** per token: the weighted average rating of current reviewers still holding.
+  Weight = position size (what they still hold of what they reviewed, capped so nobody counts more
+  than 10%, or an equal share with fewer than 10 reviewers) × holding time (0.25 on the day of
+  posting → 1 at 7 days) × honesty rep. With few reviews the score is pulled toward a neutral 3,
+  and a confidence level says how much to trust it.
+- **Honesty rep**: the share of a reviewer's positions they kept holding at least 7 days after
+  reviewing.
 
 ## Profiles (PrismProfiles)
 

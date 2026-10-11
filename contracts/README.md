@@ -4,11 +4,13 @@ Hardhat + TypeScript. No admin, no pause, no upgrades, no fees. See [SECURITY.md
 
 | Contract | What |
 | --- | --- |
+| `PrismReviews.sol` | Holder-only reviews with SOLD marks (not deployed yet) |
 | `PrismProfiles.sol` | Usernames, bios, X handles (deployed, kept from the first PRISM) |
 | `PrismCrystal.sol` | **Legacy**: the archived crystal app's NFT; kept because PrismProfiles' tests deploy it |
 
 ```bash
 npm test -w @prism/contracts            # all tests
+npm run test:fork -w @prism/contracts   # PrismReviews on a fork: real curve + stock buys and sells
 npm run export-abi -w @prism/contracts  # after changing a contract: refresh packages/core/src/abi
 ```
 

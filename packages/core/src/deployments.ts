@@ -14,6 +14,14 @@ export interface PrismDeployment {
   /** PrismProfiles' creation transaction. */
   prismProfilesTx?: `0x${string}`;
   /**
+   * PrismReviews (holder-only reviews, SOLD marks). Empty until it is deployed via /deploy;
+   * reviews stay off in the app until then.
+   */
+  prismReviews?: Address;
+  /** PrismReviews' creation transaction and block (review events are read from there). */
+  prismReviewsTx?: `0x${string}`;
+  prismReviewsFromBlock?: bigint;
+  /**
    * LEGACY: the archived crystal app's contracts (branch archive/crystal-v1, tag crystal-v1).
    * Kept for the record only. They still work on-chain and nobody can turn them off, but
    * nothing in this app reads them or links to them.

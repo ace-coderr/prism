@@ -7,7 +7,10 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 
-const CONTRACTS = [{ name: 'PrismProfiles', file: 'prismProfiles.ts', id: 'prismProfiles' }];
+const CONTRACTS = [
+  { name: 'PrismProfiles', file: 'prismProfiles.ts', id: 'prismProfiles' },
+  { name: 'PrismReviews', file: 'prismReviews.ts', id: 'prismReviews' },
+];
 
 const outDir = path.join(__dirname, '../../packages/core/src/abi');
 mkdirSync(outDir, { recursive: true });

@@ -31,7 +31,8 @@ jobs:
       - name: Download the previous index
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download launch-index --pattern launches.json.gz --dir prev || echo "No previous index: first build"
+        run: |
+          gh release download launch-index --pattern launches.json.gz --dir prev || echo "No previous index, so this is a first build"
       - name: Read the new blocks
         run: npx tsx packages/core/scripts/index-launches.ts prev/launches.json.gz launches.json.gz
       - name: Publish

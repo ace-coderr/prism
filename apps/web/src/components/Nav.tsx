@@ -1,10 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion, useMotionValueEvent, useScroll } from 'motion/react';
+import { PRISM_TOKEN, X_HANDLE, explorerAddressUrl, getDeployment, tokenPath } from '@prism/core';
 import { WalletButton } from '../wallet/WalletButton';
+import { TARGET_CHAIN } from '../wallet/config';
+import { PrismMark } from './Prism';
+import { JoinVibe, ReferralNote } from './vibe';
 
-// Home is the logo; the pill lists the destinations (none yet: the new PRISM is on its way)
-const LINKS: Array<{ to: string; label: string; soon?: boolean }> = [];
+// Home is the logo; the pill lists the destinations ($PRISM once its token exists)
+const LINKS: Array<{ to: string; label: string; soon?: boolean }> = [
+  { to: '/leaderboards', label: 'Leaderboards' },
+  { to: '/stocks', label: 'Stocks' },
+  ...(PRISM_TOKEN ? [{ to: tokenPath(PRISM_TOKEN), label: '$PRISM' }] : []),
+];
 
 const Soon = () => (
   <span className="ml-1.5 rounded-full bg-amber-400/15 px-1.5 py-px align-[1px] font-mono text-[8px] font-bold tracking-[0.12em] text-amber-300">
@@ -12,32 +20,9 @@ const Soon = () => (
   </span>
 );
 
-// PRISM mark: a pixel/voxel gem — crown on top, pointed pavilion below.
-const GEM = ['..AAA..', '.ABBBA.', 'ABBGBBA', '.CCCCC.', '..CCC..', '...C...'];
-const SHADES: Record<string, string> = { A: '#e6ff5c', B: '#d4f000', C: '#8fa300', G: '#f6c143' };
-
+/** PRISM's mark: a prism splitting a white beam into colors. */
 export function Logo({ size = 26 }: { size?: number }) {
-  const cell = 3;
-  return (
-    <svg viewBox="-1 -1 23 20" width={size} height={size} aria-hidden>
-      {GEM.flatMap((row, y) =>
-        [...row].map((ch, x) =>
-          ch === '.' ? null : (
-            <rect
-              key={`${x}-${y}`}
-              x={x * cell}
-              y={y * cell}
-              width={cell}
-              height={cell}
-              fill={SHADES[ch]}
-              stroke="#000"
-              strokeWidth={0.7}
-            />
-          ),
-        ),
-      )}
-    </svg>
-  );
+  return <PrismMark size={size} />;
 }
 
 /**
@@ -157,32 +142,55 @@ function TestnetStatus() {
   );
 }
 
-/** One slim row: logo and small links on the left, the testnet notice on the right. */
+/** Two slim rows: logo and links, then the invite and the testnet notice. */
 export function Footer() {
   const a = 'inline-flex min-h-6 items-center text-mist transition-colors hover:text-white';
   const dot = <span aria-hidden className="text-white/20">·</span>;
+  const reviews = getDeployment(TARGET_CHAIN.id)?.prismReviews;
   return (
     <footer className="border-t border-white/[0.06] bg-ink">
-      <div className="container-x flex flex-col gap-2 py-5 text-[12px] md:flex-row md:items-center md:justify-between">
+      <div className="container-x flex flex-col gap-3 py-6 text-[12px]">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <NavLink to="/" aria-label="PRISM — home" className="inline-flex min-h-6 items-center gap-1.5 text-white">
-            <Logo size={16} />
+            <Logo size={18} />
             <span className="font-display text-[13px] font-bold tracking-[-0.02em]">PRISM</span>
           </NavLink>
           {dot}
-          <a className={a} href="https://x.com/holdprism" target="_blank" rel="noreferrer">
-            PRISM on X
+          <a className={a} href={`https://x.com/${X_HANDLE}`} target="_blank" rel="noreferrer">
+            @{X_HANDLE} on X
+          </a>
+          {PRISM_TOKEN && (
+            <>
+              {dot}
+              <NavLink className={a} to={tokenPath(PRISM_TOKEN)}>
+                $PRISM
+              </NavLink>
+            </>
+          )}
+          {reviews && (
+            <>
+              {dot}
+              <a className={a} href={`${explorerAddressUrl(reviews)}#code`} target="_blank" rel="noreferrer">
+                Reviews contract
+              </a>
+            </>
+          )}
+          {dot}
+          <a className={a} href="https://github.com/ace-coderr/prism" target="_blank" rel="noreferrer">
+            GitHub
           </a>
           {dot}
           <a className={a} href="https://x.com/_ace_won" target="_blank" rel="noreferrer">
             Built by ace
           </a>
-          {dot}
-          <a className={a} href="https://github.com/ace-coderr/prism" target="_blank" rel="noreferrer">
-            GitHub
-          </a>
         </div>
-        <p className="text-mist/70">Robinhood Chain Testnet · test assets only, no real value</p>
+        <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+          <p className="flex flex-wrap items-center gap-x-2">
+            <JoinVibe className={a} />
+            <ReferralNote />
+          </p>
+          <p className="text-mist/70">Robinhood Chain Testnet · test assets only, no real value · PRISM never holds your money</p>
+        </div>
       </div>
     </footer>
   );

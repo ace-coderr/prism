@@ -10,7 +10,7 @@ describe('Share on X', () => {
   });
 
   it('writes each post word for word', () => {
-    expect(SHARE.profile(profileLink(ME, 'ace'))).toBe('My PRISM profile: seeprism.vercel.app/u/ace  @holdprism');
+    expect(SHARE.profile(profileLink(ME, 'ace'))).toBe('My honesty rep on @holdprism: seeprism.vercel.app/u/ace');
   });
 
   it("opens X's post composer with the text encoded (emoji, @, spaces, ·)", () => {

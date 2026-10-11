@@ -1,1 +1,1 @@
-[]
+[{ "path": "/api/launches", "source": "server/launches.ts", "cacheSeconds": 60, "maxDuration": 60 }]

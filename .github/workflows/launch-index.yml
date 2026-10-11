@@ -1,0 +1,44 @@
+# Keeps the vibe/vibe launch index fresh: every 30 minutes it reads the new blocks from Robinhood
+# Chain Testnet (public RPC, read-only) and republishes launches.json.gz as an asset of the
+# "launch-index" release, which /api/launches serves. Free for public repos; the only credential
+# is the workflow's own short-lived GITHUB_TOKEN (no secrets to set up).
+name: Launch index
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write # publish the release asset
+
+concurrency:
+  group: launch-index
+  cancel-in-progress: false
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180 # a first build reads ~207k launches (~20 minutes); later runs take a few minutes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Download the previous index
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download launch-index --pattern launches.json.gz --dir prev || echo "No previous index: first build"
+      - name: Read the new blocks
+        run: npx tsx packages/core/scripts/index-launches.ts prev/launches.json.gz launches.json.gz
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view launch-index >/dev/null 2>&1 || gh release create launch-index --prerelease --latest=false \
+            --title "Launch index (data)" \
+            --notes "Every vibe/vibe launch on Robinhood Chain Testnet, read from the chain. Updated automatically by .github/workflows/launch-index.yml; served by /api/launches."
+          gh release upload launch-index launches.json.gz --clobber

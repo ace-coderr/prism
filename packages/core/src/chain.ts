@@ -11,6 +11,8 @@ export const robinhoodChainTestnet = defineChain({
   blockExplorers: {
     default: { name: 'Robinhood Chain Explorer', url: 'https://explorer.testnet.chain.robinhood.com' },
   },
+  // the canonical Multicall3 (same address on every chain); its code is on 46630 (eth_getCode, 2026-10-11)
+  contracts: { multicall3: { address: '0xcA11bde05977b3631167028862bE2a173976CA11' } },
   testnet: true,
 });
 

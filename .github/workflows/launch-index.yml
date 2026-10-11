@@ -19,10 +19,10 @@ concurrency:
 jobs:
   index:
     runs-on: ubuntu-latest
-    timeout-minutes: 180 # a first build reads ~207k launches (~20 minutes); later runs take a few minutes
+    timeout-minutes: 180 # a first build reads ~223k launches (hours); later runs take a few minutes
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm

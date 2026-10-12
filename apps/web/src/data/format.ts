@@ -1,5 +1,5 @@
 import { formatUnits } from 'viem';
-import type { GemFacet } from '@prism/core';
+import { MIN_SCORE_REVIEWERS, type GemFacet } from '@prism/core';
 
 /** A token amount for people: "1.2M", "48,200", "0.0031". */
 export function formatTokens(base: string | bigint | null | undefined, decimals = 18): string {
@@ -46,4 +46,40 @@ export function facetStatus(f: Pick<GemFacet, 'state' | 'days'>): string {
   if (s.kind === 'sold') return f.days === 0 ? 'SOLD within a day' : `SOLD after ${f.days}d`;
   if (s.kind === 'trimmed') return `trimmed ${s.percent}% · ${daysShort(f.days)}`;
   return `holding ${daysShort(f.days)}`;
+}
+
+const compact = (n: number, digits = 3) =>
+  n >= 1000 ? new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(n) : n.toLocaleString('en-US', { maximumSignificantDigits: digits });
+
+/** An ETH amount: "12.4 ETH", "0.0031 ETH", "<0.0001 ETH". */
+export function formatEth(eth: number | null | undefined): string {
+  if (eth === null || eth === undefined || !Number.isFinite(eth)) return '–';
+  if (eth === 0) return '0 ETH';
+  if (eth < 0.0001) return '<0.0001 ETH';
+  return `${compact(eth)} ETH`;
+}
+
+/** The testnet USD value of an ETH amount: "$9.2k" (null when either is unknown). */
+export function formatUsd(eth: number | null | undefined, usdPerEth: number | null | undefined): string | null {
+  if (eth === null || eth === undefined || !usdPerEth || !Number.isFinite(eth)) return null;
+  const usd = eth * usdPerEth;
+  if (usd < 0.01) return '<$0.01';
+  return `$${usd >= 1000 ? compact(usd) : usd.toLocaleString('en-US', { maximumFractionDigits: usd < 10 ? 2 : 0 })}`;
+}
+
+/** A change as a signed percent: "+12.4%", "−3.1%", "0%". */
+export function formatChange(change: number | null | undefined): string {
+  if (change === null || change === undefined || !Number.isFinite(change)) return '–';
+  const p = change * 100;
+  if (Math.abs(p) < 0.05) return '0%';
+  const v = Math.abs(p) >= 1000 ? compact(Math.abs(p)) : Math.abs(p).toFixed(Math.abs(p) >= 100 ? 0 : 1);
+  return `${p > 0 ? '+' : '−'}${v}%`;
+}
+
+/** Why there's no score yet, with the token's real holder count when it's known. */
+export function noScoreText(reviewers: number, symbol: string, holders: number | null | undefined): string {
+  const after = `The score appears once ${MIN_SCORE_REVIEWERS} current holders review.`;
+  const of = holders != null ? ` of its ${holders.toLocaleString('en-US')} holder${holders === 1 ? '' : 's'}` : '';
+  if (reviewers === 0) return `No reviews yet${holders != null ? ` from its ${holders.toLocaleString('en-US')} holder${holders === 1 ? '' : 's'}` : ''}. ${after}`;
+  return `${reviewers}${of} ${reviewers === 1 ? 'has' : 'have'} reviewed $${symbol}. ${after}`;
 }

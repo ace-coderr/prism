@@ -8,8 +8,9 @@ import { ScoreBlock, ReviewList } from '../components/reviews';
 import { ShareOnX } from '../components/ShareOnX';
 import { SectionLabel } from '../components/design';
 import { GuideNote } from '../components/Viber';
+import { MarketStats, TokenAbout, TokenAvatar } from '../components/token';
 import { BuyOnVibe } from '../components/vibe';
-import { useToken, type TokenData } from '../data/api';
+import { useMarket, useToken, type TokenData } from '../data/api';
 import { dateText, formatTokens } from '../data/format';
 import { useHolding } from '../data/holding';
 import { OwnerChip, useProfile } from '../data/profiles';
@@ -45,15 +46,18 @@ function Launch({ data }: { data: TokenData }) {
   const a = data.asset;
   const token = getAddress(a.token);
   const setupTime = data.setup && 'createdAt' in data.setup ? data.setup.createdAt : null;
+  const holders = useMarket(token).data?.holders ?? null;
   return (
     <PageScroll>
-      <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-6">
         <DeepNav crumbs={[{ label: 'Home', to: '/' }, { label: `$${a.symbol}`, to: tokenPath(token) }]} />
         <Header asset={a} data={data} createdAt={setupTime} />
+        <MarketStats token={token} kind={a.kind} />
+        {a.kind === 'launch' && <TokenAbout token={token} />}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_1.1fr]">
-        <ScoreBlock score={data.score} symbol={a.symbol} />
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[1fr_1.1fr]">
+        <ScoreBlock score={data.score} symbol={a.symbol} holders={holders} />
         <ReviewAction asset={a} />
       </div>
 
@@ -79,55 +83,51 @@ function Launch({ data }: { data: TokenData }) {
 
 function Header({ asset: a, data, createdAt }: { asset: ReviewableAsset; data: TokenData; createdAt: number | null }) {
   const creator = useProfile(a.creator ?? undefined);
-  const progress = data.setup && 'progress' in data.setup ? data.setup.progress : null;
+  const market = useMarket(a.token).data;
   const isStock = a.kind === 'stock';
+  // the live read wins over the index (a graduation shows here before the index catches up)
+  const graduated = market ? market.status === 'graduated' : a.status === 'graduated';
   return (
-    <header className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-      <div className="min-w-0">
-        <SectionLabel>{isStock ? 'vibe/vibe test stock' : 'vibe/vibe launch'}</SectionLabel>
-        <h1 className="display-md mt-4 break-words">${a.symbol}</h1>
-        <p className="mt-2 break-words text-lg text-mist">{a.name}</p>
-        <div className="mt-5 flex flex-wrap items-center gap-2">
-          <span className="chip font-mono text-[11px] uppercase tracking-[0.1em] text-white">{isStock ? 'Test stock · no value' : `Paired with ${a.quote?.symbol ?? 'ETH'}`}</span>
-          {a.status === 'graduated' && <span className="chip font-mono text-[11px] uppercase tracking-[0.1em] text-lime">Graduated</span>}
-          {a.status === 'curve' && (
-            <span className="chip inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.1em] text-gold">
-              On curve{progress !== null ? ` · ${Math.round(progress * 100)}%` : ''}
-              {progress !== null && (
-                <span className="inline-block h-1.5 w-20 overflow-hidden rounded-full bg-white/10" aria-hidden>
-                  <span className="block h-full rounded-full bg-gold" style={{ width: `${Math.max(2, Math.round(progress * 100))}%` }} />
-                </span>
-              )}
-            </span>
+    <header className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+      <div className="flex min-w-0 items-start gap-4 sm:gap-6">
+        <TokenAvatar token={a.token} size={76} className="md:!h-28 md:!w-28" />
+        <div className="min-w-0">
+          <SectionLabel>{isStock ? 'vibe/vibe test stock' : 'vibe/vibe launch'}</SectionLabel>
+          <h1 className="display-md mt-3 break-words">{a.name}</h1>
+          <p className="mt-1 break-words font-mono text-lg font-bold text-lime">${a.symbol}</p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className="chip font-mono text-[11px] uppercase tracking-[0.1em] text-white">{isStock ? 'Test stock · no value' : `Paired with ${a.quote?.symbol ?? 'ETH'}`}</span>
+            {!isStock && graduated && <span className="chip font-mono text-[11px] uppercase tracking-[0.1em] text-lime">Graduated</span>}
+            {!isStock && !graduated && <span className="chip font-mono text-[11px] uppercase tracking-[0.1em] text-gold">On curve</span>}
+          </div>
+          <p className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-mist">
+            {a.creator && (
+              <span className="inline-flex items-center gap-2">
+                Created by <OwnerChip address={a.creator} profile={creator.profile} size={20} className="text-white" />
+              </span>
+            )}
+            {createdAt && <span>on {dateText(createdAt)}</span>}
+            <a href={explorerAddressUrl(a.token)} target="_blank" rel="noreferrer" className="break-all font-mono text-[11px] hover:text-lime">
+              {a.token} ↗
+            </a>
+          </p>
+          {a.quote?.kind === 'stock' && a.quote.address && (
+            <p className="mt-3 text-[13px] text-mist">
+              Paired with a test stock:{' '}
+              <Link to={tokenPath(a.quote.address)} className="text-white hover:text-lime">
+                see ${a.quote.symbol} and its reviews
+              </Link>
+            </p>
+          )}
+          {isStock && data.paired && (
+            <p className="mt-3 text-[13px] text-mist">
+              {data.paired.count.toLocaleString('en-US')} vibe/vibe launches are paired with ${a.symbol}.{' '}
+              <Link to={`/stocks#${a.symbol}`} className="text-white hover:text-lime">
+                See them
+              </Link>
+            </p>
           )}
         </div>
-        <p className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-mist">
-          {a.creator && (
-            <span className="inline-flex items-center gap-2">
-              Created by <OwnerChip address={a.creator} profile={creator.profile} size={20} className="text-white" />
-            </span>
-          )}
-          {createdAt && <span>on {dateText(createdAt)}</span>}
-          <a href={explorerAddressUrl(a.token)} target="_blank" rel="noreferrer" className="break-all font-mono text-[11px] hover:text-lime">
-            {a.token} ↗
-          </a>
-        </p>
-        {a.quote?.kind === 'stock' && a.quote.address && (
-          <p className="mt-3 text-[13px] text-mist">
-            Paired with a test stock:{' '}
-            <Link to={tokenPath(a.quote.address)} className="text-white hover:text-lime">
-              see ${a.quote.symbol} and its reviews
-            </Link>
-          </p>
-        )}
-        {isStock && data.paired && (
-          <p className="mt-3 text-[13px] text-mist">
-            {data.paired.count.toLocaleString('en-US')} vibe/vibe launches are paired with ${a.symbol}.{' '}
-            <Link to={`/stocks#${a.symbol}`} className="text-white hover:text-lime">
-              See them
-            </Link>
-          </p>
-        )}
       </div>
       <div className="shrink-0">
         <BuyOnVibe token={getAddress(a.token)} />

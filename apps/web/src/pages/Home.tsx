@@ -11,6 +11,7 @@ import { GuideNote } from '../components/Viber';
 import { useFeed } from '../data/api';
 import { ago, daysText, plural, repText } from '../data/format';
 import { OwnerChip, useProfiles } from '../data/profiles';
+import { TokenAvatar } from '../components/token';
 
 const STEPS = [
   { n: '01', title: 'Only holders can review', text: 'You can review a vibe/vibe launch or a test stock only while you hold it. No holders, no reviews.' },
@@ -91,6 +92,7 @@ export default function Home() {
               {feed.data?.topLaunches.slice(0, 6).map((l, i) => (
                 <Link key={l.token} to={tokenPath(l.token)} className="card card-hover flex items-center gap-4 p-4">
                   <span className="w-6 font-mono text-sm text-mist">{i + 1}</span>
+                  <TokenAvatar token={l.token} size={36} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-display text-lg font-bold">${l.symbol}</span>
                     <span className="block truncate text-[12px] text-mist">
@@ -133,7 +135,9 @@ function FeedReview({ review, caught = false }: { review: ReviewView; caught?: b
     <Link to={reviewPath(review.id)} className={`card card-hover flex flex-col gap-2 p-4 ${caught ? 'opacity-90' : ''}`}>
       <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <OwnerChip address={review.author} profile={profile} size={22} link={false} className="text-[14px] font-bold text-white" />
-        <span className="font-mono text-[12px] font-bold text-lime">${review.symbol}</span>
+        <span className="inline-flex items-center gap-1.5 font-mono text-[12px] font-bold text-lime">
+          <TokenAvatar token={review.token} size={20} />${review.symbol}
+        </span>
         <span className="ml-auto">
           <StatusPill review={review} />
         </span>

@@ -17,11 +17,12 @@ import {
   type ScoreSummary,
 } from '@prism/core';
 import { useRefreshReviews } from '../data/api';
-import { daysText, formatShare, formatTokens, repText } from '../data/format';
+import { daysText, formatShare, formatTokens, noScoreText, repText } from '../data/format';
 import { OwnerChip, useProfiles, type Profile } from '../data/profiles';
 import { TARGET_CHAIN, wagmiConfig } from '../wallet/config';
 import { StepList, useTxSteps } from '../wallet/steps';
 import { SwitchNetworkButton, WalletButton, useWallet } from '../wallet/WalletButton';
+import { TokenAvatar } from './token';
 
 export const reviewsContract = () => getDeployment(TARGET_CHAIN.id)?.prismReviews;
 
@@ -85,14 +86,14 @@ export function StatusPill({ review }: { review: Pick<ReviewView, 'state' | 'day
 // ------------------------------------------------------------------ score
 
 /** The big true colors number, or "Not enough reviews yet" below 3 holding reviewers. */
-export function ScoreBlock({ score, symbol, compact = false }: { score: ScoreSummary; symbol: string; compact?: boolean }) {
+export function ScoreBlock({ score, symbol, holders, compact = false }: { score: ScoreSummary; symbol: string; holders?: number | null; compact?: boolean }) {
   if (score.score === null) {
     return (
       <div className={compact ? '' : 'card p-6 md:p-8'}>
         <p className="section-label">True colors</p>
         <p className={`mt-3 font-display font-bold tracking-[-0.03em] text-mist ${compact ? 'text-2xl' : 'text-4xl md:text-5xl'}`}>Not enough reviews yet</p>
         <p className="mt-3 text-[15px] leading-relaxed text-mist">
-          {score.reviewers} of {MIN_SCORE_REVIEWERS} holders have reviewed ${symbol}. The score shows once {MIN_SCORE_REVIEWERS} people who still hold it have.
+          {noScoreText(score.reviewers, symbol, holders)}
         </p>
       </div>
     );
@@ -186,8 +187,8 @@ export function ReviewCard({ review, profile, showToken = false, footer }: { rev
       <div className="flex flex-wrap items-center gap-3">
         <Stars rating={review.rating} />
         {showToken && (
-          <Link to={tokenPath(review.token)} className="font-mono text-[12px] font-bold text-lime hover:underline">
-            ${review.symbol}
+          <Link to={tokenPath(review.token)} className="inline-flex items-center gap-1.5 font-mono text-[12px] font-bold text-lime hover:underline">
+            <TokenAvatar token={review.token} size={20} />${review.symbol}
           </Link>
         )}
       </div>

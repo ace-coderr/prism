@@ -8,9 +8,10 @@ import { ShareOnX } from '../components/ShareOnX';
 import { SectionLabel } from '../components/design';
 import { GuideNote } from '../components/Viber';
 import { BuyOnVibe } from '../components/vibe';
-import { useReview } from '../data/api';
+import { useMarket, useReview } from '../data/api';
 import { dateText } from '../data/format';
 import { useProfiles } from '../data/profiles';
+import { TokenAvatar } from '../components/token';
 
 /** /r/:id: one review, shareable: the review, its token's score and the author's history with it. */
 export default function ReviewPage() {
@@ -19,6 +20,7 @@ export default function ReviewPage() {
   const q = useReview(valid ? id : undefined);
   const r = q.data?.review;
   const profiles = useProfiles([...(q.data?.history ?? []).map((v) => v.author as Address)]);
+  const holders = useMarket(r?.token).data?.holders ?? null;
   const crumbs = [
     { label: 'Home', to: '/' },
     ...(r ? [{ label: `$${r.symbol}`, to: tokenPath(r.token) }] : []),
@@ -37,8 +39,8 @@ export default function ReviewPage() {
             <SectionLabel>Review #{r.id}</SectionLabel>
             <h1 className="display-md">
               A review of{' '}
-              <Link to={tokenPath(r.token)} className="text-lime hover:underline">
-                ${r.symbol}
+              <Link to={tokenPath(r.token)} className="inline-flex items-center gap-3 align-middle text-lime hover:underline">
+                <TokenAvatar token={r.token} size={44} />${r.symbol}
               </Link>
             </h1>
             <p className="text-[14px] text-mist">
@@ -56,7 +58,7 @@ export default function ReviewPage() {
           <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
             <ReviewCard review={r} profile={profiles.get(r.author.toLowerCase())} showToken />
             <div className="flex flex-col gap-6">
-              <ScoreBlock score={q.data.score} symbol={r.symbol} />
+              <ScoreBlock score={q.data.score} symbol={r.symbol} holders={holders} />
               <div className="flex flex-wrap gap-3">
                 <ShareOnX text={SHARE_TEXT.review(r.symbol, r.rating, r.id)} label="Share this review" />
                 <Link to={tokenPath(r.token)} className="btn btn-outline">

@@ -21,7 +21,8 @@ Test assets only, no real value.
 | Page | What's there |
 | --- | --- |
 | `/` | Search (name, $SYMBOL or address), how it works, live feeds: latest reviews, caught selling, top launches, top honest reviewers. The living gem: a 3D cut gem whose facets are the latest real reviews (colored by rating, sized by position, grey and cracked once SOLD; point at one to see who said what), clear glass until the first review, and a still picture on slow devices or with reduced motion. |
-| `/t/<address>` | A launch or test stock: pair, on curve (with bonding progress) or graduated, creator and date, **how it's set up** (read from its contracts), true colors, reviews (Holding · Trimmed · SOLD · All), "Make it permanent" on unmarked sales, Buy on vibe/vibe, share and a creator kit (live badge, "Ask my holders to review"). |
+| `/t/<address>` | A launch or test stock: its picture, name, $SYMBOL, pair, on curve or graduated, creator and date; **market cap · holders · 24h volume · 24h change · progress**; the creator's description and links; **how it's set up** (read from its contracts), true colors, reviews (Holding · Trimmed · SOLD · All), "Make it permanent" on unmarked sales, Buy on vibe/vibe, share and a creator kit (live badge, "Ask my holders to review"). |
+| `/search?q=` | Every match with its picture, pair, status, market cap, holders and PRISM's reviews and score (the search box shows the top 8 the same way). |
 | `/t/<address>/review` | Write or update a review: login, holder check, rating + 280 bytes of text, a preview of exactly what's recorded, one transaction, then Share on X. |
 | `/r/<id>` | One review, shareable (with its own share image). |
 | `/u/<name or address>` | Honesty rep, counts, badges (First review, Truth keeper, Held 30 days, Early reviewer), reviews. Edit profile sets your PrismProfiles username. |
@@ -62,6 +63,26 @@ Deployed from the owner's browser wallet via the dev-only `/deploy` page, source
 `npx tsx packages/core/scripts/check-deployment.ts` re-checks, read-only, that PrismReviews' creation
 transaction and on-chain code match this repo's compiled contract byte for byte.
 
+## Token pictures, descriptions and market data
+
+All read from the chain and the token's own IPFS metadata, never from vibe/vibe's API:
+
+- **Metadata:** every launch event (all four factory generations) carries an `ipfs://` URI; gen 0/1/2
+  events also carry keccak256 of the file. `/api/meta` reads the event, races several public IPFS
+  gateways and keeps a file only if its SHA-256 equals the raw CID (and, for gen 0/1/2, its
+  keccak256 equals the event's digest). Pictures (`/img/t/<address>.png?s=96`) are checked the same
+  way, decoded (WebP via libwebp, others via resvg), centre-cropped, resized and CDN-cached; no
+  picture or a broken one shows the identicon. `TOKEN_HIDE` in `packages/core/src/site.ts` hides a
+  token's picture and description if ever needed.
+- **Market (`/api/market`):** on a curve, vibe/vibe's own maths from the curve's state (v6:
+  80·T·S²/(16·S − 15·sold)², progress = raised / target; gen 0/1/2: `fdvWei`, ETH raised / graduation
+  target); graduated launches and test stocks, the Uniswap V4 pool (price, market cap = price ×
+  supply, liquidity). 24h volume, buys and sells from the curve's trade events and the pool's swaps;
+  the 24h change is exact on a curve (its state 24h ago is rebuilt from the trades since). Holders are
+  every address holding some, from all Transfer events, minus the curve, the pool manager, the token
+  itself (its reward pool) and burn addresses. USD is the ETH/USDG test pool's price: a testnet value.
+  Cached for a few minutes.
+
 ## vibe/vibe referral
 
 "Buy on vibe/vibe" links carry PRISM's vibe/vibe invite (never for PRISM's own wallet); it's set in `VIBE_REFERRAL` in `packages/core/src/site.ts`.
@@ -92,7 +113,7 @@ minutes on GitHub Actions, reads the new blocks and republishes `launches.json.g
 | Path | What |
 | --- | --- |
 | `apps/web` | Vite + React + TypeScript (Tailwind, Motion, three.js for the hero, wagmi + Privy) |
-| `apps/web/server` | Vercel functions: `data` (all `/api/*` JSON and `/badge/*.svg`), `og` (share images, resvg), `page` (share tags for `/t/*` and `/r/*`); routes in `server/routes.json` |
+| `apps/web/server` | Vercel functions: `data` (all `/api/*` JSON and `/badge/*.svg`), `og` (share images, resvg), `page` (share tags for `/t/*` and `/r/*`), `img` (token pictures); routes in `server/routes.json` |
 | `packages/core` | Pure TS shared by the app, the functions and the scripts: launch index, scoring, reviews, setup, site links (vitest) |
 | `contracts` | Hardhat: PrismReviews, PrismProfiles, PrismCrystal (legacy) |
 

@@ -13,6 +13,7 @@ import Leaderboards from './pages/Leaderboards';
 import Legacy from './pages/Legacy';
 import Profile from './pages/Profile';
 import ReviewPage from './pages/ReviewPage';
+import Search from './pages/Search';
 import Stocks from './pages/Stocks';
 import WriteReview from './pages/WriteReview';
 
@@ -68,6 +69,7 @@ export default function App() {
               <Route path="/u/:id" element={<Profile />} />
               <Route path="/leaderboards" element={<Leaderboards />} />
               <Route path="/stocks" element={<Stocks />} />
+              <Route path="/search" element={<Search />} />
               <Route path="/legacy" element={<Legacy />} />
               {V1_ROUTES.map((p) => (
                 <Route key={p} path={p} element={<Archived />} />

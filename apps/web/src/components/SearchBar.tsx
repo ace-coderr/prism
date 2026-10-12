@@ -1,8 +1,9 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { isAddress } from 'viem';
-import { tokenPath, type ReviewableAsset } from '@prism/core';
-import { useSearch } from '../data/api';
+import { tokenPath } from '@prism/core';
+import { useSearch, type SearchItem } from '../data/api';
+import { SearchRow } from './SearchRow';
 
 /** Debounced value: the search waits until typing pauses. */
 function useDebounced<T>(value: T, ms: number): T {
@@ -14,15 +15,12 @@ function useDebounced<T>(value: T, ms: number): T {
   return v;
 }
 
-const kindLabel = (a: ReviewableAsset) =>
-  a.kind === 'stock' ? 'test stock' : `${a.status === 'graduated' ? 'graduated' : 'on curve'} · paired with ${a.quote?.symbol ?? 'ETH'}`;
-
 /**
  * The big search: name, symbol or address. Results open the token's page; a full address opens
  * its page directly (Enter), so a launch that isn't indexed yet still has a way in.
  */
-export function SearchBar({ autoFocus = false, size = 'lg' }: { autoFocus?: boolean; size?: 'lg' | 'md' }) {
-  const [q, setQ] = useState('');
+export function SearchBar({ autoFocus = false, size = 'lg', initial = '' }: { autoFocus?: boolean; size?: 'lg' | 'md'; initial?: string }) {
+  const [q, setQ] = useState(initial);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const debounced = useDebounced(q, 200);
@@ -39,7 +37,7 @@ export function SearchBar({ autoFocus = false, size = 'lg' }: { autoFocus?: bool
   }, []);
   useEffect(() => setActive(0), [debounced]);
 
-  const go = (a: ReviewableAsset) => {
+  const go = (a: SearchItem) => {
     setOpen(false);
     setQ('');
     navigate(tokenPath(a.token));
@@ -50,7 +48,11 @@ export function SearchBar({ autoFocus = false, size = 'lg' }: { autoFocus?: bool
     else if (isAddress(q.trim(), { strict: false })) {
       setOpen(false);
       navigate(tokenPath(q.trim()));
-    }
+    } else if (q.trim()) all();
+  };
+  const all = () => {
+    setOpen(false);
+    navigate(`/search?q=${encodeURIComponent(q.trim())}`);
   };
 
   return (
@@ -112,14 +114,15 @@ export function SearchBar({ autoFocus = false, size = 'lg' }: { autoFocus?: bool
                     onClick={() => go(a)}
                     className={`flex w-full items-center gap-3 px-4 py-3 text-left transition ${i === active ? 'bg-white/5' : ''}`}
                   >
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-display font-bold text-white">${a.symbol}</span>
-                      <span className="block truncate text-[12px] text-mist">{a.name}</span>
-                    </span>
-                    <span className="shrink-0 text-right font-mono text-[10px] uppercase tracking-[0.1em] text-mist">{kindLabel(a)}</span>
+                    <SearchRow a={a} />
                   </button>
                 </li>
               ))}
+              <li className="border-t border-white/[0.06]">
+                <button type="button" onClick={all} className="w-full px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.1em] text-mist hover:text-white">
+                  All results for “{debounced.trim()}” →
+                </button>
+              </li>
             </ul>
           )}
         </div>

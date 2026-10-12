@@ -6,6 +6,7 @@ import { SectionLabel } from '../components/design';
 import { GuideNote } from '../components/Viber';
 import { useStocks } from '../data/api';
 import { plural } from '../data/format';
+import { MarketLine, TokenAvatar } from '../components/token';
 
 /** The five test stocks: their reviews, and the vibe/vibe launches paired with each. */
 export default function Stocks() {
@@ -31,9 +32,11 @@ export default function Stocks() {
           {q.data.stocks.map(({ asset, score, paired, pairedCount }) => (
             <section key={asset.token} id={`stock-${asset.symbol}`} className="flex scroll-mt-28 flex-col gap-4">
               <Link to={tokenPath(asset.token)} className="card card-hover flex flex-wrap items-center gap-4 p-5">
+                <TokenAvatar token={asset.token} size={48} />
                 <span className="min-w-0 flex-1">
                   <span className="block font-display text-2xl font-bold">${asset.symbol}</span>
                   <span className="block truncate text-[13px] text-mist">{asset.name}</span>
+                  <MarketLine token={asset.token} className="block truncate text-[12px] text-mist" />
                 </span>
                 <span className="text-right">
                   {score.score === null ? (
@@ -61,6 +64,7 @@ export default function Stocks() {
                   {paired.map((l) => (
                     <li key={l.token}>
                       <Link to={tokenPath(l.token)} className="card card-hover flex items-center gap-3 p-4">
+                        <TokenAvatar token={l.token} size={36} />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate font-display font-bold">${l.symbol}</span>
                           <span className="block truncate text-[12px] text-mist">{l.name}</span>

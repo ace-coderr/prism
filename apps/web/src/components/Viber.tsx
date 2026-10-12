@@ -51,7 +51,8 @@ export function GuideNote({ index, children, action, className = '' }: { index: 
       <ViberImage viber={viberAt(index)} size={72} eager className="rounded-2xl bg-panel" />
       <div className="relative min-w-0 flex-1 rounded-2xl rounded-tl-md border border-white/10 bg-panel px-5 py-4 text-[15px] leading-relaxed text-white/90">
         {children}
-        {action && <div className="mt-4 flex flex-wrap items-center gap-3">{action}</div>}
+        {/* buttons may wrap their text rather than push the page wider on a narrow phone */}
+        {action && <div className="mt-4 flex flex-wrap items-center gap-3 [&>*]:max-w-full [&_.btn]:whitespace-normal [&_.btn]:text-center">{action}</div>}
       </div>
     </div>
   );

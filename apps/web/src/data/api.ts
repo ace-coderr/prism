@@ -61,8 +61,39 @@ export interface LeaderboardData {
 export interface StocksData {
   stocks: Array<{ asset: ReviewableAsset; score: ScoreSummary; paired: ReviewableAsset[]; pairedCount: number }>;
 }
+/** A search result: the asset plus PRISM's own numbers (null while reviews can't be read). */
+export type SearchItem = ReviewableAsset & { reviews: number | null; score: ScoreSummary | null };
 export interface SearchData {
-  items: ReviewableAsset[];
+  items: SearchItem[];
+}
+
+/** /api/meta: the launch's own metadata from IPFS, verified against its launch event. */
+export interface MetaData {
+  token: Address;
+  status: 'ok' | 'none' | 'unavailable' | 'hidden';
+  description: string | null;
+  image: { cid: string; mimeType: string } | null;
+  links: { website?: string; x?: string; telegram?: string; discord?: string };
+  verified: 'cid' | 'digest' | null;
+  uri: string | null;
+}
+
+/** /api/market: price, market cap, progress, holders and the last 24h, read from the chain. */
+export interface MarketData {
+  token: Address;
+  status: 'curve' | 'graduated' | 'stock';
+  progress: number | null;
+  pair: { symbol: string; address: Address | null; decimals: number };
+  ethPerPair: number | null;
+  cap: string | null;
+  capEth: number | null;
+  priceEth: number | null;
+  liquidityEth: number | null;
+  usdPerEth: number | null;
+  holders: number | null;
+  day: { volume: string; volumeEth: number | null; buys: number; sells: number; change: number | null } | null;
+  block: number;
+  updatedAt: number;
 }
 
 const opts = { staleTime: 15_000, retry: 1 } as const;
@@ -76,6 +107,13 @@ export const useReview = (id: string | undefined): UseQueryResult<ReviewData, Ap
 export const useReviewer = (address: string | undefined): UseQueryResult<ReviewerData, ApiError> =>
   useQuery({ queryKey: ['api', 'reviewer', address?.toLowerCase()], enabled: !!address, queryFn: () => api<ReviewerData>(`/api/reviewer?address=${address}`), ...opts });
 
+export const useMeta = (token: string | undefined): UseQueryResult<MetaData, ApiError> =>
+  useQuery({ queryKey: ['api', 'meta', token?.toLowerCase()], enabled: !!token, queryFn: () => api<MetaData>(`/api/meta?token=${token}`), staleTime: 3_600_000, retry: 1 });
+
+/** Market details refresh every few minutes (the server reads the chain; the CDN caches 3 minutes). */
+export const useMarket = (token: string | undefined): UseQueryResult<MarketData, ApiError> =>
+  useQuery({ queryKey: ['api', 'market', token?.toLowerCase()], enabled: !!token, queryFn: () => api<MarketData>(`/api/market?token=${token}`), staleTime: 120_000, refetchInterval: 180_000, retry: 1 });
+
 export const useFeed = (): UseQueryResult<FeedData, ApiError> => useQuery({ queryKey: ['api', 'feed'], queryFn: () => api<FeedData>('/api/feed'), ...opts });
 
 export const useLeaderboards = (): UseQueryResult<LeaderboardData, ApiError> =>
@@ -83,11 +121,11 @@ export const useLeaderboards = (): UseQueryResult<LeaderboardData, ApiError> =>
 
 export const useStocks = (): UseQueryResult<StocksData, ApiError> => useQuery({ queryKey: ['api', 'stocks'], queryFn: () => api<StocksData>('/api/stocks'), ...opts });
 
-export const useSearch = (q: string): UseQueryResult<SearchData, ApiError> =>
+export const useSearch = (q: string, limit = 8): UseQueryResult<SearchData, ApiError> =>
   useQuery({
-    queryKey: ['api', 'search', q.trim().toLowerCase()],
+    queryKey: ['api', 'search', q.trim().toLowerCase(), limit],
     enabled: q.trim().length > 0,
-    queryFn: () => api<SearchData>(`/api/launches?q=${encodeURIComponent(q.trim())}&limit=8`),
+    queryFn: () => api<SearchData>(`/api/launches?q=${encodeURIComponent(q.trim())}&limit=${limit}`),
     staleTime: 60_000,
     retry: 1,
   });

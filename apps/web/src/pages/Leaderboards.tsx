@@ -7,6 +7,7 @@ import { GuideNote } from '../components/Viber';
 import { useLeaderboards } from '../data/api';
 import { plural, repText } from '../data/format';
 import { OwnerChip, useProfiles } from '../data/profiles';
+import { MarketLine, TokenAvatar } from '../components/token';
 
 const TABS = [
   { id: 'launches', label: 'Launches', note: `By true colors, from at least ${MIN_SCORE_REVIEWERS} holders still in.` },
@@ -54,11 +55,13 @@ export default function Leaderboards() {
                 <li key={l.token}>
                   <Link to={tokenPath(l.token)} className="card card-hover flex items-center gap-4 p-4">
                     <span className="w-8 font-mono text-sm text-mist">{i + 1}</span>
+                    <TokenAvatar token={l.token} size={40} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-display text-lg font-bold">${l.symbol}</span>
                       <span className="block truncate text-[12px] text-mist">
                         {l.name} · {plural(l.reviewers, 'holder')} still in{l.sold ? ` · ${l.sold} sold` : ''}
                       </span>
+                      <MarketLine token={l.token} className="block truncate text-[12px] text-mist" />
                     </span>
                     <span className="font-display text-3xl font-bold tabular-nums" style={{ color: scoreColor(l.score) }}>
                       {formatScore(l.score)}

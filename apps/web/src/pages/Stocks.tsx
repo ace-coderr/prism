@@ -33,7 +33,7 @@ export default function Stocks() {
             <section key={asset.token} id={`stock-${asset.symbol}`} className="flex scroll-mt-28 flex-col gap-4">
               <Link to={tokenPath(asset.token)} className="card card-hover flex flex-wrap items-center gap-4 p-5">
                 <TokenAvatar token={asset.token} size={48} />
-                <span className="min-w-0 flex-1">
+                <span className="min-w-[11rem] flex-1">
                   <span className="block font-display text-2xl font-bold">${asset.symbol}</span>
                   <span className="block truncate text-[13px] text-mist">{asset.name}</span>
                   <MarketLine token={asset.token} className="block truncate text-[12px] text-mist" />

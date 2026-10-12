@@ -1,7 +1,8 @@
 /**
  * GET /api/og/t/<address>.png and /api/og/r/<id>.png (rewritten to /api/og?kind=…&id=…): the share
  * images X and other apps show for a launch page and a review page. Data comes from this site's own
- * /api/token and /api/review (CDN-cached), the username from PrismProfiles; rendered with resvg.
+ * /api/token, /api/market, /api/review and the token picture route (all CDN-cached), the username
+ * from PrismProfiles; rendered with resvg.
  * Anything missing falls back to the site's own card, never an error image.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -26,6 +27,17 @@ async function getJson<T>(url: string): Promise<T | null> {
   }
 }
 
+/** The token's picture (this site's own cached image route) as a data: URI, or null. */
+async function pictureOf(origin: string, token: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${origin}/img/t/${token}.png?s=192`, { signal: AbortSignal.timeout(12_000) });
+    if (!res.ok || !(res.headers.get('content-type') ?? '').startsWith('image/png')) return null;
+    return `data:image/png;base64,${Buffer.from(await res.arrayBuffer()).toString('base64')}`;
+  } catch {
+    return null;
+  }
+}
+
 async function usernameOf(address: Address): Promise<string | null> {
   const contract = getDeployment(robinhoodChainTestnet.id)?.prismProfiles;
   if (!contract) return null;
@@ -42,15 +54,21 @@ type ReviewBody = { review: ReviewView };
 
 export async function cardSvg(origin: string, kind: string, id: string): Promise<string | null> {
   if (kind === 't' && isAddress(id, { strict: false })) {
-    const t = await getJson<TokenBody>(`${origin}/api/token?address=${id}`);
+    const [t, image, market] = await Promise.all([
+      getJson<TokenBody>(`${origin}/api/token?address=${id}`),
+      pictureOf(origin, id),
+      getJson<{ status: string; progress: number | null }>(`${origin}/api/market?token=${id}`),
+    ]);
     if (!t) return null;
     return launchCardSvg({
+      image,
       token: t.asset.token,
       symbol: t.asset.symbol,
       name: t.asset.name,
       pair: t.asset.quote?.symbol ?? 'ETH',
-      status: t.asset.status,
-      progress: t.setup?.progress ?? null,
+      // the live read wins over the index (a graduation shows before the index catches up)
+      status: t.asset.kind === 'stock' ? null : market ? (market.status === 'graduated' ? 'graduated' : 'curve') : t.asset.status,
+      progress: market?.progress ?? t.setup?.progress ?? null,
       score: t.score,
     });
   }

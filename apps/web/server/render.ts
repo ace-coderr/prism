@@ -30,7 +30,10 @@ function load(): Promise<Uint8Array[]> {
         return '';
       }
     })()]);
-    await initWasm(readFileSync(wasm));
+    // initWasm works once per process (a dev-server module reload runs this again)
+    await initWasm(readFileSync(wasm)).catch((e: Error) => {
+      if (!/already initialized/i.test(e.message)) throw e;
+    });
     return FONT_FILES.map((f) => new Uint8Array(readFileSync(firstExisting([join(here, 'fonts', f), join(here, '../server/fonts', f)]))));
   })();
   return ready;

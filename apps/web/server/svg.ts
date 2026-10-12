@@ -76,6 +76,8 @@ export interface LaunchCard {
   status: 'curve' | 'graduated' | null;
   progress: number | null;
   score: ScoreSummary;
+  /** the token's picture as a data: URI (PNG), or null */
+  image?: string | null;
 }
 
 export function launchCardSvg(c: LaunchCard): string {
@@ -97,9 +99,16 @@ export function launchCardSvg(c: LaunchCard): string {
 <text x="1136" y="410" text-anchor="end" font-family="${MONO}" font-size="24" fill="${MIST}">${s.reviewers} of 3 holders so far</text>`
       : `<text x="1136" y="330" text-anchor="end" font-family="${GROTESK}" font-weight="700" font-size="190" letter-spacing="-6" fill="${scoreColor(s.score)}">${formatScore(s.score)}</text>
 <text x="1136" y="384" text-anchor="end" font-family="${MONO}" font-size="24" fill="${WHITE}">TRUE COLORS · from ${s.reviewers} holder${s.reviewers === 1 ? '' : 's'} still in</text>`;
+  const sym = fit(`$${drawable(c.symbol)}`, 11);
+  const symSize = sym.length <= 7 ? 88 : sym.length <= 9 ? 68 : 56;
+  const picture = c.image
+    ? `<clipPath id="pic"><rect x="64" y="160" width="156" height="156" rx="36"/></clipPath><rect x="64" y="160" width="156" height="156" rx="36" fill="${LINE}"/><image x="64" y="160" width="156" height="156" preserveAspectRatio="xMidYMid slice" clip-path="url(#pic)" href="${c.image}"/><rect x="64" y="160" width="156" height="156" rx="36" fill="none" stroke="${LINE}" stroke-width="3"/>`
+    : '';
+  const tx = c.image ? 252 : 64;
   return frame(
-    `<text x="64" y="270" font-family="${GROTESK}" font-weight="700" font-size="${c.symbol.length > 9 ? 76 : 104}" letter-spacing="-3" fill="${WHITE}">${escapeXml(fit(`$${drawable(c.symbol)}`, 13))}</text>
-<text x="64" y="334" font-family="${MONO}" font-size="30" fill="${MIST}">${escapeXml(fit(drawable(c.name), 30))}</text>
+    `${picture}
+<text x="${tx}" y="${c.image ? 248 : 270}" font-family="${GROTESK}" font-weight="700" font-size="${c.image ? symSize : c.symbol.length > 9 ? 76 : 104}" letter-spacing="-3" fill="${WHITE}">${escapeXml(c.image ? sym : fit(`$${drawable(c.symbol)}`, 13))}</text>
+<text x="${tx}" y="${c.image ? 300 : 334}" font-family="${MONO}" font-size="30" fill="${MIST}">${escapeXml(fit(drawable(c.name), c.image ? 22 : 30))}</text>
 ${pills.join('')}
 ${right}`,
     `/t/${short(c.token)}`,

@@ -9,6 +9,8 @@
  *   /api/feed                        Home: latest, caught selling, top launches, top reviewers
  *   /api/leaderboards                launches, reviewers, truth keepers
  *   /api/stocks                      the test stocks, their scores and the launches paired with them
+ *   /api/meta?token=0x…              a launch's own metadata: description, picture, links (IPFS, verified)
+ *   /api/market?token=0x…            price, market cap, progress, holders, liquidity and the last 24h
  *   /badge/0x….svg                   a live true colors badge for creators
  *
  * Everything comes from the chain (public RPC, read-only): the launch index (see launchIndex.ts),
@@ -34,9 +36,19 @@ import {
 import { client, json } from './chain';
 import { currentIndex } from './launchIndex';
 import { reviewState, type ReviewState } from './reviewState';
+import { marketOf } from './marketData';
 import { badgeSvg } from './svg';
+import { tokenMeta } from './tokenMeta';
 
 export const CACHE_CONTROL = 'public, max-age=0, s-maxage=20, stale-while-revalidate=120';
+
+/** A body with its own cache lifetime (the default is CACHE_CONTROL). */
+class Cached {
+  constructor(
+    readonly body: unknown,
+    readonly cache: string,
+  ) {}
+}
 
 class HttpError extends Error {
   constructor(
@@ -87,7 +99,20 @@ const routes: Record<string, (url: URL, fresh: boolean) => Promise<unknown>> = {
       return { ...meta, asset };
     }
     const q = url.searchParams.get('q');
-    if (q !== null) return { ...meta, items: searchAssets(assets, q, int(url.searchParams.get('limit'), 20, 50)) };
+    if (q !== null) {
+      const items = searchAssets(assets, q, int(url.searchParams.get('limit'), 20, 50));
+      // PRISM's own numbers next to each result: current reviews and the true colors score
+      const s = await reviewState().catch(() => null);
+      return {
+        ...meta,
+        items: items.map((a) => {
+          if (!s) return { ...a, reviews: null, score: null };
+          const k = a.token.toLowerCase();
+          const reviews = s.world.views.filter((v) => v.token.toLowerCase() === k && v.state.kind !== 'replaced').length;
+          return { ...a, reviews, score: reviews ? tokenScore(s.world, a.token, s.balances) : null };
+        }),
+      };
+    }
     const limit = int(url.searchParams.get('limit'), 24, 100);
     const offset = int(url.searchParams.get('offset'), 0, Number.MAX_SAFE_INTEGER);
     return { ...meta, stocks: reviewableStocks(), items: assets.filter((a) => a.kind === 'launch').slice(offset, offset + limit) };
@@ -111,6 +136,24 @@ const routes: Record<string, (url: URL, fresh: boolean) => Promise<unknown>> = {
       reviews,
       paired: asset.kind === 'stock' ? { count: pairedWith(s, address).length } : null,
     };
+  },
+
+  async meta(url) {
+    const address = addressParam(url, 'token');
+    const { assetByToken, launchByToken } = await currentIndex();
+    if (!assetByToken.has(address.toLowerCase())) throw new HttpError(404, 'Not a test stock or a vibe/vibe launch.');
+    const body = await tokenMeta(address, launchByToken.get(address.toLowerCase()) ?? null);
+    // a launch's metadata never changes (its URI is in the launch event); IPFS outages are retried soon
+    return new Cached(body, body.status === 'unavailable' ? 'public, max-age=0, s-maxage=60' : 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800');
+  },
+
+  async market(url) {
+    const address = addressParam(url, 'token');
+    const { assetByToken, launchByToken } = await currentIndex();
+    const asset = assetByToken.get(address.toLowerCase());
+    if (!asset) throw new HttpError(404, 'Not a test stock or a vibe/vibe launch.');
+    const body = await marketOf(asset, launchByToken.get(address.toLowerCase()) ?? null);
+    return new Cached(body, 'public, max-age=60, s-maxage=180, stale-while-revalidate=600');
   },
 
   async review(url, fresh) {
@@ -205,8 +248,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     const fn = routes[route];
     if (!fn) throw new HttpError(404, 'Not found');
-    const body = await fn(url, fresh);
-    return send(res, req, 200, json(body), 'application/json; charset=utf-8', fresh ? 'no-store' : CACHE_CONTROL);
+    const out = await fn(url, fresh);
+    const [body, cache] = out instanceof Cached ? [out.body, out.cache] : [out, CACHE_CONTROL];
+    return send(res, req, 200, json(body), 'application/json; charset=utf-8', fresh ? 'no-store' : cache);
   } catch (e) {
     const status = e instanceof HttpError ? e.status : 503;
     const message = e instanceof HttpError ? e.message : 'Data isn’t available right now. Try again in a minute.';

@@ -39,6 +39,7 @@ async function fn(route, source, maxDuration, assets = []) {
   // files the function reads at runtime, next to its index.mjs
   if (assets.includes('wasm')) copyFileSync(createRequire(import.meta.url).resolve('@resvg/resvg-wasm/index_bg.wasm'), join(dir, 'index_bg.wasm'));
   if (assets.includes('fonts')) cpSync(join(web, 'server/fonts'), join(dir, 'fonts'), { recursive: true });
+  if (assets.includes('webp')) copyFileSync(createRequire(import.meta.url).resolve('@jsquash/webp/codec/dec/webp_dec.wasm'), join(dir, 'webp_dec.wasm'));
   if (assets.includes('html')) copyFileSync(join(web, 'dist/index.html'), join(dir, 'index.html'));
   writeFileSync(
     join(dir, '.vc-config.json'),

@@ -2,12 +2,14 @@
   "functions": [
     { "name": "data", "source": "server/data.ts", "maxDuration": 60 },
     { "name": "og", "source": "server/og.ts", "maxDuration": 30, "assets": ["wasm", "fonts"] },
-    { "name": "page", "source": "server/page.ts", "maxDuration": 15, "assets": ["html"] }
+    { "name": "page", "source": "server/page.ts", "maxDuration": 15, "assets": ["html"] },
+    { "name": "img", "source": "server/img.ts", "maxDuration": 30, "assets": ["wasm", "fonts", "webp"] }
   ],
   "routes": [
-    { "src": "^/api/(launches|token|review|reviewer|feed|leaderboards|stocks)$", "dest": "/api/data?route=$1" },
+    { "src": "^/api/(launches|token|review|reviewer|feed|leaderboards|stocks|meta|market)$", "dest": "/api/data?route=$1" },
     { "src": "^/badge/(0x[0-9a-fA-F]{40})\\.svg$", "dest": "/api/data?route=badge&address=$1" },
     { "src": "^/api/og/(t|r)/([^/]+)\\.png$", "dest": "/api/og?kind=$1&id=$2" },
+    { "src": "^/img/t/(0x[0-9a-fA-F]{40})\\.png$", "dest": "/api/img?token=$1" },
     { "src": "^/(t|r)/([^/]+)/?$", "dest": "/api/page?kind=$1&id=$2", "devSkip": true }
   ]
 }

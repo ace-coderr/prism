@@ -42,7 +42,7 @@ export type LaunchSetup =
       airdrop: { wallets: number; tokens: bigint } | null;
       projectTreasury: Address | null;
       createdAt: number | null;
-      /** 0..1 of the curve sold; 1 once graduated */
+      /** 0..1: what the curve has raised of its graduation target; 1 once graduated */
       progress: number | null;
       graduated: boolean | null;
     }
@@ -122,6 +122,8 @@ const v6CurveAbi = parseAbi([
   'function complete() view returns (bool)',
   'function createdAt() view returns (uint256)',
   'function projectTreasury() view returns (address)',
+  'function pairPrincipal() view returns (uint128)',
+  'function targetPairUnits() view returns (uint256)',
 ]);
 const v6TokenAbi = parseAbi([
   'function packedWeights() view returns (uint64)',
@@ -136,6 +138,8 @@ const feeCurveAbi = parseAbi([
   'function graduated() view returns (bool)',
   'function launchTimestamp() view returns (uint256)',
   'function creatorVault() view returns (address)',
+  'function realEthReserve() view returns (uint256)',
+  'function NET_GRADUATION_TARGET() view returns (uint256)',
 ]);
 
 type R = { status: 'success'; result: unknown } | { status: 'failure'; error: unknown };
@@ -156,9 +160,12 @@ export async function readLaunchSetup(client: PublicClient, launch: Pick<Launch,
         { address: launch.token, abi: v6TokenAbi, functionName: 'packedWeights' },
         { address: launch.token, abi: v6TokenAbi, functionName: 'giftCount' },
         { address: launch.token, abi: v6TokenAbi, functionName: 'giftReserved' },
+        { address: launch.curve, abi: v6CurveAbi, functionName: 'pairPrincipal' },
+        { address: launch.curve, abi: v6CurveAbi, functionName: 'targetPairUnits' },
       ],
     })) as R[];
-    const sold = ok<bigint>(r[1]);
+    const principal = ok<bigint>(r[8]);
+    const target = ok<bigint>(r[9]);
     const graduated = ok<boolean>(r[2]);
     const packed = ok<bigint>(r[5]);
     const gifts = ok<bigint>(r[6]);
@@ -170,7 +177,8 @@ export async function readLaunchSetup(client: PublicClient, launch: Pick<Launch,
       airdrop: gifts !== null && gifts > 0n ? { wallets: Number(gifts), tokens: ok<bigint>(r[7]) ?? 0n } : null,
       projectTreasury: ok<Address>(r[4]),
       createdAt: ok<bigint>(r[3]) === null ? null : Number(ok<bigint>(r[3])),
-      progress: graduated ? 1 : sold === null ? null : ratio(sold, V6_CURVE_TOKENS),
+      // as vibe/vibe shows it: what the curve has raised of its target
+      progress: graduated ? 1 : principal === null || target === null ? null : ratio(principal, target),
       graduated,
     };
   }
@@ -184,10 +192,12 @@ export async function readLaunchSetup(client: PublicClient, launch: Pick<Launch,
       { address: launch.curve, abi: feeCurveAbi, functionName: 'graduated' },
       { address: launch.curve, abi: feeCurveAbi, functionName: 'launchTimestamp' },
       { address: launch.curve, abi: feeCurveAbi, functionName: 'creatorVault' },
+      { address: launch.curve, abi: feeCurveAbi, functionName: 'realEthReserve' },
+      { address: launch.curve, abi: feeCurveAbi, functionName: 'NET_GRADUATION_TARGET' },
     ],
   })) as R[];
-  const inventory = ok<bigint>(r[2]);
-  const remaining = ok<bigint>(r[3]);
+  const raised = ok<bigint>(r[7]);
+  const target = ok<bigint>(r[8]);
   const graduated = ok<boolean>(r[4]);
   const created = ok<bigint>(r[5]);
   return {
@@ -196,7 +206,8 @@ export async function readLaunchSetup(client: PublicClient, launch: Pick<Launch,
     creatorShareBps: ok<bigint>(r[1]) === null ? null : Number(ok<bigint>(r[1])),
     creatorVault: ok<Address>(r[6]),
     createdAt: created === null ? null : Number(created),
-    progress: graduated ? 1 : inventory === null || remaining === null ? null : ratio(inventory - remaining, inventory),
+    // as vibe/vibe shows it: ETH raised of the graduation target
+    progress: graduated ? 1 : raised === null || target === null ? null : ratio(raised, target),
     graduated,
   };
 }

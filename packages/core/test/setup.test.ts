@@ -53,17 +53,17 @@ describe('reading a setup (fake chain)', () => {
   const launch = { curve: '0x0000000000000000000000000000000000000001', token: '0x0000000000000000000000000000000000000002' } as const;
 
   it('v6: tax, split, airdrop and bonding progress from the curve and token', async () => {
-    const s = await readLaunchSetup(fake([200n, V6_CURVE_TOKENS / 4n, false, 1791723856n, launch.curve, VINI, 12n, 5n * 10n ** 24n]), { ...launch, gen: 6 });
+    const s = await readLaunchSetup(fake([200n, V6_CURVE_TOKENS / 4n, false, 1791723856n, launch.curve, VINI, 12n, 5n * 10n ** 24n, 10n ** 18n, 4n * 10n ** 18n]), { ...launch, gen: 6 });
     expect(s).toMatchObject({ kind: 'v6', taxBps: 200, progress: 0.25, graduated: false, createdAt: 1791723856, airdrop: { wallets: 12, tokens: 5n * 10n ** 24n } });
-    const done = await readLaunchSetup(fake([300n, 0n, true, 1n, launch.curve, VIBEVIBE, 0n, 0n]), { ...launch, gen: 6 });
+    const done = await readLaunchSetup(fake([300n, 0n, true, 1n, launch.curve, VIBEVIBE, 0n, 0n, 0n, 4n * 10n ** 18n]), { ...launch, gen: 6 });
     expect(done).toMatchObject({ progress: 1, graduated: true, airdrop: null });
   });
 
   it('older curves: fee, creator share and progress; unreadable values become null, not wrong numbers', async () => {
     const inv = 793_100_000n * 10n ** 18n;
-    const s = await readLaunchSetup(fake([125n, 7500n, inv, inv - inv / 10n, false, 1791648777n, launch.curve]), { ...launch, gen: 2 });
+    const s = await readLaunchSetup(fake([125n, 7500n, inv, inv - inv / 10n, false, 1791648777n, launch.curve, 5n * 10n ** 17n, 5n * 10n ** 18n]), { ...launch, gen: 2 });
     expect(s).toMatchObject({ kind: 'curve-fee', feeBps: 125, creatorShareBps: 7500, progress: 0.1, graduated: false });
-    const broken = await readLaunchSetup(fake([new Error('x'), new Error('x'), new Error('x'), new Error('x'), new Error('x'), new Error('x'), new Error('x')]), { ...launch, gen: 0 });
+    const broken = await readLaunchSetup(fake(Array.from({ length: 9 }, () => new Error('x'))), { ...launch, gen: 0 });
     expect(broken).toMatchObject({ kind: 'curve-fee', feeBps: null, creatorShareBps: null, progress: null, graduated: null });
     expect(setupLines(broken, '$A', 'ETH')[1]!.value).toBe('Couldn’t be read.');
   });

@@ -18,3 +18,5 @@ export * from './reviews';
 export * from './reviewsChain';
 export * from './brand';
 export * from './gem';
+export * from './meta';
+export * from './market';

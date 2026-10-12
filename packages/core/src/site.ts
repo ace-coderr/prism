@@ -16,6 +16,13 @@ export const X_HANDLE = 'holdprism';
 export const PRISM_TOKEN: Address | null = null;
 
 /**
+ * Tokens whose picture and description PRISM won't show (lower- or mixed-case addresses), for
+ * anything abusive. Their reviews, scores and market data still show; the identicon replaces the
+ * picture. Empty unless needed.
+ */
+export const TOKEN_HIDE: readonly string[] = [];
+
+/**
  * PRISM's vibe/vibe invite. vibe/vibe's web app reads `ref` and `refWallet` on every page it serves
  * (its referral handler wraps all routes, /token/:address included), so "Buy on vibe/vibe" links
  * carry them.
@@ -43,6 +50,8 @@ export const tokenPath = (token: Address | string) => `/t/${token}`;
 export const reviewPath = (id: number | bigint) => `/r/${id}`;
 export const reviewerPath = (address: string, name?: string | null) => `/u/${name ?? address}`;
 export const badgePath = (token: Address | string) => `/badge/${token}.svg`;
+/** A token's picture, small and square (the identicon when it has none): served by apps/web/server/img.ts. */
+export const tokenImagePath = (token: Address | string, size: 48 | 96 | 192 | 384 = 96) => `/img/t/${token}.png?s=${size}`;
 
 /** "$SYM" for a post, with no space or $ doubling. */
 export const cashtag = (symbol: string) => `$${symbol.replace(/^\$/, '').replace(/\s+/g, '')}`;

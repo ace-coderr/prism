@@ -29,3 +29,11 @@ export function identicon(address: Address): Identicon {
   const hue = ((b[20]! << 8) | b[21]!) % 360;
   return { cells, hue, bgHue: (hue + 150 + (b[22]! % 60)) % 360 };
 }
+
+/** The identicon as a standalone square SVG (the token picture fallback; same colours as the app's avatars). */
+export function identiconSvg(address: Address, size = 96): string {
+  const { cells, hue, bgHue } = identicon(address);
+  const n = IDENTICON_SIZE;
+  const rects = cells.map((on, i) => (on ? `<rect x="${i % n}" y="${Math.floor(i / n)}" width="1" height="1"/>` : '')).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="-1 -1 ${n + 2} ${n + 2}" shape-rendering="crispEdges"><rect x="-1" y="-1" width="${n + 2}" height="${n + 2}" fill="hsl(${bgHue}, 30%, 16%)"/><g fill="hsl(${hue}, 75%, 62%)">${rects}</g></svg>`;
+}

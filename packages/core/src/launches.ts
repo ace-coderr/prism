@@ -151,6 +151,32 @@ export function decodeLaunchLog(log: RawLog): DecodedLaunch | null {
   return null;
 }
 
+/** Where a launch's metadata lives, as its launch event says: an IPFS URI, and (gen 0/1/2) keccak256 of the file. */
+export interface LaunchMetadataRef {
+  uri: string;
+  /** gen 0/1/2: keccak256 of the exact metadata JSON bytes; v6 events carry no digest */
+  digest: Hex | null;
+}
+
+/** The metadata URI (and digest) in a launch event, or null if the log isn't one or the URI is empty. */
+export function decodeLaunchMetadataRef(log: RawLog): LaunchMetadataRef | null {
+  const gen = genOf(log.address);
+  const topic0 = log.topics[0];
+  if (gen === null) return null;
+  const out = (uri: string, digest: Hex | null) => (uri.trim() ? { uri: uri.trim().slice(0, 512), digest } : null);
+  try {
+    // TokenLaunched: …, initialTokensBought, metadataSchemaVersion, metadataDigest (word 6), metadataURI (word 7)
+    if (topic0 === TOPICS.tokenLaunched && gen !== 6) return out(stringAt(log.data, 7), word(log.data, 6));
+    // TokenLaunchedQuoted: quoteCurrency is word 3, so the digest is word 7 and the URI word 8
+    if (topic0 === TOPICS.tokenLaunchedWithQuote && gen !== 6) return out(stringAt(log.data, 8), word(log.data, 7));
+    // LaunchCreated: curve, name, symbol, metadataURI (word 3), …
+    if (topic0 === TOPICS.v6Launched && gen === 6) return out(stringAt(log.data, 3), null);
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 /** A graduation event: PoolGraduated from a gen 0/1/2 adapter, or a v6 curve's own event. */
 export function decodeGraduationLog(log: RawLog): Graduation | null {
   if (log.blockNumber === null) return null;

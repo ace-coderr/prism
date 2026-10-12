@@ -48,8 +48,9 @@ function ico(images: Array<{ size: number; png: Uint8Array }>): Uint8Array {
 
 const tile = (size: number) => markSvg(size, { tile: true });
 
-write('favicon.svg', tile(64));
-write('favicon.ico', ico(await Promise.all([16, 32, 48].map(async (size) => ({ size, png: await renderPng(tile(size)) })))));
+// tab icons: the gem on its own (its dark outline reads on light and dark tab bars); app icons: on a tile
+write('favicon.svg', markSvg(64));
+write('favicon.ico', ico(await Promise.all([16, 32, 48].map(async (size) => ({ size, png: await renderPng(markSvg(size)) })))));
 write('apple-touch-icon.png', await renderPng(tile(180)));
 write('icon-192.png', await renderPng(tile(192)));
 write('icon-512.png', await renderPng(tile(512)));

@@ -183,7 +183,7 @@ export function Footer() {
             Built by ace
           </a>
         </div>
-        <p className="text-mist/70 md:text-right">Robinhood Chain Testnet · test assets only, no real value · PRISM never holds your money</p>
+        <p className="text-mist/70 md:text-right md:text-[11px] xl:text-[12px]">Robinhood Chain Testnet · test assets only, no real value · PRISM never holds your money</p>
       </div>
     </footer>
   );

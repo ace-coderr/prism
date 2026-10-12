@@ -11,7 +11,7 @@ The first PRISM (crystals) is archived at the `crystal-v1` tag and the `archive/
 - **Done** · PrismReviews: holder-only, permanent reviews, SOLD marks (deployed, verified)
 - **Done** · Launch index from the chain: four vibe/vibe factory generations + the test stocks, kept fresh by a scheduled job
 - **Done** · Scoring: review status, true colors, honesty rep
-- **Done** · Website: Home (search, live feeds, 3D prism), launch pages with on-chain setup, writing reviews, review pages, profiles with badges, leaderboards, stocks
+- **Done** · Website: Home (search, live feeds, the living gem), launch pages with on-chain setup, writing reviews, review pages, profiles with badges, leaderboards, stocks
 - **Done** · Growth: share images for launches and reviews, live score badges for creators, share texts
 - **Done** · /legacy: v1 crystal holders empty their crystals in one transaction
 - **Not started** · $PRISM: the slot is ready (`PRISM_TOKEN`); it will be reviewed here like any other token

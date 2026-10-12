@@ -180,3 +180,11 @@ input[type="range"].prism-range::-moz-range-thumb {
    (panel background, lime accent, PRISM logo); these bring the card border and the display font */
 #privy-modal-content { border: 1px solid rgba(255, 255, 255, 0.1); }
 #privy-dialog-title { font-family: var(--font-display); letter-spacing: -0.01em; }
+
+/* the hero's still glass gem: a soft band of light sweeping across (still under reduced motion) */
+@keyframes gem-shimmer {
+  0% { transform: translateX(0); }
+  60%, 100% { transform: translateX(4px); }
+}
+.gem-shimmer { animation: gem-shimmer 4.5s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .gem-shimmer { animation: none; transform: translateX(2.2px); } }

@@ -19,6 +19,7 @@ import {
   type ReviewState,
   type TrueColors,
 } from './scoring';
+import { gemFacets, type GemFacet } from './gem';
 
 /** Minimum holding reviewers before a token shows a true colors score. */
 export const MIN_SCORE_REVIEWERS = 3;
@@ -307,8 +308,8 @@ export interface Feeds {
   topLaunches: LaunchRank[];
   topReviewers: ReviewerSummary[];
   truthKeepers: ReviewerSummary[];
-  /** for the hero prism: average score of scored tokens (null: none yet) and share of current reviews that are SOLD */
-  sentiment: { score: number | null; soldShare: number; reviews: number };
+  /** for the hero's living gem: the latest current reviews, one facet each */
+  gem: GemFacet[];
 }
 
 export function buildFeeds(
@@ -332,19 +333,7 @@ export function buildFeeds(
   const ranked = [...reviewers.values()].filter((r) => r.reviews >= MIN_LEADERBOARD_REVIEWS && r.rep !== null);
   const topReviewers = ranked.sort((a, b) => b.rep! - a.rep! || b.decided - a.decided || b.reviews - a.reviews).slice(0, limit);
   const truthKeepers = [...reviewers.values()].filter((r) => r.marks > 0).sort((a, b) => b.marks - a.marks).slice(0, limit);
-  const scored = rankLaunches(world, tokens, balances);
-  return {
-    latest,
-    caught,
-    topLaunches,
-    topReviewers,
-    truthKeepers,
-    sentiment: {
-      score: scored.length ? scored.reduce((s, l) => s + l.score, 0) / scored.length : null,
-      soldShare: current.length ? current.filter((v) => v.state.kind === 'sold').length / current.length : 0,
-      reviews: current.length,
-    },
-  };
+  return { latest, caught, topLaunches, topReviewers, truthKeepers, gem: gemFacets(current) };
 }
 
 /** Tokens with a score (at least MIN_SCORE_REVIEWERS holding reviewers), best first. */

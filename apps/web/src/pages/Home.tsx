@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { Address } from 'viem';
 import { PRISM_TOKEN, formatScore, reviewPath, scoreColor, tokenPath, type ReviewView } from '@prism/core';
-import { HeroPrism } from '../components/Prism';
+import { LivingGem } from '../components/Gem';
 import { SearchBar } from '../components/SearchBar';
 import { Stars, StatusPill } from '../components/reviews';
 import { Reveal, SectionLabel } from '../components/design';
@@ -20,10 +20,6 @@ const STEPS = [
 
 export default function Home() {
   const feed = useFeed();
-  const s = feed.data?.sentiment;
-  // live sentiment for the prism: average score of scored launches, and how many reviewers sold
-  const light = s?.score == null ? 0.75 : (s.score - 1) / 4;
-  const cloud = s?.soldShare ?? 0;
   return (
     <>
       <section className="container-x grid items-center gap-8 pb-10 pt-28 md:pt-36 lg:grid-cols-[1.15fr_1fr] lg:gap-12">
@@ -56,7 +52,7 @@ export default function Home() {
             </p>
           )}
         </div>
-        <HeroPrism light={light} cloud={cloud} className="order-first mx-auto aspect-square w-full max-w-[300px] sm:max-w-[380px] lg:order-none lg:max-w-[480px]" />
+        <LivingGem facets={feed.data?.gem} loading={feed.isLoading} className="order-first mx-auto w-full max-w-[300px] sm:max-w-[380px] lg:order-none lg:max-w-[480px]" />
       </section>
 
       <div className="container-x flex flex-col gap-16 pb-24 md:gap-24">

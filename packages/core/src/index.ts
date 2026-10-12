@@ -17,3 +17,4 @@ export * from './setup';
 export * from './reviews';
 export * from './reviewsChain';
 export * from './brand';
+export * from './gem';

@@ -1,4 +1,5 @@
 import { formatUnits } from 'viem';
+import type { GemFacet } from '@prism/core';
 
 /** A token amount for people: "1.2M", "48,200", "0.0031". */
 export function formatTokens(base: string | bigint | null | undefined, decimals = 18): string {
@@ -36,3 +37,13 @@ export function ago(unix: number, now = Date.now() / 1000): string {
 
 /** A 0..1 share as a whole percent ("80%"); "new" with nothing decided yet. */
 export const repText = (rep: number | null | undefined) => (rep === null || rep === undefined ? 'new' : `${Math.round(rep * 100)}%`);
+
+const daysShort = (d: number) => (d === 0 ? '<1d' : `${d}d`);
+
+/** A gem facet's status: "holding 12d", "trimmed 30% · 4d", "SOLD after 3d". */
+export function facetStatus(f: Pick<GemFacet, 'state' | 'days'>): string {
+  const s = f.state;
+  if (s.kind === 'sold') return f.days === 0 ? 'SOLD within a day' : `SOLD after ${f.days}d`;
+  if (s.kind === 'trimmed') return `trimmed ${s.percent}% · ${daysShort(f.days)}`;
+  return `holding ${daysShort(f.days)}`;
+}

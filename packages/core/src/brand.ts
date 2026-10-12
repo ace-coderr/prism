@@ -1,6 +1,7 @@
 /**
  * PRISM's look, shared by the app, the share images, the badge and the brand-asset generator:
- * the palette, the spectrum and the mark (a prism splitting a white beam into colors).
+ * the palette and the mark (a hexagonal cut gem seen from above: five facets in PRISM's colors
+ * and one dark grey, the "sold" facet).
  */
 
 export const PALETTE = {
@@ -13,10 +14,11 @@ export const PALETTE = {
   up: '#4cd07a',
   down: '#f0544f',
   gold: '#f6c143',
+  teal: '#3cc8b4',
+  coral: '#ff7a5c',
+  /** a SOLD facet */
+  sold: '#4a5057',
 } as const;
-
-/** The colors light splits into, top to bottom. */
-export const SPECTRUM = ['#f0544f', '#f68a43', '#f6c143', '#d4f000', '#4cd07a', '#4fc3f0', '#8b7bff'] as const;
 
 const hex = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const toHex = (c: number[]) => `#${c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
@@ -33,34 +35,28 @@ export function scoreColor(score: number): string {
 }
 
 export interface MarkOptions {
-  /** 0..1: how much light comes out (sentiment); 1 = full spectrum */
-  light?: number;
-  /** 0..1: how cloudy the prism is (share of reviewers who sold) */
-  cloud?: number;
-  /** draw the dark rounded square behind it (icons) */
+  /** draw the dark rounded square behind it (app icons) */
   tile?: boolean;
 }
 
+/** The mark's facets, clockwise from the top right; the dark one is the "sold" facet. */
+export const MARK_FACETS = [PALETTE.lime, PALETTE.up, PALETTE.teal, PALETTE.sold, PALETTE.coral, PALETTE.gold] as const;
+
 /**
- * The mark's shapes in a 64×64 box: the beam in, the prism, the rays out. Returned as SVG elements
- * (no outer <svg>), so React can inline it and the generators can wrap it.
+ * The mark's shapes in a 64×64 box: a pointy-top hexagon split into 6 triangular facets with thin
+ * dark outlines. Returned as SVG elements (no outer <svg>), so React can inline it and the
+ * generators can wrap it. Built to read at 16px: flat colors, no detail finer than a facet.
  */
-export function markShapes({ light = 1, cloud = 0, tile = false }: MarkOptions = {}): string {
-  const l = Math.min(1, Math.max(0, light));
-  const c = Math.min(1, Math.max(0, cloud));
-  const rays = SPECTRUM.map((color, i) => {
-    const y = 22 + i * 4.4;
-    const tone = mix(PALETTE.mist, color, l * (1 - c * 0.75));
-    return `<path d="M42.5 ${27.5 + i * 0.9}L62 ${y}" stroke="${tone}" stroke-width="3.2" stroke-linecap="round" opacity="${(0.35 + 0.65 * l) * (1 - c * 0.5)}"/>`;
-  }).join('');
-  const glass = mix(PALETTE.lime, PALETTE.mist, c * 0.8);
-  return [
-    tile ? `<rect width="64" height="64" rx="14" fill="${PALETTE.ink}"/>` : '',
-    `<path d="M2 35L23 32" stroke="${PALETTE.white}" stroke-width="3.6" stroke-linecap="round"/>`,
-    rays,
-    `<path d="M32 9L52 49H12Z" fill="${glass}" fill-opacity="0.18" stroke="${glass}" stroke-width="4" stroke-linejoin="round"/>`,
-    `<path d="M22.5 32L42 30" stroke="${mix(PALETTE.white, glass, 0.5)}" stroke-width="2.4" stroke-linecap="round" opacity="0.9"/>`,
-  ].join('');
+export function markShapes({ tile = false }: MarkOptions = {}): string {
+  const r = tile ? 23 : 29.5;
+  const pts = Array.from({ length: 6 }, (_, i) => {
+    const a = (Math.PI / 3) * i - Math.PI / 2;
+    return [32 + r * Math.cos(a), 32 + r * Math.sin(a)] as const;
+  });
+  const p = (q: readonly [number, number]) => `${q[0].toFixed(2)} ${q[1].toFixed(2)}`;
+  const facets = MARK_FACETS.map((fill, i) => `<path d="M32 32L${p(pts[i]!)}L${p(pts[(i + 1) % 6]!)}Z" fill="${fill}"/>`).join('');
+  const outline = `<path d="M${pts.map(p).join('L')}Z${pts.map((q) => `M32 32L${p(q)}`).join('')}" fill="none" stroke="${PALETTE.ink}" stroke-width="${tile ? 1.7 : 2}" stroke-linejoin="round" stroke-linecap="round"/>`;
+  return [tile ? `<rect width="64" height="64" rx="14" fill="${PALETTE.ink}"/>` : '', facets, outline].join('');
 }
 
 /** The mark as a standalone SVG document. */

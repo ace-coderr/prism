@@ -114,7 +114,7 @@ describe('feeds', () => {
     expect(f.topLaunches.map((l) => l.symbol)).toEqual(['MOON']);
     expect(f.truthKeepers.map((t) => t.address)).toEqual([A(9).toLowerCase()]);
     expect(f.topReviewers).toEqual([]); // nobody has 3 reviews yet
-    expect(f.sentiment.reviews).toBe(6);
-    expect(f.sentiment.soldShare).toBeCloseTo(2 / 6, 12);
+    expect(f.gem.map((g) => g.id)).toEqual(f.latest.map((v) => v.id)); // newest first, current only
+    expect(f.gem.filter((g) => g.state.kind === 'sold')).toHaveLength(2);
   });
 });

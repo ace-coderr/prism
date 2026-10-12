@@ -20,7 +20,7 @@ Test assets only, no real value.
 
 | Page | What's there |
 | --- | --- |
-| `/` | Search (name, $SYMBOL or address), how it works, live feeds: latest reviews, caught selling, top launches, top honest reviewers. A 3D prism whose light follows live sentiment and clouds over as reviewers sell (a still picture on slow devices). |
+| `/` | Search (name, $SYMBOL or address), how it works, live feeds: latest reviews, caught selling, top launches, top honest reviewers. The living gem: a 3D cut gem whose facets are the latest real reviews (colored by rating, sized by position, grey and cracked once SOLD; point at one to see who said what), clear glass until the first review, and a still picture on slow devices or with reduced motion. |
 | `/t/<address>` | A launch or test stock: pair, on curve (with bonding progress) or graduated, creator and date, **how it's set up** (read from its contracts), true colors, reviews (Holding · Trimmed · SOLD · All), "Make it permanent" on unmarked sales, Buy on vibe/vibe, share and a creator kit (live badge, "Ask my holders to review"). |
 | `/t/<address>/review` | Write or update a review: login, holder check, rating + 280 bytes of text, a preview of exactly what's recorded, one transaction, then Share on X. |
 | `/r/<id>` | One review, shareable (with its own share image). |

@@ -4,7 +4,7 @@ import { motion, useMotionValueEvent, useScroll } from 'motion/react';
 import { PRISM_TOKEN, X_HANDLE, explorerAddressUrl, getDeployment, tokenPath } from '@prism/core';
 import { WalletButton } from '../wallet/WalletButton';
 import { TARGET_CHAIN } from '../wallet/config';
-import { PrismMark } from './Prism';
+import { GemMark } from './Gem';
 
 // Home is the logo; the pill lists the destinations ($PRISM once its token exists)
 const LINKS: Array<{ to: string; label: string; soon?: boolean }> = [
@@ -19,9 +19,9 @@ const Soon = () => (
   </span>
 );
 
-/** PRISM's mark: a prism splitting a white beam into colors. */
+/** PRISM's mark: a hexagonal cut gem with one dark "sold" facet. */
 export function Logo({ size = 26 }: { size?: number }) {
-  return <PrismMark size={size} />;
+  return <GemMark size={size} />;
 }
 
 /**

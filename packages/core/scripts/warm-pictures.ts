@@ -82,27 +82,40 @@ for (const id of REVIEWABLE_STOCK_IDS) add(tokenById(id)!.address, 'stock');
 const tokens = [...picks.keys()];
 console.log(`warming ${tokens.length} tokens (${[...new Set(picks.values())].map((w) => `${[...picks.values()].filter((v) => v === w).length} ${w}`).join(', ')}) on ${site}, for at most ${minutes} min`);
 
-const stats = { cached: 0, warmed: 0, identicon: 0, failed: 0 };
+type Outcome = 'cached' | 'warmed' | 'identicon' | 'retry' | 'failed';
+/** One picture through the site; 'retry' = an identicon served only for now (IPFS or metadata too slow). */
+async function warm(token: string, size: number): Promise<Outcome> {
+  try {
+    const res = await fetch(`${site}/img/t/${token}.png?s=${size}`, { signal: AbortSignal.timeout(70_000) });
+    await res.arrayBuffer();
+    if (!res.ok) return 'failed';
+    if (res.headers.get('x-prism-image') === 'identicon') return /max-age=60/.test(res.headers.get('cache-control') ?? '') ? 'retry' : 'identicon';
+    return /HIT|STALE/i.test(res.headers.get('x-vercel-cache') ?? '') ? 'cached' : 'warmed';
+  } catch {
+    return 'failed';
+  }
+}
+
 for (const size of [96, 192, 48]) {
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: 12 }, async () => {
-      while (next < tokens.length && Date.now() < deadline) {
-        const token = tokens[next++]!;
-        try {
-          const res = await fetch(`${site}/img/t/${token}.png?s=${size}`, { signal: AbortSignal.timeout(45_000) });
-          await res.arrayBuffer();
-          if (!res.ok) stats.failed++;
-          else if (res.headers.get('x-prism-image') === 'identicon') stats.identicon++;
-          else if (/HIT|STALE/i.test(res.headers.get('x-vercel-cache') ?? '')) stats.cached++;
-          else stats.warmed++;
-        } catch {
-          stats.failed++;
+  const stats: Record<Outcome, number> = { cached: 0, warmed: 0, identicon: 0, retry: 0, failed: 0 };
+  let queue = tokens;
+  // a second round for pictures that were only served as a stand-in the first time
+  for (let round = 0; round < 2 && queue.length && Date.now() < deadline; round++) {
+    const again: string[] = [];
+    let next = 0;
+    await Promise.all(
+      Array.from({ length: 8 }, async () => {
+        while (next < queue.length && Date.now() < deadline) {
+          const token = queue[next++]!;
+          const o = await warm(token, size);
+          if (o === 'retry' && round === 0) again.push(token);
+          else stats[o]++;
         }
-      }
-    }),
-  );
-  console.log(`size ${size}: done (${JSON.stringify(stats)})`);
+      }),
+    );
+    queue = again;
+  }
+  console.log(`size ${size}: ${JSON.stringify(stats)}`);
   if (Date.now() >= deadline) {
     console.log('time budget reached; the next run carries on');
     break;

@@ -53,7 +53,7 @@ const files = new Map<string, Promise<Uint8Array>>();
 function pictureFile(cid: string): Promise<Uint8Array> {
   let p = files.get(cid);
   if (!p) {
-    p = fetchIpfs(cid, { maxBytes: MAX_IMAGE_BYTES, timeoutMs: 15_000 }).then((f) => f.bytes);
+    p = fetchIpfs(cid, { maxBytes: MAX_IMAGE_BYTES, timeoutMs: 25_000 }).then((f) => f.bytes);
     p.catch(() => files.delete(cid));
     files.set(cid, p);
     if (files.size > 200) files.delete(files.keys().next().value!);
@@ -63,7 +63,8 @@ function pictureFile(cid: string): Promise<Uint8Array> {
 
 async function getMeta(origin: string, token: Address): Promise<MetaBody | null> {
   try {
-    const res = await fetch(`${origin}/api/meta?token=${token}`, { signal: AbortSignal.timeout(15_000) });
+    // a cold /api/meta reads the launch index and IPFS: give it time (this function may run 60 s)
+    const res = await fetch(`${origin}/api/meta?token=${token}`, { signal: AbortSignal.timeout(25_000) });
     return res.ok ? ((await res.json()) as MetaBody) : null;
   } catch {
     return null;

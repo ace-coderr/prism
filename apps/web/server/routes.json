@@ -3,7 +3,7 @@
     { "name": "data", "source": "server/data.ts", "maxDuration": 60 },
     { "name": "og", "source": "server/og.ts", "maxDuration": 30, "assets": ["wasm", "fonts"] },
     { "name": "page", "source": "server/page.ts", "maxDuration": 15, "assets": ["html"] },
-    { "name": "img", "source": "server/img.ts", "maxDuration": 30, "assets": ["wasm", "fonts", "webp"] }
+    { "name": "img", "source": "server/img.ts", "maxDuration": 60, "assets": ["wasm", "fonts", "webp"] }
   ],
   "routes": [
     { "src": "^/api/(launches|token|review|reviewer|feed|leaderboards|stocks|meta|market)$", "dest": "/api/data?route=$1" },

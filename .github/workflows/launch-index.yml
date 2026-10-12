@@ -43,3 +43,9 @@ jobs:
             --title "Launch index (data)" \
             --notes "Every vibe/vibe launch on Robinhood Chain Testnet, read from the chain. Updated automatically by .github/workflows/launch-index.yml; served by /api/launches."
           gh release upload launch-index launches.json.gz --clobber
+      # visitors rarely wait for IPFS: fetch the pictures of the newest, most traded, recently graduated
+      # and reviewed launches through the site so its cache has them (never fails the job)
+      - name: Warm token pictures
+        continue-on-error: true
+        timeout-minutes: 25
+        run: npx tsx packages/core/scripts/warm-pictures.ts launches.json.gz https://seeprism.vercel.app --minutes 20

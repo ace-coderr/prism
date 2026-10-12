@@ -48,6 +48,19 @@ async function decode(bytes: Uint8Array, mimeType: string): Promise<Rgba> {
   return renderRgba(svg);
 }
 
+/** Verified picture files by CID, kept while this instance is warm (each size of a token reuses one fetch). */
+const files = new Map<string, Promise<Uint8Array>>();
+function pictureFile(cid: string): Promise<Uint8Array> {
+  let p = files.get(cid);
+  if (!p) {
+    p = fetchIpfs(cid, { maxBytes: MAX_IMAGE_BYTES, timeoutMs: 15_000 }).then((f) => f.bytes);
+    p.catch(() => files.delete(cid));
+    files.set(cid, p);
+    if (files.size > 200) files.delete(files.keys().next().value!);
+  }
+  return p;
+}
+
 async function getMeta(origin: string, token: Address): Promise<MetaBody | null> {
   try {
     const res = await fetch(`${origin}/api/meta?token=${token}`, { signal: AbortSignal.timeout(15_000) });
@@ -64,8 +77,7 @@ export async function tokenPicture(origin: string, token: Address, size: number)
   if (!meta || meta.status === 'unavailable') return identicon('public, max-age=60, s-maxage=120');
   if (!meta.image) return identicon('public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800');
   try {
-    const file = await fetchIpfs(meta.image.cid, { maxBytes: MAX_IMAGE_BYTES, timeoutMs: 15_000 });
-    const pixels = await decode(file.bytes, meta.image.mimeType);
+    const pixels = await decode(await pictureFile(meta.image.cid), meta.image.mimeType);
     if (!pixels.width || !pixels.height) throw new IpfsError('Not an image.', true);
     // content-addressed and checked against its CID: it never changes
     return { png: encodePng(coverSquare(pixels, size)), cache: 'public, max-age=86400, s-maxage=2592000, stale-while-revalidate=31536000', source: 'metadata' };

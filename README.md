@@ -73,14 +73,20 @@ All read from the chain and the token's own IPFS metadata, never from vibe/vibe'
   keccak256 equals the event's digest). Pictures (`/img/t/<address>.png?s=96`) are checked the same
   way, decoded (WebP via libwebp, others via resvg), centre-cropped, resized and CDN-cached; no
   picture or a broken one shows the identicon. `TOKEN_HIDE` in `packages/core/src/site.ts` hides a
-  token's picture and description if ever needed.
+  token's picture and description if ever needed. After each index build the scheduled job warms
+  the picture cache (`packages/core/scripts/warm-pictures.ts`): the newest 500 launches, the 300
+  most traded on their curves in the last 24h, the 200 most recently graduated, every reviewed token
+  and the test stocks.
 - **Market (`/api/market`):** on a curve, vibe/vibe's own maths from the curve's state (v6:
   80·T·S²/(16·S − 15·sold)², progress = raised / target; gen 0/1/2: `fdvWei`, ETH raised / graduation
   target); graduated launches and test stocks, the Uniswap V4 pool (price, market cap = price ×
   supply, liquidity). 24h volume, buys and sells from the curve's trade events and the pool's swaps;
   the 24h change is exact on a curve (its state 24h ago is rebuilt from the trades since). Holders are
   every address holding some, from all Transfer events, minus the curve, the pool manager, the token
-  itself (its reward pool) and burn addresses. USD is the ETH/USDG test pool's price: a testnet value.
+  itself (its reward pool) and burn addresses. Dollar figures are ETH × the real ETH price from
+  Chainlink's ETH / USD feed on Robinhood Chain mainnet (`0x78F3…d3A9`, from Chainlink's feed
+  directory: https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json), read with
+  eth_call and cached for 5 minutes; a stale or missing price hides them.
   Cached for a few minutes.
 
 ## vibe/vibe referral

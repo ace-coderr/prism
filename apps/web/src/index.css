@@ -188,3 +188,15 @@ input[type="range"].prism-range::-moz-range-thumb {
 }
 .gem-shimmer { animation: gem-shimmer 4.5s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .gem-shimmer { animation: none; transform: translateX(2.2px); } }
+
+/* a token picture while it loads: a soft band of light instead of a flat grey square */
+@keyframes img-shimmer {
+  from { background-position: 150% 0; }
+  to { background-position: -50% 0; }
+}
+.img-shimmer {
+  background: linear-gradient(100deg, var(--color-line) 30%, rgb(255 255 255 / 0.1) 50%, var(--color-line) 70%);
+  background-size: 250% 100%;
+  animation: img-shimmer 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) { .img-shimmer { animation: none; background: var(--color-line); } }

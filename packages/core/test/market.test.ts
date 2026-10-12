@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { Address } from 'viem';
 import {
+  ETH_USD_FEED,
   POOL_MANAGER,
   V6_SUPPLY,
   applyTransfers,
   constantProductDayChange,
   dayStats,
+  ethUsdFromRound,
   holderCount,
   poolCap,
   poolIdOf,
@@ -65,6 +67,17 @@ describe('pools', () => {
   it('computes pool ids like v4-core (NVDA’s ETH pool)', () => {
     const nvda = tokenById('NVDA')!;
     expect(poolIdOf({ currency0: '0x0000000000000000000000000000000000000000', currency1: nvda.address, ...nvda.pool! })).toMatch(/^0x[0-9a-f]{64}$/);
+  });
+});
+
+describe('the real ETH price (Chainlink, Robinhood Chain mainnet)', () => {
+  it('reads the feed Chainlink lists, and refuses stale or broken answers', () => {
+    expect(ETH_USD_FEED).toMatchObject({ chainId: 4663, proxy: '0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9' });
+    const now = 1_791_808_000;
+    expect(ethUsdFromRound(254347092469n, 8, BigInt(now - 4139), now)).toBeCloseTo(2543.47092469, 8);
+    expect(ethUsdFromRound(254347092469n, 8, BigInt(now - 3 * 86_400), now)).toBeNull(); // older than two heartbeats
+    expect(ethUsdFromRound(0n, 8, BigInt(now), now)).toBeNull();
+    expect(ethUsdFromRound(-1n, 8, BigInt(now), now)).toBeNull();
   });
 });
 

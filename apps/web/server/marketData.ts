@@ -1,8 +1,9 @@
 /**
  * GET /api/market?token=0x…: a launch's or test stock's market details, read from the chain only
- * (@prism/core market.ts): price and market cap (in its pair, ETH and testnet USD), progress,
- * liquidity, holders and the last 24h (volume, change, buys and sells). Cached in memory for a
- * minute (holder balances are kept and only new blocks are read) and by the CDN for a few minutes.
+ * (@prism/core market.ts): price and market cap (in its pair, ETH and USD at the real ETH price from
+ * Chainlink on Robinhood Chain mainnet), progress, liquidity, holders and the last 24h (volume,
+ * change, buys and sells). Cached in memory for a minute (holder balances are kept and only new
+ * blocks are read) and by the CDN for a few minutes.
  */
 import type { Address } from 'viem';
 import {
@@ -16,11 +17,11 @@ import {
   poolPrice,
   poolPriceBefore,
   readCurveTrades,
+  readEthUsd,
   readMarketState,
   readPoolTrades,
   readStockState,
   readTransfers,
-  usdPerEth,
   v6CurveCap,
   v6DayChange,
   type Launch,
@@ -29,7 +30,7 @@ import {
   type ReviewableAsset,
   type Trade,
 } from '@prism/core';
-import { client } from './chain';
+import { client, mainnetClient } from './chain';
 
 export interface MarketBody {
   token: Address;
@@ -45,7 +46,7 @@ export interface MarketBody {
   priceEth: number | null;
   /** both sides of the pool, in ETH (graduated launches and stocks) */
   liquidityEth: number | null;
-  /** ETH/USD from the ETH/USDG test pool: a testnet value */
+  /** the real ETH price (Chainlink ETH / USD on Robinhood Chain mainnet), null if unavailable or stale */
   usdPerEth: number | null;
   /** addresses holding some, minus the curve, the pool manager, the token itself (its reward pool) and burn addresses (null: not counted, e.g. test stocks) */
   holders: number | null;
@@ -67,7 +68,7 @@ const memo = <T>(ms: number, f: () => Promise<T>) => {
     return v.p;
   };
 };
-const usd = memo(5 * 60_000, () => usdPerEth(client));
+const usd = memo(5 * 60_000, () => readEthUsd(mainnetClient));
 const head = memo(15_000, () => client.getBlockNumber());
 let dayBlocks: { at: number; n: bigint } | null = null;
 async function blocksInDay(h: bigint) {

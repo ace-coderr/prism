@@ -13,13 +13,13 @@
  * - Holders: every Transfer of the token since its launch; addresses with a balance, minus the
  *   curve, the PoolManager, the token itself (v6 tokens hold their holder rewards) and the zero
  *   and dead addresses.
- * - USD: ETH/USD from the ETH/USDG test pool (testnet values, not market prices).
+ * - USD: the real ETH price, from Chainlink's ETH / USD feed on Robinhood Chain mainnet (ETH_USD_FEED).
  *
  * The maths is pure and tested; the readers take a viem PublicClient.
  */
 import { encodeAbiParameters, keccak256, parseAbi, parseAbiItem, type Address, type Hex, type PublicClient } from 'viem';
 import { blockRanges } from './onchain';
-import { tokenById, type TestnetToken } from './tokens';
+import { AGGREGATOR_V3_ABI, type TestnetToken } from './tokens';
 
 export const POOL_MANAGER: Address = '0x8366a39cc670b4001a1121b8f6a443a643e40951';
 /** StateLibrary.POOLS_SLOT in v4-core. */
@@ -242,12 +242,34 @@ export async function ethPerUnit(client: PublicClient, t: TestnetToken): Promise
   return p ? 1 / poolPrice(p.sqrtPriceX96, NATIVE, t.address) : null;
 }
 
-/** USD per ETH from the ETH/USDG test pool (testnet value). */
-export async function usdPerEth(client: PublicClient): Promise<number | null> {
-  const usdg = tokenById('USDG');
-  if (!usdg) return null;
-  const e = await ethPerUnit(client, usdg); // ETH wei per USDG base unit
-  return e && e > 0 ? (1 / e) * 10 ** (18 - usdg.decimals) : null;
+/**
+ * The real ETH/USD price: Chainlink's ETH / USD feed on Robinhood Chain mainnet (chain 4663), read
+ * with a plain eth_call. Address from Chainlink's own feed directory for Robinhood Chain mainnet
+ * (https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, the data behind
+ * https://data.chain.link): "ETH / USD", path eth-usd-shared-svr, 8 decimals, 24h heartbeat.
+ * Testnet tokens have no real value; this only turns their ETH figures into familiar dollars.
+ */
+export const ETH_USD_FEED = {
+  chainId: 4663,
+  proxy: '0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9' as Address,
+  heartbeatSec: 86_400,
+  source: 'https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json',
+} as const;
+
+/** A Chainlink answer as a price, or null if it isn't positive or is older than two heartbeats. */
+export function ethUsdFromRound(answer: bigint, decimals: number, updatedAt: bigint, nowSec = Math.floor(Date.now() / 1000)): number | null {
+  if (answer <= 0n || decimals < 0 || decimals > 36) return null;
+  if (nowSec - Number(updatedAt) > 2 * ETH_USD_FEED.heartbeatSec) return null;
+  return Number(answer) / 10 ** decimals;
+}
+
+/** USD per ETH from the Chainlink feed above; `mainnet` must be a Robinhood Chain mainnet client. */
+export async function readEthUsd(mainnet: PublicClient): Promise<number | null> {
+  const [decimals, round] = await Promise.all([
+    mainnet.readContract({ address: ETH_USD_FEED.proxy, abi: AGGREGATOR_V3_ABI, functionName: 'decimals' }),
+    mainnet.readContract({ address: ETH_USD_FEED.proxy, abi: AGGREGATOR_V3_ABI, functionName: 'latestRoundData' }),
+  ]);
+  return ethUsdFromRound(round[1], Number(decimals), round[3]);
 }
 
 /** Blocks in the last 24h, measured from the chain's own clock. */

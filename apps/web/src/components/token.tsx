@@ -7,10 +7,11 @@ import { Avatar } from '../data/profiles';
 
 /**
  * A token's picture: the one in its own metadata (verified on IPFS, resized by PRISM's image
- * route), else its identicon. Rounded, never stretched.
+ * route), else its identicon. Rounded, never stretched; a soft shimmer while it loads.
  */
 export function TokenAvatar({ token, size = 32, className = '' }: { token: string; size?: number; className?: string }) {
   const [broken, setBroken] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const px = size <= 24 ? 48 : size <= 48 ? 96 : size <= 96 ? 192 : 384;
   const radius = size >= 64 ? 'rounded-2xl' : 'rounded-[30%]';
   if (broken) return <Avatar address={getAddress(token.toLowerCase())} size={size} className={className} />;
@@ -22,22 +23,26 @@ export function TokenAvatar({ token, size = 32, className = '' }: { token: strin
       height={size}
       loading="lazy"
       decoding="async"
+      onLoad={() => setLoaded(true)}
       onError={() => setBroken(true)}
-      className={`inline-block shrink-0 bg-line object-cover ring-1 ring-white/10 ${radius} ${className}`}
+      className={`inline-block shrink-0 object-cover ring-1 ring-white/10 ${loaded ? 'bg-line' : 'img-shimmer'} ${radius} ${className}`}
       style={{ width: size, height: size }}
     />
   );
 }
 
-/** "12.4 ETH" with the testnet USD value as a small second label. */
+/** The tooltip on every dollar figure. */
+export const USD_NOTE = '≈ $ (real ETH price): ETH × Chainlink ETH/USD on Robinhood Chain mainnet. Testnet tokens have no real value.';
+
+/** "12.4 ETH" with its dollar value (at the real ETH price) as a small second label. */
 export function EthValue({ eth, usdPerEth, className = '' }: { eth: number | null | undefined; usdPerEth: number | null | undefined; className?: string }) {
   const usd = formatUsd(eth, usdPerEth);
   return (
     <span className={className}>
       {formatEth(eth)}
       {usd && (
-        <span className="ml-1.5 font-mono text-[10px] font-normal tracking-normal text-mist" title="From the ETH/USDG test pool: testnet value, not a market price">
-          ≈{usd} testnet
+        <span className="ml-1.5 font-mono text-[10px] font-normal tracking-normal text-mist" title={USD_NOTE}>
+          ≈{usd}
         </span>
       )}
     </span>
@@ -52,12 +57,16 @@ export function capText(m: Pick<MarketData, 'capEth' | 'cap' | 'pair'>): string 
   return `${n >= 1000 ? new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(n) : n.toLocaleString('en-US', { maximumSignificantDigits: 3 })} ${m.pair.symbol}`;
 }
 
-function Stat({ label, children, sub }: { label: string; children: ReactNode; sub?: ReactNode }) {
+function Stat({ label, children, sub, subTitle }: { label: string; children: ReactNode; sub?: ReactNode; subTitle?: string }) {
   return (
     <div className="flex min-w-0 flex-col gap-1 px-4 py-3">
       <dt className="font-mono text-[10px] uppercase tracking-[0.12em] text-mist">{label}</dt>
       <dd className="truncate font-display text-[19px] font-bold tabular-nums tracking-[-0.02em] text-white">{children}</dd>
-      {sub && <dd className="truncate text-[11px] text-mist">{sub}</dd>}
+      {sub && (
+        <dd className="truncate text-[11px] text-mist" title={subTitle}>
+          {sub}
+        </dd>
+      )}
     </div>
   );
 }
@@ -71,7 +80,7 @@ export function MarketStats({ token, kind }: { token: Address; kind: 'stock' | '
   return (
     <div className="flex flex-col gap-2">
       <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/[0.07] sm:grid-cols-5 [&>div]:bg-panel [&>div:last-child]:col-span-2 sm:[&>div:last-child]:col-span-1">
-        <Stat label="Market cap" sub={m && m.capEth !== null ? (formatUsd(m.capEth, m.usdPerEth) ? `≈${formatUsd(m.capEth, m.usdPerEth)} testnet` : null) : null}>
+        <Stat label="Market cap" sub={m ? formatUsd(m.capEth, m.usdPerEth) && `≈${formatUsd(m.capEth, m.usdPerEth)}` : null} subTitle={USD_NOTE}>
           {m ? capText(m) : wait}
         </Stat>
         <Stat label="Holders" sub={kind === 'stock' ? 'not counted for test stocks' : undefined}>
@@ -109,7 +118,7 @@ export function MarketStats({ token, kind }: { token: Address; kind: 'stock' | '
       <p className="text-[11px] text-mist">
         {q.isError
           ? 'Market details couldn’t be read right now; they retry by themselves.'
-          : 'Read from the chain: the curve or pool, its trades and transfers. Refreshes every few minutes. USD from the ETH/USDG test pool (testnet value).'}
+          : 'Read from the chain: the curve or pool, its trades and transfers. Refreshes every few minutes. Dollar figures use the real ETH price (Chainlink, Robinhood Chain mainnet).'}
       </p>
     </div>
   );

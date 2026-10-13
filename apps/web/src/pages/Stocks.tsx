@@ -35,7 +35,9 @@ export default function Stocks() {
                 <TokenAvatar token={asset.token} size={48} />
                 <span className="min-w-[11rem] flex-1">
                   <span className="block font-display text-2xl font-bold">${asset.symbol}</span>
-                  <span className="block truncate text-[13px] text-mist">{asset.name}</span>
+                  <span className="block truncate text-[13px] text-mist" title={asset.fullName ?? undefined}>
+                    {asset.name}
+                  </span>
                   <MarketLine token={asset.token} className="block truncate text-[12px] text-mist" />
                 </span>
                 <span className="text-right">

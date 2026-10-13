@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { getAddress, isAddress, type Address } from 'viem';
-import { SHARE_TEXT, SITE_URL, badgePath, explorerAddressUrl, tokenPath, type ReviewableAsset } from '@prism/core';
+import { SHARE_TEXT, SITE_URL, badgePath, explorerAddressUrl, stockDisclaimers, tokenPath, type ReviewableAsset } from '@prism/core';
 import { DeepNav } from '../components/DeepNav';
 import { PageScroll } from '../components/PageHeader';
 import { ScoreBlock, ReviewList } from '../components/reviews';
@@ -9,7 +9,7 @@ import { ShareOnX } from '../components/ShareOnX';
 import { SectionLabel } from '../components/design';
 import { GuideNote } from '../components/Viber';
 import { MarketStats, TokenAbout, TokenAvatar } from '../components/token';
-import { BuyOnVibe } from '../components/vibe';
+import { BuyOnVibe, BuyOnVibeLink } from '../components/vibe';
 import { useMarket, useToken, type TokenData } from '../data/api';
 import { dateText, formatTokens } from '../data/format';
 import { useHolding } from '../data/holding';
@@ -52,7 +52,7 @@ function Launch({ data }: { data: TokenData }) {
       <div className="flex flex-col gap-6">
         <DeepNav crumbs={[{ label: 'Home', to: '/' }, { label: `$${a.symbol}`, to: tokenPath(token) }]} />
         <Header asset={a} data={data} createdAt={setupTime} />
-        <MarketStats token={token} kind={a.kind} />
+        <MarketStats token={token} kind={a.kind} symbol={a.symbol} pairedCount={data.paired?.count} />
         {a.kind === 'launch' && <TokenAbout token={token} />}
       </div>
 
@@ -68,7 +68,7 @@ function Launch({ data }: { data: TokenData }) {
         <ReviewList
           reviews={data.reviews}
           empty={
-            <GuideNote index={3} action={<BuyOnVibe token={token} className="btn btn-outline" />}>
+            <GuideNote index={3}>
               No reviews here yet. If you hold ${a.symbol}, you can be the first. Reviews stay forever, and if you sell, yours will say SOLD.
             </GuideNote>
           }
@@ -93,10 +93,20 @@ function Header({ asset: a, data, createdAt }: { asset: ReviewableAsset; data: T
         <TokenAvatar token={a.token} size={76} className="md:!h-28 md:!w-28" />
         <div className="min-w-0">
           <SectionLabel>{isStock ? 'vibe/vibe test stock' : 'vibe/vibe launch'}</SectionLabel>
-          <h1 className="display-md mt-3 break-words">{a.name}</h1>
+          <h1 className="display-md mt-3 break-words" title={a.fullName ?? undefined}>
+            {a.name}
+          </h1>
           <p className="mt-1 break-words font-mono text-lg font-bold text-lime">${a.symbol}</p>
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <span className="chip font-mono text-[11px] uppercase tracking-[0.1em] text-white">{isStock ? 'Test stock · no value' : `Paired with ${a.quote?.symbol ?? 'ETH'}`}</span>
+            {isStock ? (
+              stockDisclaimers(a.fullName ?? '').map((d) => (
+                <span key={d} className="chip font-mono text-[11px] uppercase tracking-[0.1em] text-gold" title={`On-chain name: ${a.fullName}`}>
+                  {d}
+                </span>
+              ))
+            ) : (
+              <span className="chip font-mono text-[11px] uppercase tracking-[0.1em] text-white">Paired with {a.quote?.symbol ?? 'ETH'}</span>
+            )}
             {!isStock && graduated && <span className="chip font-mono text-[11px] uppercase tracking-[0.1em] text-lime">Graduated</span>}
             {!isStock && !graduated && <span className="chip font-mono text-[11px] uppercase tracking-[0.1em] text-gold">On curve</span>}
           </div>
@@ -167,8 +177,11 @@ function ReviewAction({ asset }: { asset: ReviewableAsset }) {
     );
   } else {
     body = (
-      <GuideNote index={1} action={<BuyOnVibe token={token} />}>
-        Only holders can review this. Your wallet holds no ${asset.symbol}{asset.kind === 'launch' ? '. Buy some on vibe/vibe to join in.' : '.'}
+      <GuideNote index={1}>
+        Only holders can review this. Your wallet holds no ${asset.symbol}.
+        <span className="mt-2 block">
+          <BuyOnVibeLink token={token} symbol={asset.symbol} />
+        </span>
       </GuideNote>
     );
   }

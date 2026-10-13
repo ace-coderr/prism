@@ -59,7 +59,7 @@ export function formatEth(eth: number | null | undefined): string {
   return `${compact(eth)} ETH`;
 }
 
-/** The testnet USD value of an ETH amount: "$9.2k" (null when either is unknown). */
+/** The dollar value of an ETH amount at the real ETH price: "$9.2K" (null when either is unknown). */
 export function formatUsd(eth: number | null | undefined, usdPerEth: number | null | undefined): string | null {
   if (eth === null || eth === undefined || !usdPerEth || !Number.isFinite(eth)) return null;
   const usd = eth * usdPerEth;

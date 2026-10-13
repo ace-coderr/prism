@@ -44,6 +44,12 @@ export interface TestnetToken {
   kind: 'stock' | 'preipo' | 'crypto' | 'currency' | 'launchpad';
   /** The ETH-paired Uniswap V4 pool used for pricing and swaps, when one exists. */
   pool: { fee: number; tickSpacing: number; hooks: `0x${string}` } | null;
+  /**
+   * Reviewable test stocks: the short name PRISM shows (the on-chain name, with its disclaimer, is
+   * kept for tooltips) and the ticker tile used instead of any company logo: its colour and the
+   * abbreviation that fits small tiles. The colours are PRISM's own, not the companies'.
+   */
+  display?: { shortName: string; tileColor: string; tileAbbr: string };
   sourceUrl: string;
   note?: string;
 }
@@ -59,6 +65,7 @@ export const TESTNET_TOKENS: readonly TestnetToken[] = [
     id: 'NVDA',
     symbol: 'NVDA',
     name: 'NVIDIA (vibe/vibe test stock, no value)',
+    display: { shortName: 'NVIDIA', tileColor: '#c08cff', tileAbbr: 'NVDA' },
     address: '0x3ab049897b0697BdA766D8730fe1F955c9c103F0',
     decimals: 18,
     priceFeed: null,
@@ -71,6 +78,7 @@ export const TESTNET_TOKENS: readonly TestnetToken[] = [
     id: 'SPCX',
     symbol: 'SPCX',
     name: 'SpaceX (vibe/vibe test stock, no value)',
+    display: { shortName: 'SpaceX', tileColor: '#f6c143', tileAbbr: 'SPCX' },
     address: '0xba163e9887d54A854323B41fcA9cf64a1c275Ac9',
     decimals: 18,
     priceFeed: null,
@@ -83,6 +91,7 @@ export const TESTNET_TOKENS: readonly TestnetToken[] = [
     id: 'AAPL',
     symbol: 'AAPL',
     name: 'Apple (vibe/vibe test stock, no value)',
+    display: { shortName: 'Apple', tileColor: '#6aa6ff', tileAbbr: 'AAPL' },
     address: '0x438820DcfE62A21e306614A4B54383Cd8a36AcF2',
     decimals: 18,
     priceFeed: null,
@@ -95,6 +104,7 @@ export const TESTNET_TOKENS: readonly TestnetToken[] = [
     id: 'OPENAI',
     symbol: 'OPENAI',
     name: 'OpenAI (vibe/vibe test asset, no value, not equity)',
+    display: { shortName: 'OpenAI', tileColor: '#ff7a5c', tileAbbr: 'OAI' },
     address: '0x1b14321750b38f7eD66A363D07a921A668521A5F',
     decimals: 18,
     priceFeed: null,
@@ -107,6 +117,7 @@ export const TESTNET_TOKENS: readonly TestnetToken[] = [
     id: 'ANTHROPIC',
     symbol: 'ANTHROPIC',
     name: 'Anthropic (vibe/vibe test asset, no value, not equity)',
+    display: { shortName: 'Anthropic', tileColor: '#3cc8b4', tileAbbr: 'ANTH' },
     address: '0x92dCe70B18df47ac643Af6377621D74aBE3C868C',
     decimals: 18,
     priceFeed: null,
@@ -205,3 +216,22 @@ export function feedPrice(
   if (nowSec - Number(updatedAt) > maxAgeSec) return null;
   return Number(answer) / 10 ** decimals;
 }
+
+/** A test stock's ticker tile, or null for anything else (launches have their own pictures). */
+export function stockTile(address: string): { ticker: string; abbr: string; color: string } | null {
+  const t = TESTNET_TOKENS.find((x) => x.address.toLowerCase() === address.toLowerCase());
+  return t?.display ? { ticker: t.symbol, abbr: t.display.tileAbbr, color: t.display.tileColor } : null;
+}
+
+/**
+ * The tile as SVG: the bold ticker on its solid colour (the 4-letter abbreviation below 64px so it
+ * stays readable). Never a company logo.
+ */
+export function tickerTileSvg(tile: { ticker: string; abbr: string; color: string }, size: number): string {
+  const text = size >= 64 ? tile.ticker : tile.abbr;
+  const fontSize = Math.min(size * 0.36, (size * 0.8) / (text.length * 0.66));
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><rect width="${size}" height="${size}" fill="${tile.color}"/><text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-family="Space Grotesk Light, Space Grotesk, Arial, sans-serif" font-weight="700" font-size="${fontSize.toFixed(1)}" letter-spacing="${(-fontSize * 0.02).toFixed(2)}" fill="#101214">${text}</text></svg>`;
+}
+
+/** The on-chain disclaimer as badges: "TEST STOCK · NO VALUE", and "NOT EQUITY" where the name says so. */
+export const stockDisclaimers = (onchainName: string): string[] => ['TEST STOCK · NO VALUE', ...(/not equity/i.test(onchainName) ? ['NOT EQUITY'] : [])];

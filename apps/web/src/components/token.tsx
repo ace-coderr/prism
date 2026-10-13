@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { getAddress, type Address } from 'viem';
-import { safeUrl, tokenImagePath } from '@prism/core';
+import { safeUrl, stockTile, tickerTileSvg, tokenImagePath } from '@prism/core';
 import { useMarket, useMeta, type MarketData } from '../data/api';
 import { formatChange, formatEth, formatUsd, plural } from '../data/format';
 import { Avatar } from '../data/profiles';
@@ -14,6 +15,18 @@ export function TokenAvatar({ token, size = 32, className = '' }: { token: strin
   const [loaded, setLoaded] = useState(false);
   const px = size <= 24 ? 48 : size <= 48 ? 96 : size <= 96 ? 192 : 384;
   const radius = size >= 64 ? 'rounded-2xl' : 'rounded-[30%]';
+  // test stocks: a ticker tile on their own colour, drawn here (no company logos)
+  const tile = stockTile(token);
+  if (tile) {
+    return (
+      <span
+        aria-hidden
+        className={`inline-block shrink-0 overflow-hidden ring-1 ring-white/10 [&>svg]:h-full [&>svg]:w-full ${radius} ${className}`}
+        style={{ width: size, height: size }}
+        dangerouslySetInnerHTML={{ __html: tickerTileSvg(tile, size) }}
+      />
+    );
+  }
   if (broken) return <Avatar address={getAddress(token.toLowerCase())} size={size} className={className} />;
   return (
     <img
@@ -71,54 +84,80 @@ function Stat({ label, children, sub, subTitle }: { label: string; children: Rea
   );
 }
 
-/** Market cap · Holders · 24h volume · 24h change · Progress, read from the chain (refreshes every few minutes). */
-export function MarketStats({ token, kind }: { token: Address; kind: 'stock' | 'launch' }) {
+/** A test stock's 24h move beyond this gets a note: its pools are thin. */
+const BIG_MOVE = 0.3;
+
+/**
+ * Launches: Market cap · Holders · 24h volume · 24h change · Progress. Test stocks: Price · 24h
+ * change · 24h volume · Liquidity · Paired launches. Read from the chain, refreshing every few minutes.
+ */
+export function MarketStats({ token, kind, symbol, pairedCount }: { token: Address; kind: 'stock' | 'launch'; symbol?: string; pairedCount?: number }) {
   const q = useMarket(token);
   const m = q.data;
   const wait = q.isLoading ? '…' : '–';
   const change = m?.day?.change ?? null;
+  const usd = (eth: number | null | undefined) => (m ? formatUsd(eth, m.usdPerEth) : null);
+  const changeStat = (
+    <Stat label="24h change">
+      <span className={change === null || Math.abs(change) < 0.0005 ? '' : change > 0 ? 'text-up' : 'text-down'}>{m ? formatChange(change) : wait}</span>
+    </Stat>
+  );
+  const volumeStat = (
+    <Stat label="24h volume" sub={m?.day ? `${plural(m.day.buys, 'buy')} · ${plural(m.day.sells, 'sell')}` : undefined}>
+      {m?.day ? (m.day.volumeEth !== null ? formatEth(m.day.volumeEth) : `${capText({ capEth: null, cap: m.day.volume, pair: m.pair }).replace(/ .*/, '')} ${m.pair.symbol}`) : wait}
+    </Stat>
+  );
   return (
     <div className="flex flex-col gap-2">
       <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/[0.07] sm:grid-cols-5 [&>div]:bg-panel [&>div:last-child]:col-span-2 sm:[&>div:last-child]:col-span-1">
-        <Stat label="Market cap" sub={m ? formatUsd(m.capEth, m.usdPerEth) && `≈${formatUsd(m.capEth, m.usdPerEth)}` : null} subTitle={USD_NOTE}>
-          {m ? capText(m) : wait}
-        </Stat>
-        <Stat label="Holders" sub={kind === 'stock' ? 'not counted for test stocks' : undefined}>
-          {m?.holders != null ? m.holders.toLocaleString('en-US') : wait}
-        </Stat>
-        <Stat label="24h volume" sub={m?.day ? `${plural(m.day.buys, 'buy')} · ${plural(m.day.sells, 'sell')}` : undefined}>
-          {m?.day ? (m.day.volumeEth !== null ? formatEth(m.day.volumeEth) : `${capText({ capEth: null, cap: m.day.volume, pair: m.pair }).replace(/ .*/, '')} ${m.pair.symbol}`) : wait}
-        </Stat>
-        <Stat label="24h change">
-          <span className={change === null || Math.abs(change) < 0.0005 ? '' : change > 0 ? 'text-up' : 'text-down'}>{m ? formatChange(change) : wait}</span>
-        </Stat>
         {kind === 'stock' ? (
-          <Stat label="Liquidity" sub="in its ETH pool">
-            {m ? formatEth(m.liquidityEth) : wait}
-          </Stat>
+          <>
+            <Stat label="Price" sub={usd(m?.priceEth) && `≈${usd(m?.priceEth)}`} subTitle={USD_NOTE}>
+              {m ? formatEth(m.priceEth) : wait}
+            </Stat>
+            {changeStat}
+            {volumeStat}
+            <Stat label="Liquidity" sub="in its ETH pool">
+              {m ? formatEth(m.liquidityEth) : wait}
+            </Stat>
+            <Stat label="Paired launches" sub={symbol ? <Link to={`/stocks#${symbol}`} className="text-white hover:text-lime">See the list →</Link> : undefined}>
+              {pairedCount !== undefined ? pairedCount.toLocaleString('en-US') : wait}
+            </Stat>
+          </>
         ) : (
-          <Stat label="Progress" sub={m?.status === 'graduated' && m.liquidityEth !== null ? `${formatEth(m.liquidityEth)} liquidity` : m?.status === 'curve' ? 'to graduation' : undefined}>
-            {!m ? (
-              wait
-            ) : m.status === 'graduated' ? (
-              <span className="text-lime">Graduated</span>
-            ) : m.progress !== null ? (
-              <span className="flex items-center gap-2">
-                {Math.round(m.progress * 100)}%
-                <span className="inline-block h-1.5 w-14 overflow-hidden rounded-full bg-white/10" aria-hidden>
-                  <span className="block h-full rounded-full bg-gold" style={{ width: `${Math.max(2, Math.round(m.progress * 100))}%` }} />
+          <>
+            <Stat label="Market cap" sub={m ? usd(m.capEth) && `≈${usd(m.capEth)}` : null} subTitle={USD_NOTE}>
+              {m ? capText(m) : wait}
+            </Stat>
+            <Stat label="Holders">{m?.holders != null ? m.holders.toLocaleString('en-US') : wait}</Stat>
+            {volumeStat}
+            {changeStat}
+            <Stat label="Progress" sub={m?.status === 'graduated' && m.liquidityEth !== null ? `${formatEth(m.liquidityEth)} liquidity` : m?.status === 'curve' ? 'to graduation' : undefined}>
+              {!m ? (
+                wait
+              ) : m.status === 'graduated' ? (
+                <span className="text-lime">Graduated</span>
+              ) : m.progress !== null ? (
+                <span className="flex items-center gap-2">
+                  {Math.round(m.progress * 100)}%
+                  <span className="inline-block h-1.5 w-14 overflow-hidden rounded-full bg-white/10" aria-hidden>
+                    <span className="block h-full rounded-full bg-gold" style={{ width: `${Math.max(2, Math.round(m.progress * 100))}%` }} />
+                  </span>
                 </span>
-              </span>
-            ) : (
-              '–'
-            )}
-          </Stat>
+              ) : (
+                '–'
+              )}
+            </Stat>
+          </>
         )}
       </dl>
+      {kind === 'stock' && change !== null && Math.abs(change) > BIG_MOVE && (
+        <p className="text-[12px] text-gold">Test stock pools are thin, so prices swing a lot. These moves aren’t real-world prices.</p>
+      )}
       <p className="text-[11px] text-mist">
         {q.isError
           ? 'Market details couldn’t be read right now; they retry by themselves.'
-          : 'Read from the chain: the curve or pool, its trades and transfers. Refreshes every few minutes. Dollar figures use the real ETH price (Chainlink, Robinhood Chain mainnet).'}
+          : `Read from the chain: ${kind === 'stock' ? 'its ETH pool and its swaps' : 'the curve or pool, its trades and transfers'}. Refreshes every few minutes. Dollar figures use the real ETH price (Chainlink, Robinhood Chain mainnet).`}
       </p>
     </div>
   );
@@ -190,6 +229,11 @@ export function MarketLine({ token, className = '' }: { token: string; className
   const q = useMarket(token);
   const m = q.data;
   if (!m) return q.isLoading ? <span className={`text-mist ${className}`}>…</span> : null;
-  const parts = [m.cap !== null || m.capEth !== null ? `${capText(m)} cap` : null, m.holders !== null ? plural(m.holders, 'holder') : null].filter(Boolean);
-  return parts.length ? <span className={className}>{parts.join(' · ')}</span> : null;
+  // test stocks: their price (no market cap or holders for them)
+  const parts =
+    m.status === 'stock'
+      ? [m.priceEth !== null ? `${formatEth(m.priceEth)} each` : null]
+      : [m.cap !== null || m.capEth !== null ? `${capText(m)} cap` : null, m.holders !== null ? plural(m.holders, 'holder') : null];
+  const shown = parts.filter(Boolean);
+  return shown.length ? <span className={className}>{shown.join(' · ')}</span> : null;
 }

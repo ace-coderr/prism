@@ -12,7 +12,10 @@ export const REVIEWABLE_STOCK_IDS = ['AAPL', 'NVDA', 'SPCX', 'ANTHROPIC', 'OPENA
 export interface ReviewableAsset {
   kind: 'stock' | 'launch';
   token: Address;
+  /** what PRISM shows: a launch's name, a test stock's short name ("NVIDIA") */
   name: string;
+  /** test stocks: the full on-chain name, disclaimer included; null for launches */
+  fullName: string | null;
   symbol: string;
   /** launches only */
   status: Lifecycle | null;
@@ -26,7 +29,7 @@ export interface ReviewableAsset {
 export const reviewableStocks = (): ReviewableAsset[] =>
   REVIEWABLE_STOCK_IDS.map((id) => {
     const t = TESTNET_TOKENS.find((x) => x.id === id)!;
-    return { kind: 'stock', token: t.address, name: t.name, symbol: t.id, status: null, quote: null, creator: null, block: null, gen: null };
+    return { kind: 'stock', token: t.address, name: t.display?.shortName ?? t.name, fullName: t.name, symbol: t.id, status: null, quote: null, creator: null, block: null, gen: null };
   });
 
 export function launchAsset(l: Launch, index: Pick<LaunchIndex, 'launches' | 'quoteSymbols'>, byToken?: ReadonlyMap<string, Launch>): ReviewableAsset {
@@ -34,6 +37,7 @@ export function launchAsset(l: Launch, index: Pick<LaunchIndex, 'launches' | 'qu
     kind: 'launch',
     token: l.token,
     name: l.name,
+    fullName: null,
     symbol: l.symbol,
     status: lifecycleOf(l),
     quote: quoteOf(l, index, byToken),

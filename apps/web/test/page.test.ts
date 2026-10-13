@@ -33,7 +33,9 @@ describe('share images', () => {
   });
 
   it('badge says the score, or how far from one a token is', () => {
-    expect(badgeSvg('BULO', { score: 4.23, reviewers: 12, sold: 1, confidence: 'high', total: 13 })).toContain('4.2 · 12 holders');
-    expect(badgeSvg('NEW', { score: null, reviewers: 1, sold: 0, confidence: 'low', total: 1 })).toContain('1/3 holders reviewed');
+    expect(badgeSvg('BULO', { score: 4.23, reviewers: 12, sold: 1, confidence: 'high', total: 13 })).toContain('★4.2 · 12 holders');
+    expect(badgeSvg('NEW', { score: null, reviewers: 0, sold: 0, confidence: 'low', total: 0 })).toContain('No reviews yet');
+    expect(badgeSvg('NEW', { score: null, reviewers: 1, sold: 0, confidence: 'low', total: 1 })).toContain('1 review · score soon');
+    expect(badgeSvg('NEW', { score: null, reviewers: 2, sold: 0, confidence: 'low', total: 2 })).toContain('2 reviews · score soon');
   });
 });

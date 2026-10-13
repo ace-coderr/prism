@@ -35,10 +35,16 @@ export function wrap(text: string, width: number, lines: number): string[] {
 const fit = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
-/** A shields-style badge: "PRISM true colors | 4.2 · 12 holders". */
+/** The badge's value: "No reviews yet", "2 reviews · score soon", then "★4.2 · 12 holders". */
+export function badgeValue(score: ScoreSummary): string {
+  if (score.score !== null) return `★${formatScore(score.score)} · ${score.reviewers} holder${score.reviewers === 1 ? '' : 's'}`;
+  return score.total === 0 ? 'No reviews yet' : `${score.total} review${score.total === 1 ? '' : 's'} · score soon`;
+}
+
+/** A shields-style badge: "PRISM true colors | ★4.2 · 12 holders". */
 export function badgeSvg(symbol: string, score: ScoreSummary): string {
   const label = 'PRISM true colors';
-  const value = score.score === null ? `${score.reviewers}/3 holders reviewed` : `${formatScore(score.score)} · ${score.reviewers} holder${score.reviewers === 1 ? '' : 's'}`;
+  const value = badgeValue(score);
   const color = score.score === null ? MIST : scoreColor(score.score);
   const lw = 22 + label.length * 6.6;
   const vw = 16 + value.length * 7;

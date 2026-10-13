@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { getAddress, isAddress, type Address } from 'viem';
-import { IpfsError, MAX_IMAGE_BYTES, fetchIpfs, identiconSvg } from '@prism/core';
+import { IpfsError, MAX_IMAGE_BYTES, fetchIpfs, identiconSvg, stockTile, tickerTileSvg } from '@prism/core';
 import { originOf } from './og';
 import { coverSquare, encodePng, type Rgba } from './png';
 import { renderPng, renderRgba } from './render';
@@ -72,8 +72,11 @@ async function getMeta(origin: string, token: Address): Promise<MetaBody | null>
 }
 
 /** The PNG to serve and how long it may be cached. */
-export async function tokenPicture(origin: string, token: Address, size: number): Promise<{ png: Uint8Array; cache: string; source: 'metadata' | 'identicon' }> {
+export async function tokenPicture(origin: string, token: Address, size: number): Promise<{ png: Uint8Array; cache: string; source: 'metadata' | 'identicon' | 'tile' }> {
   const identicon = async (cache: string) => ({ png: await renderPng(identiconSvg(token, size)), cache, source: 'identicon' as const });
+  // test stocks: their ticker tile, never a company logo
+  const tile = stockTile(token);
+  if (tile) return { png: await renderPng(tickerTileSvg(tile, size)), cache: 'public, max-age=86400, s-maxage=2592000', source: 'tile' as const };
   const meta = await getMeta(origin, token);
   if (!meta || meta.status === 'unavailable') return identicon('public, max-age=60, s-maxage=120');
   if (!meta.image) return identicon('public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800');

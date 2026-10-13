@@ -25,7 +25,9 @@ export function SearchRow({ a, size = 'md' }: { a: SearchItem; size?: 'md' | 'lg
       <TokenAvatar token={a.token} size={size === 'lg' ? 48 : 36} />
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-baseline gap-2">
-          <span className={`truncate font-display font-bold text-white ${size === 'lg' ? 'text-lg' : ''}`}>{a.name}</span>
+          <span className={`truncate font-display font-bold text-white ${size === 'lg' ? 'text-lg' : ''}`} title={a.fullName ?? undefined}>
+            {a.name}
+          </span>
           <span className="shrink-0 font-mono text-[12px] font-bold text-lime">${a.symbol}</span>
         </span>
         <span className="block truncate font-mono text-[10px] uppercase tracking-[0.08em] text-mist">{kindLabel(a)}</span>

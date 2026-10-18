@@ -1,3 +1,5 @@
+import { cleanShown } from './text';
+
 /**
  * PRISM profiles (the PrismProfiles contract): the same rules the contract enforces, plus
  * words the app refuses to send, so nobody poses as vibe/vibe, PRISM, Robinhood or an admin,
@@ -14,27 +16,45 @@ const X_RE = /^[A-Za-z0-9_]+$/;
 const CONTROL_RE = /[\u0000-\u001f\u007f]/;
 
 /** Impersonation guard: usernames may not contain these (app-side only). */
-export const RESERVED_WORDS = ['vibevibe', 'vibe_vibe', 'prism', 'admin', 'official', 'robinhood'] as const;
-/** Bios may say "prism" ("Reviewing on PRISM"); the rest stays refused. */
-export const BIO_RESERVED_WORDS = RESERVED_WORDS.filter((w) => w !== 'prism');
+export const RESERVED_WORDS = [
+  'vibevibe',
+  'vibe_vibe',
+  'prism',
+  'admin',
+  'official',
+  'robinhood',
+  'seedify',
+  'meta_alchemist',
+  'holdprism',
+  'seeprism',
+  'support',
+  'moderator',
+] as const;
+/** Reserved too, but only as a whole word ("prism_team", "the_mod"): inside a word they're innocent ("steam", "model"). */
+export const RESERVED_WHOLE_WORDS = ['mod', 'team'] as const;
+/** Bios may say "prism" ("Reviewing on PRISM") and "team"; the rest stays refused. */
+export const BIO_RESERVED_WORDS = RESERVED_WORDS.filter((w) => w !== 'prism' && w !== 'holdprism' && w !== 'seeprism');
 /** Basic profanity, refused anywhere in a name or bio. */
 const PROFANITY_ANYWHERE = ['fuck', 'shit', 'cunt', 'nigger', 'nigga', 'faggot', 'bitch', 'whore', 'slut', 'retard', 'asshole', 'motherf'];
 /** Short words refused only as a whole word (so "class", "cocktail" and "grape" stay fine). */
 const PROFANITY_WORDS = ['ass', 'cock', 'dick', 'rape', 'porn', 'tits', 'twat', 'wank', 'piss', 'fag', 'dyke', 'nazi', 'kkk'];
 
 /** The first refused word in `text`, or null. Case and separators are ignored. */
-export function blockedWord(text: string, reservedWords: readonly string[] = RESERVED_WORDS): string | null {
+export function blockedWord(text: string, reservedWords: readonly string[] = RESERVED_WORDS, wholeWords: readonly string[] = RESERVED_WHOLE_WORDS): string | null {
   const spaced = text.toLowerCase().replace(/[^a-z0-9]+/g, '_'); // "Vibe/Vibe!" → "vibe_vibe_"
   const compact = spaced.replace(/_/g, ''); // "pr_ism" → "prism"
   const reserved = reservedWords.find((w) => spaced.includes(w) || compact.includes(w.replace(/_/g, '')));
   if (reserved) return reserved;
+  const segments = new Set(spaced.split(/[_0-9]+/));
+  const whole = wholeWords.find((w) => segments.has(w));
+  if (whole) return whole;
   const anywhere = PROFANITY_ANYWHERE.find((w) => spaced.includes(w));
   if (anywhere) return anywhere;
   const words = new Set(text.toLowerCase().split(/[^a-z]+/));
   return PROFANITY_WORDS.find((w) => words.has(w)) ?? null;
 }
 
-const refused = (w: string) => (RESERVED_WORDS.includes(w as (typeof RESERVED_WORDS)[number]) ? `“${w}”` : 'that word');
+const refused = (w: string) => ([...RESERVED_WORDS, ...RESERVED_WHOLE_WORDS] as readonly string[]).includes(w) ? `“${w}”` : 'that word';
 
 /** What's wrong with `name`, in plain words, or null when it can be claimed. */
 export function nameProblem(name: string): string | null {
@@ -53,7 +73,7 @@ export function bioProblem(bio: string): string | null {
   if (bio === '') return null;
   if (bioBytes(bio) > BIO_MAX_BYTES) return `At most ${BIO_MAX_BYTES} bytes (emoji and accents count double or more).`;
   if (CONTROL_RE.test(bio)) return 'One line of text: no line breaks or control characters.';
-  const bad = blockedWord(bio, BIO_RESERVED_WORDS);
+  const bad = blockedWord(bio, BIO_RESERVED_WORDS, []);
   return bad ? `Bios can’t contain ${refused(bad)}.` : null;
 }
 
@@ -73,3 +93,15 @@ export const atName = (name: string) => `@${name}`;
 
 /** Link for an (unverified) X handle. */
 export const xUrl = (handle: string) => `https://x.com/${encodeURIComponent(handle)}`;
+
+/**
+ * A username as PRISM shows it: null (show the address instead) when it breaks the app's rules,
+ * e.g. a reserved word claimed directly on the contract, which has no owner who could refuse it.
+ */
+export const shownName = (name: string | null | undefined): string | null => (name && nameProblem(name) === null ? name : null);
+
+/** A bio as PRISM shows it: without bidi or zero-width characters; null if it breaks the rules. */
+export const shownBio = (bio: string | null | undefined): string | null => {
+  const b = bio ? cleanShown(bio) : '';
+  return b && bioProblem(b) === null ? b : null;
+};

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useReadContract, useReadContracts } from 'wagmi';
 import type { Address } from 'viem';
-import { IDENTICON_SIZE, atName, getDeployment, identicon, nameProblem, prismProfilesAbi } from '@prism/core';
+import { IDENTICON_SIZE, atName, getDeployment, identicon, nameProblem, prismProfilesAbi, shownBio, shownName } from '@prism/core';
 import { TARGET_CHAIN } from '../wallet/config';
 import { testnetClient } from './chain';
 import { profileHref } from './share';
@@ -25,7 +25,9 @@ export const NO_PROFILE: Profile = { name: null, bio: null, x: null };
 
 // the contract's avatarId points at a legacy crystal: ignored (avatars are identicons now)
 type RawProfile = { name: string; avatarId: bigint; bio: string; x: string };
-const toProfile = (r: RawProfile | undefined): Profile => (r ? { name: r.name || null, bio: r.bio || null, x: r.x || null } : NO_PROFILE);
+// names and bios as PRISM shows them: a reserved name claimed directly on the contract shows as the address,
+// and bidi / zero-width characters never reach the page
+const toProfile = (r: RawProfile | undefined): Profile => (r ? { name: shownName(r.name), bio: shownBio(r.bio), x: r.x || null } : NO_PROFILE);
 
 export { profileHref };
 

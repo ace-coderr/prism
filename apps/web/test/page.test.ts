@@ -23,6 +23,24 @@ describe('share-ready pages', () => {
     expect(out).toContain('content="What $BULO (bulo) holders “really” think &amp; more &lt;3"');
     expect(out).not.toContain('prism-crystal');
   });
+
+  it('keeps $-patterns, quotes and markup in names and review text literal (a token named "$1INCH" used to corrupt the page)', () => {
+    for (const evil of ['$1INCH', "$'", '$`', '$&', '$$', '$1$2', `"quoted" 'single'`, '</title><script>alert(1)</script>', '"><img src=x onerror=alert(1)>']) {
+      const out = withMeta(html, { title: `${evil} on PRISM`, description: `“${evil}”`, path: '/r/7', image: 'https://seeprism.xyz/api/og/r/7.png' });
+      // exactly one title, and the page's own tags intact
+      expect(out.match(/<title>/g)).toHaveLength(1);
+      expect(out.match(/<\/title>/g)).toHaveLength(1);
+      expect(out).not.toContain('<script>alert');
+      expect(out).not.toContain('<img src=x');
+      expect(out).toContain('<meta property="og:url" content="https://seeprism.xyz/r/7" />');
+      expect(out).toContain('<meta name="twitter:card" content="summary_large_image" />');
+      // what was written comes back, escaped but not rewritten
+      const esc = evil.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+      expect(out).toContain(`<title>${esc} on PRISM</title>`);
+      expect(out).toContain(`<meta property="og:description" content="“${esc}”" />`);
+      expect(out.length).toBeLessThan(html.length + 2000); // no copies of the page pulled in by $` or $'
+    }
+  });
 });
 
 describe('share images', () => {

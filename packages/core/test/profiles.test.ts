@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bioBytes, bioProblem, blockedWord, nameProblem, normalizeX, xProblem } from '../src';
+import { bioBytes, bioProblem, blockedWord, nameProblem, normalizeX, shownBio, shownName, xProblem } from '../src';
 
 describe('username rules (app side)', () => {
   it('accepts what the contract accepts', () => {
@@ -62,5 +62,26 @@ describe('blockedWord', () => {
     expect(blockedWord('PRISM')).toBe('prism');
     expect(blockedWord('Vibe Vibe')).toMatch(/^vibe_?vibe$/);
     expect(blockedWord('hello there')).toBeNull();
+  });
+});
+
+describe('reserved names (impersonation guard)', () => {
+  it('refuses the new reserved words anywhere in a name', () => {
+    for (const n of ['seedify', 'seedify_fan', 'meta_alchemist', 'metaalchemist', 'holdprism', 'seeprism_xyz', 'support', 'help_support', 'moderator', 'the_moderator']) expect(nameProblem(n), n).not.toBeNull();
+  });
+
+  it('refuses "mod" and "team" as whole words only', () => {
+    for (const n of ['mod', 'the_mod', 'mod_jim', 'team', 'prism_team', 'team_42']) expect(nameProblem(n), n).not.toBeNull();
+    for (const n of ['model_trader', 'commodity', 'steam_fan', 'teamwork']) expect(nameProblem(n), n).toBeNull();
+  });
+
+  it('shows the address instead of a reserved name someone claimed directly on the contract', () => {
+    expect(shownName('support')).toBeNull();
+    expect(shownName('prism_team')).toBeNull();
+    expect(shownName('alice_92')).toBe('alice_92');
+    expect(shownName(null)).toBeNull();
+    expect(shownBio('Reviewing on PRISM with my team')).toBe('Reviewing on PRISM with my team');
+    expect(shownBio('hi‮there')).toBe('hithere');
+    expect(shownBio('official support desk')).toBeNull();
   });
 });

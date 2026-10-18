@@ -9,7 +9,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isAddress } from 'viem';
-import { SITE_URL, escapeXml, formatScore, type ReviewView, type ReviewableAsset, type ScoreSummary } from '@prism/core';
+import { SITE_URL, escapeXml, formatScore, replaceLiteral, type ReviewView, type ReviewableAsset, type ScoreSummary } from '@prism/core';
 import { originOf } from './og';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -38,11 +38,12 @@ interface Meta {
 /** Replace a meta tag's content (by property or name). */
 function setMeta(page: string, key: string, value: string): string {
   const re = new RegExp(`(<meta (?:property|name)="${key.replace(/[:.]/g, '\\$&')}" content=")[^"]*(")`);
-  return page.replace(re, `$1${escapeXml(value)}$2`);
+  // a replacer function: `$&`, `$'`, `$1`… in untrusted text must stay literal
+  return page.replace(re, (_, open: string, close: string) => `${open}${escapeXml(value)}${close}`);
 }
 
 export function withMeta(page: string, m: Meta): string {
-  let out = page.replace(/<title>[^<]*<\/title>/, `<title>${escapeXml(m.title)}</title>`);
+  let out = replaceLiteral(page, /<title>[^<]*<\/title>/, `<title>${escapeXml(m.title)}</title>`);
   const url = `${SITE_URL}${m.path}`;
   for (const [k, v] of [
     ['description', m.description],

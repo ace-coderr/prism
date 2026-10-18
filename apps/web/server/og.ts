@@ -7,7 +7,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { isAddress, type Address } from 'viem';
-import { getDeployment, prismProfilesAbi, robinhoodChainTestnet, type ReviewView, type ReviewableAsset, type ScoreSummary } from '@prism/core';
+import { getDeployment, prismProfilesAbi, robinhoodChainTestnet, type ReviewView, type ReviewableAsset, type ScoreSummary, shownName } from '@prism/core';
 import { client } from './chain';
 import { renderPng } from './render';
 import { launchCardSvg, reviewCardSvg, siteCardSvg } from './svg';
@@ -43,7 +43,7 @@ async function usernameOf(address: Address): Promise<string | null> {
   if (!contract) return null;
   try {
     const p = await client.readContract({ address: contract, abi: prismProfilesAbi, functionName: 'profileOf', args: [address] });
-    return (p as { name: string }).name || null;
+    return shownName((p as { name: string }).name);
   } catch {
     return null;
   }

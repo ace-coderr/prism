@@ -143,8 +143,10 @@ const routes: Record<string, (url: URL, fresh: boolean) => Promise<unknown>> = {
     const { assetByToken, launchByToken } = await currentIndex();
     if (!assetByToken.has(address.toLowerCase())) throw new HttpError(404, 'Not a test stock or a vibe/vibe launch.');
     const body = await tokenMeta(address, launchByToken.get(address.toLowerCase()) ?? null);
-    // a launch's metadata never changes (its URI is in the launch event); IPFS outages are retried soon
-    return new Cached(body, body.status === 'unavailable' ? 'public, max-age=0, s-maxage=60' : 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800');
+    // a launch's metadata never changes (its URI is in the launch event, IPFS is content-addressed):
+    // final answers are kept for a year (a deploy clears the CDN, e.g. after hiding a token);
+    // 'unavailable' (never read yet) is asked again within a minute
+    return new Cached(body, body.status === 'unavailable' ? 'public, max-age=0, s-maxage=60' : 'public, max-age=86400, s-maxage=31536000, stale-while-revalidate=31536000');
   },
 
   async market(url) {

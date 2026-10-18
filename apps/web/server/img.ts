@@ -17,6 +17,8 @@ import { renderPng, renderRgba } from './render';
 import type { MetaBody } from './tokenMeta';
 
 export const IMAGE_SIZES = [48, 96, 192, 384] as const;
+/** A resized picture from verified metadata (the token's picture is fixed by its launch event). */
+export const PICTURE_CACHE = 'public, max-age=2592000, s-maxage=31536000, immutable';
 const here = dirname(fileURLToPath(import.meta.url));
 
 let webp: Promise<(b: ArrayBuffer) => Promise<Rgba>> | null = null;
@@ -83,8 +85,9 @@ export async function tokenPicture(origin: string, token: Address, size: number)
   try {
     const pixels = await decode(await pictureFile(meta.image.cid), meta.image.mimeType);
     if (!pixels.width || !pixels.height) throw new IpfsError('Not an image.', true);
-    // content-addressed and checked against its CID: it never changes
-    return { png: encodePng(coverSquare(pixels, size)), cache: 'public, max-age=86400, s-maxage=2592000, stale-while-revalidate=31536000', source: 'metadata' };
+    // content-addressed and checked against its CID: it never changes. Browsers keep it a month and
+    // the CDN a year (a deploy clears the CDN, e.g. after hiding a token)
+    return { png: encodePng(coverSquare(pixels, size)), cache: PICTURE_CACHE, source: 'metadata' };
   } catch (e) {
     const permanent = !(e instanceof IpfsError) || e.permanent;
     return identicon(permanent ? 'public, max-age=3600, s-maxage=86400' : 'public, max-age=60, s-maxage=120');

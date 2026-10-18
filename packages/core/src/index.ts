@@ -20,3 +20,4 @@ export * from './brand';
 export * from './gem';
 export * from './meta';
 export * from './market';
+export * from './metaCache';

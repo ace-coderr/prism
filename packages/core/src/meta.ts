@@ -86,15 +86,20 @@ export async function verifyIpfsBytes(bytes: Uint8Array, cid: string, digest: He
 
 // ------------------------------------------------------------------ fetching from IPFS
 
-/** Public gateways, tried in turn (a new one joins every STAGGER_MS until one answers with verified bytes). */
+/**
+ * Gateways, all asked at once: Pinata (where vibe/vibe pins; slow, but it has every file) and three
+ * public ones. Any of them can be rate-limited or down for minutes; the first that answers with
+ * bytes that verify wins. Measured October 2026 on real launch files: Pinata 8/8 (~6 s), Filebase
+ * 6/8 (~3 s); ipfs.io and dweb.link were refusing (HTTP 429, "switching to a service worker
+ * gateway") but refuse fast, so asking them costs little if they come back. w3s.link and
+ * 4everland were dropped (always 429 / timing out).
+ */
 export const IPFS_GATEWAYS = [
-  'https://ipfs.io/ipfs/',
   'https://gateway.pinata.cloud/ipfs/',
+  'https://ipfs.filebase.io/ipfs/',
+  'https://ipfs.io/ipfs/',
   'https://dweb.link/ipfs/',
-  'https://w3s.link/ipfs/',
-  'https://4everland.io/ipfs/',
 ] as const;
-const STAGGER_MS = 1500;
 
 export class IpfsError extends Error {
   constructor(
@@ -107,40 +112,60 @@ export class IpfsError extends Error {
 }
 
 /**
- * The bytes behind `cid`, verified (see verifyIpfsBytes). Gateways race, staggered; the first
- * response that verifies wins and the rest are cancelled. Throws IpfsError.
+ * The bytes behind `cid`, verified (see verifyIpfsBytes). Every gateway is asked in parallel; the
+ * first response that verifies wins and the rest are cancelled. Throws IpfsError.
+ *
+ * `staggerMs` (bulk reads only, so one file costs one request): gateway i joins after i × staggerMs,
+ * or as soon as i of the others have failed.
  */
 export async function fetchIpfs(
   cid: string,
-  opts: { digest?: Hex | null; maxBytes: number; timeoutMs?: number; fetchImpl?: typeof fetch; gateways?: readonly string[] },
+  opts: { digest?: Hex | null; maxBytes: number; timeoutMs?: number; fetchImpl?: typeof fetch; gateways?: readonly string[]; staggerMs?: number },
 ): Promise<{ bytes: Uint8Array; verified: 'cid' | 'digest'; contentType: string | null }> {
   const f = opts.fetchImpl ?? fetch;
   const gateways = opts.gateways ?? IPFS_GATEWAYS;
+  const stagger = opts.staggerMs ?? 0;
   const all = new AbortController();
   const timer = setTimeout(() => all.abort(), opts.timeoutMs ?? 12_000);
   let wrongBytes = 0;
   let tooBig = false;
+  let failures = 0;
+  const waiting: Array<() => void> = [];
+  const turn = (i: number) =>
+    new Promise<void>((go) => {
+      if (i === 0 || stagger <= 0) return go();
+      const t = setTimeout(go, i * stagger);
+      all.signal.addEventListener('abort', () => (clearTimeout(t), go())); // decided: don't wait
+      const check = () => (failures >= i ? (clearTimeout(t), go()) : waiting.push(check));
+      check();
+    });
   const attempt = async (gw: string, i: number) => {
-    await new Promise((r) => setTimeout(r, i * STAGGER_MS));
+    await turn(i);
     if (all.signal.aborted) throw new Error('done');
-    const res = await f(`${gw}${cid}`, { signal: all.signal, redirect: 'follow', headers: { accept: '*/*' } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const len = Number(res.headers.get('content-length') ?? 0);
-    if (len > opts.maxBytes) {
-      tooBig = true;
-      throw new Error('too big');
+    try {
+      const res = await f(`${gw}${cid}`, { signal: all.signal, redirect: 'follow', headers: { accept: '*/*' } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const len = Number(res.headers.get('content-length') ?? 0);
+      if (len > opts.maxBytes) {
+        tooBig = true;
+        throw new Error('too big');
+      }
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (bytes.length > opts.maxBytes) {
+        tooBig = true;
+        throw new Error('too big');
+      }
+      const verified = await verifyIpfsBytes(bytes, cid, opts.digest ?? null);
+      if (!verified) {
+        wrongBytes++;
+        throw new Error('does not verify');
+      }
+      return { bytes, verified, contentType: res.headers.get('content-type') };
+    } catch (e) {
+      failures++;
+      waiting.splice(0).forEach((w) => w());
+      throw e;
     }
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    if (bytes.length > opts.maxBytes) {
-      tooBig = true;
-      throw new Error('too big');
-    }
-    const verified = await verifyIpfsBytes(bytes, cid, opts.digest ?? null);
-    if (!verified) {
-      wrongBytes++;
-      throw new Error('does not verify');
-    }
-    return { bytes, verified, contentType: res.headers.get('content-type') };
   };
   try {
     return await Promise.any(gateways.map(attempt));
@@ -171,7 +196,8 @@ export interface TokenMetadata {
   links: TokenLinks;
 }
 
-const IMAGE_TYPES = ['image/webp', 'image/png', 'image/jpeg', 'image/gif'];
+/** Picture types PRISM shows. */
+export const IMAGE_TYPES: readonly string[] = ['image/webp', 'image/png', 'image/jpeg', 'image/gif'];
 export const MAX_DESCRIPTION = 1000;
 
 /** Plain text people can read: no control or direction-override characters, collapsed blank lines. */
@@ -270,3 +296,36 @@ export function parseTokenMetadata(json: unknown): TokenMetadata {
 /** The most bytes PRISM reads for a metadata file and a picture. */
 export const MAX_METADATA_BYTES = 64 * 1024;
 export const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+
+/**
+ * What a launch's metadata reference leads to:
+ * - ok: the file, verified against the chain and reduced to what PRISM shows;
+ * - none: nothing PRISM can use, for good (no URI, not on IPFS, too big, not JSON, or it doesn't
+ *   match the chain): IPFS content never changes, so neither will this answer;
+ * - unavailable: no gateway answered in time (worth asking again later).
+ */
+export type MetadataRead =
+  | { status: 'ok'; uri: string; verified: 'cid' | 'digest'; meta: TokenMetadata }
+  | { status: 'none'; uri: string | null }
+  | { status: 'unavailable'; uri: string };
+
+/** Fetch, verify and parse the metadata a launch event points to. */
+export async function readLaunchMetadata(
+  ref: LaunchMetadataRef | null,
+  opts: { timeoutMs?: number; fetchImpl?: typeof fetch; gateways?: readonly string[]; staggerMs?: number } = {},
+): Promise<MetadataRead> {
+  const cid = ref ? ipfsCid(ref.uri) : null;
+  if (!ref || !cid) return { status: 'none', uri: ref?.uri ?? null };
+  try {
+    const file = await fetchIpfs(cid, { digest: ref.digest, maxBytes: MAX_METADATA_BYTES, timeoutMs: opts.timeoutMs ?? 12_000, fetchImpl: opts.fetchImpl, gateways: opts.gateways, staggerMs: opts.staggerMs });
+    let json: unknown;
+    try {
+      json = JSON.parse(new TextDecoder().decode(file.bytes));
+    } catch {
+      return { status: 'none', uri: ref.uri };
+    }
+    return { status: 'ok', uri: ref.uri, verified: file.verified, meta: parseTokenMetadata(json) };
+  } catch (e) {
+    return e instanceof IpfsError && e.permanent ? { status: 'none', uri: ref.uri } : { status: 'unavailable', uri: ref.uri };
+  }
+}

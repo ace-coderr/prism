@@ -68,11 +68,17 @@ transaction and on-chain code match this repo's compiled contract byte for byte.
 All read from the chain and the token's own IPFS metadata, never from vibe/vibe's API:
 
 - **Metadata:** every launch event (all four factory generations) carries an `ipfs://` URI; gen 0/1/2
-  events also carry keccak256 of the file. `/api/meta` reads the event, races several public IPFS
-  gateways and keeps a file only if its SHA-256 equals the raw CID (and, for gen 0/1/2, its
-  keccak256 equals the event's digest). Pictures (`/img/t/<address>.png?s=96`) are checked the same
-  way, decoded (WebP via libwebp, others via resvg), centre-cropped, resized and CDN-cached; no
-  picture or a broken one shows the identicon. `TOKEN_HIDE` in `packages/core/src/site.ts` hides a
+  events also carry keccak256 of the file. `/api/meta` reads the event, asks Pinata, Filebase,
+  ipfs.io and dweb.link at once and keeps the first file whose SHA-256 equals the raw CID (and, for
+  gen 0/1/2, whose keccak256 equals the event's digest). A launch's metadata never changes, so final
+  answers are kept for good: each scheduled run (`packages/core/scripts/cache-metadata.ts`) reads
+  a few hundred more launches, newest first, gently (one gateway per file unless it's slow), and
+  publishes them all as `launch-meta.json.gz` next to the launch index. `/api/meta` answers from
+  that, then from what it has read itself, and only asks IPFS about launches neither has;
+  "unavailable" means PRISM has never managed to read the file. Pictures
+  (`/img/t/<address>.png?s=96`) are checked the same way, decoded (WebP via libwebp, others via
+  resvg), centre-cropped, resized and cached as immutable (a month in browsers, a year on the CDN;
+  a deploy clears the CDN); no picture or a broken one shows the identicon. `TOKEN_HIDE` in `packages/core/src/site.ts` hides a
   token's picture and description if ever needed. After each index build the scheduled job warms
   the picture cache (`packages/core/scripts/warm-pictures.ts`): the newest 500 launches, the 300
   most traded on their curves in the last 24h, the 200 most recently graduated, every reviewed token

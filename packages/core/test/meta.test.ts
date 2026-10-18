@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import vectors from './vectors/launch-logs.json';
 import {
+  IPFS_GATEWAYS,
   IpfsError,
+  readLaunchMetadata,
   decodeLaunchMetadataRef,
   discordLink,
   fetchIpfs,
@@ -74,6 +76,69 @@ describe('verifying a file against the chain', () => {
     await expect(fetchIpfs(SILGAR_CID, { maxBytes: 64 * 1024, fetchImpl: fake, gateways: ['https://bad/', 'https://bad/'] })).rejects.toThrow(IpfsError);
     await expect(fetchIpfs(SILGAR_CID, { maxBytes: 10, fetchImpl: fake, gateways: ['https://good/'] })).rejects.toThrow('larger');
   }, 15_000);
+
+  it('asks every gateway at once: a hung gateway first in line costs nothing', async () => {
+    const asked: string[] = [];
+    let aborted = 0;
+    const fake = ((url: string, init?: RequestInit) => {
+      asked.push(url);
+      if (url.startsWith('https://hung/'))
+        return new Promise<Response>((_, no) => init?.signal?.addEventListener('abort', () => (aborted++, no(new Error('aborted')))));
+      return Promise.resolve(new Response(silgar));
+    }) as unknown as typeof fetch;
+    const t0 = Date.now();
+    const got = await fetchIpfs(SILGAR_CID, { maxBytes: 64 * 1024, fetchImpl: fake, gateways: ['https://hung/', 'https://hung/', 'https://good/'] });
+    expect(got.verified).toBe('cid');
+    expect(Date.now() - t0).toBeLessThan(500);
+    expect(asked).toHaveLength(3);
+    expect(aborted).toBe(2); // the losers are cancelled
+  });
+
+  it('bulk reads (staggered): one request when the first gateway serves it, the next joins at once if it fails', async () => {
+    const asked: string[] = [];
+    const fake = (async (url: string) => {
+      asked.push(url);
+      return url.startsWith('https://busy/') ? new Response('slow down', { status: 429 }) : new Response(silgar);
+    }) as unknown as typeof fetch;
+    await fetchIpfs(SILGAR_CID, { maxBytes: 64 * 1024, fetchImpl: fake, gateways: ['https://good/', 'https://other/'], staggerMs: 5000 });
+    expect(asked).toEqual([`https://good/${SILGAR_CID}`]);
+    asked.length = 0;
+    const t0 = Date.now();
+    await fetchIpfs(SILGAR_CID, { maxBytes: 64 * 1024, fetchImpl: fake, gateways: ['https://busy/', 'https://good/'], staggerMs: 5000 });
+    expect(asked).toHaveLength(2);
+    expect(Date.now() - t0).toBeLessThan(1000);
+  });
+
+  it('Pinata is one of the gateways, raced with public ones', () => {
+    expect(IPFS_GATEWAYS[0]).toBe('https://gateway.pinata.cloud/ipfs/');
+    expect(IPFS_GATEWAYS.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(IPFS_GATEWAYS).size).toBe(IPFS_GATEWAYS.length);
+  });
+});
+
+describe('reading a launch’s metadata', () => {
+  const ref = { uri: `ipfs://${SILGAR_CID}`, digest: SILGAR_DIGEST as `0x${string}` };
+  const serve = (body: Uint8Array<ArrayBuffer> | null) => (async () => (body ? new Response(body) : new Response('busy', { status: 429 }))) as unknown as typeof fetch;
+
+  it('ok: verified and reduced to what PRISM shows', async () => {
+    const r = await readLaunchMetadata(ref, { fetchImpl: serve(silgar), gateways: ['https://a/'] });
+    expect(r.status).toBe('ok');
+    if (r.status !== 'ok') return;
+    expect(r.verified).toBe('cid');
+    expect(r.meta.image?.mimeType).toBe('image/webp');
+  });
+
+  it('none is final: no URI, not IPFS, or a file that doesn’t match the chain', async () => {
+    expect(await readLaunchMetadata(null)).toEqual({ status: 'none', uri: null });
+    expect(await readLaunchMetadata({ uri: 'https://evil.example/x.json', digest: null })).toEqual({ status: 'none', uri: 'https://evil.example/x.json' });
+    const wrong = await readLaunchMetadata(ref, { fetchImpl: serve(new Uint8Array([1, 2, 3])), gateways: ['https://a/', 'https://b/'] });
+    expect(wrong.status).toBe('none');
+  });
+
+  it('unavailable when no gateway answers (not final: asked again later)', async () => {
+    const r = await readLaunchMetadata(ref, { fetchImpl: serve(null), gateways: ['https://a/', 'https://b/'] });
+    expect(r).toEqual({ status: 'unavailable', uri: ref.uri });
+  });
 });
 
 describe('what PRISM shows from metadata', () => {

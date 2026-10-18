@@ -1,6 +1,7 @@
 # Keeps the vibe/vibe launch index fresh: every 30 minutes it reads the new blocks from Robinhood
 # Chain Testnet (public RPC, read-only) and republishes launches.json.gz as an asset of the
-# "launch-index" release, which /api/launches serves. Free for public repos; the only credential
+# "launch-index" release, which /api/launches serves, plus launch-meta.json.gz (every launch's
+# verified metadata, which /api/meta serves). Free for public repos; the only credential
 # is the workflow's own short-lived GITHUB_TOKEN (no secrets to set up).
 name: Launch index
 
@@ -43,6 +44,17 @@ jobs:
             --title "Launch index (data)" \
             --notes "Every vibe/vibe launch on Robinhood Chain Testnet, read from the chain. Updated automatically by .github/workflows/launch-index.yml; served by /api/launches."
           gh release upload launch-index launches.json.gz --clobber
+      # every launch's verified metadata, kept for good (IPFS content never changes): carries over the
+      # previous cache and reads the launches it doesn't have yet, newest first (never fails the job)
+      - name: Cache token metadata
+        continue-on-error: true
+        timeout-minutes: 18
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download launch-index --pattern launch-meta.json.gz --dir prev || echo "No previous metadata cache, so this starts one"
+          npx tsx packages/core/scripts/cache-metadata.ts launches.json.gz prev/launch-meta.json.gz launch-meta.json.gz --minutes 12
+          gh release upload launch-index launch-meta.json.gz --clobber
       # visitors rarely wait for IPFS: fetch the pictures of the newest, most traded, recently graduated
       # and reviewed launches through the site so its cache has them (never fails the job)
       - name: Warm token pictures

@@ -39,10 +39,26 @@ export default function ReviewPage() {
             <SectionLabel>Review #{r.id}</SectionLabel>
             <h1 className="display-md">
               A review of{' '}
-              <Link to={tokenPath(r.token)} className="inline-flex items-center gap-3 align-middle text-lime hover:underline">
-                <TokenAvatar token={r.token} size={44} />${r.symbol}
-              </Link>
+              {r.listed ? (
+                <Link to={tokenPath(r.token)} className="inline-flex items-center gap-3 align-middle text-lime hover:underline">
+                  <TokenAvatar token={r.token} size={44} />${r.symbol}
+                </Link>
+              ) : (
+                <span className="break-all font-mono text-2xl text-mist">{r.token}</span>
+              )}
             </h1>
+            {r.retired && (
+              <p className="rounded-2xl border border-white/10 p-3 text-[13px] text-mist">
+                <b className="text-white/80">Retired:</b> posted on PRISM’s first contract. Shown as history with its live status; it doesn’t count toward
+                scores, honesty rep, badges or leaderboards.
+              </p>
+            )}
+            {!r.listed && (
+              <p className="rounded-2xl border border-gold/40 p-3 text-[13px] text-white/90">
+                PRISM doesn’t list this token (it isn’t a test stock or a vibe/vibe launch PRISM has indexed), so this review doesn’t appear anywhere else and
+                doesn’t count.
+              </p>
+            )}
             <p className="text-[14px] text-mist">
               Posted {dateText(r.postedAt)} by someone holding ${r.symbol}.
               {r.txHash && (
@@ -56,16 +72,16 @@ export default function ReviewPage() {
             </p>
           </header>
           <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
-            <ReviewCard review={r} profile={profiles.get(r.author.toLowerCase())} showToken />
+            <ReviewCard review={r} profile={profiles.get(r.author.toLowerCase())} showToken={r.listed} />
             <div className="flex flex-col gap-6">
-              <ScoreBlock score={q.data.score} symbol={r.symbol} holders={holders} />
+              {r.listed && <ScoreBlock score={q.data.score} symbol={r.symbol} holders={holders} />}
               <div className="flex flex-wrap gap-3">
                 <ShareOnX text={SHARE_TEXT.review(r.symbol, r.rating, r.id)} label="Share this review" />
                 <Link to={tokenPath(r.token)} className="btn btn-outline">
                   All ${r.symbol} reviews
                 </Link>
               </div>
-              <BuyOnVibe token={r.token} className="btn btn-outline self-start" />
+              {r.listed && r.kind === 'launch' && <BuyOnVibe token={r.token} className="btn btn-outline self-start" />}
             </div>
           </div>
           {q.data.history.length > 1 && (

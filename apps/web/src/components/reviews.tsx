@@ -17,7 +17,7 @@ import {
   type ScoreSummary,
 } from '@prism/core';
 import { useRefreshReviews } from '../data/api';
-import { daysText, formatShare, formatTokens, noScoreText, repText } from '../data/format';
+import { dateText, daysText, formatShare, formatTokens, noScoreText, repText } from '../data/format';
 import { OwnerChip, useProfiles, type Profile } from '../data/profiles';
 import { TARGET_CHAIN, wagmiConfig } from '../wallet/config';
 import { StepList, useTxSteps } from '../wallet/steps';
@@ -74,7 +74,7 @@ export function StatusPill({ review }: { review: Pick<ReviewView, 'state' | 'day
   const s = review.state;
   const [text, cls] =
     s.kind === 'sold'
-      ? [s.marked ? 'SOLD' : 'SOLD · not yet permanent', 'bg-down text-ink']
+      ? [s.marked ? 'SOLD' : s.boughtBack ? 'SOLD · bought back' : 'SOLD · not yet permanent', 'bg-down text-ink']
       : s.kind === 'trimmed'
         ? [`Trimmed ${s.percent}%`, 'bg-gold text-ink']
         : s.kind === 'replaced'
@@ -111,9 +111,32 @@ export function ScoreBlock({ score, symbol, holders, compact = false }: { score:
         From {score.reviewers} holder{score.reviewers === 1 ? '' : 's'} still in{score.sold > 0 ? ` · ${score.sold} who sold don’t count` : ''}.
       </p>
       <p className="mt-2 text-[13px] leading-relaxed text-mist">
-        Ratings from people still holding, weighted by how much they hold (no wallet over 10%), how long they’ve held and their honesty rep.
+        Ratings from people still holding, weighted by how much they hold (no wallet over 10% once 10 or more count), how long they’ve held and their honesty rep.
+        Creators’ own reviews and positions under $1 show but don’t count.
       </p>
+      {!compact && <ScoreRules />}
     </div>
+  );
+}
+
+/** "How the score works", in plain words. */
+export function ScoreRules() {
+  return (
+    <details className="mt-4 border-t border-white/[0.06] pt-3 text-[13px] leading-relaxed text-mist">
+      <summary className="cursor-pointer font-mono text-[11px] font-bold uppercase tracking-[0.12em] text-white/80 hover:text-lime">How the score works</summary>
+      <ul className="mt-2 list-disc space-y-1 pl-5">
+        <li>Only holders can review, and only reviewers still holding count.</li>
+        <li>
+          SOLD means holding less than half of the most you’ve held since your first review of the token. Moving tokens out of your wallet (to another wallet,
+          a pool, staking or an exchange) counts as selling, and selling below half then buying back still shows SOLD.
+        </li>
+        <li>Bigger positions count more; once 10 or more reviewers count, no wallet counts for more than 10%.</li>
+        <li>Holding longer counts more (full weight after a week); buying more and updating restarts that clock.</li>
+        <li>A good honesty rep counts more: reviewers who keep holding a week after reviewing.</li>
+        <li>The creator’s own review and positions worth under $1 show, but don’t count. Reviews of tokens PRISM doesn’t list don’t appear.</li>
+        <li>With few reviews the score leans toward a neutral 3, and it shows from 3 reviewers.</li>
+      </ul>
+    </details>
   );
 }
 
@@ -127,6 +150,7 @@ export function MarkSoldButton({ review, onDone }: { review: ReviewView; onDone?
   const contract = reviewsContract();
   if (!contract) return null;
   const mark = async () => {
+    let block = 0n;
     const ok = await tx.run([
       {
         label: 'Making the SOLD mark permanent',
@@ -135,10 +159,13 @@ export function MarkSoldButton({ review, onDone }: { review: ReviewView; onDone?
           const { request } = await simulateContract(wagmiConfig, { address: contract, abi: prismReviewsAbi, functionName: 'markSold', args: [BigInt(review.id)], chainId: TARGET_CHAIN.id, account: address });
           return write(request);
         },
+        after: (receipt) => {
+          block = receipt.blockNumber;
+        },
       },
     ]);
     if (ok) {
-      await refresh({ token: review.token, author: review.author, id: review.id });
+      await refresh({ block, token: review.token, author: review.author, id: review.id });
       onDone?.();
     }
   };
@@ -163,23 +190,47 @@ export function MarkSoldButton({ review, onDone }: { review: ReviewView; onDone?
 
 function positionLine(r: ReviewView): string {
   const sold = r.state.kind === 'sold';
-  const amount = formatTokens(sold || r.balance === null ? r.heldAtPost : r.balance, r.decimals);
+  const amount = formatTokens(sold || r.balance === null ? r.baseline : BigInt(r.balance) < BigInt(r.baseline) ? r.balance : r.baseline, r.decimals);
   const share = formatShare(r.supplyShare);
   const held = `${amount} $${r.symbol}${share ? ` (${share} of supply)` : ''}`;
-  if (sold) return `Held ${held} when reviewing · sold ${daysText(r.days)} after reviewing`;
+  if (sold && r.state.kind === 'sold' && r.state.boughtBack) return `Held ${held} · sold below half on ${dateText(r.state.boughtBack.at)}, bought back later`;
+  if (sold) return `Held ${held} · sold ${daysText(r.days)} after reviewing`;
   if (r.state.kind === 'replaced') return `Held ${held} when reviewing`;
   if (r.state.kind === 'trimmed') return `Holds ${held}, down ${r.state.percent}% · ${daysText(r.days)} holding`;
   return `Holds ${held} · ${daysText(r.days)} holding`;
 }
 
+/** Small labels for reviews that show but don't count. */
+function CountLabel({ review }: { review: ReviewView }) {
+  const label =
+    review.excluded === 'creator'
+      ? ['Creator', 'The launch’s own creator: shown, but it doesn’t count toward the score or their honesty rep.']
+      : review.excluded === 'small'
+        ? ['Too small to count', 'Worth less than $1 at the current price: shown, but it doesn’t count toward the score, rep, badges or leaderboards.']
+        : review.creator
+          ? ['Creator', 'The launch’s own creator.']
+          : null;
+  if (!label) return null;
+  return (
+    <span title={label[1]} className="rounded-full border border-white/15 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-mist">
+      {label[0]}
+    </span>
+  );
+}
+
 export function ReviewCard({ review, profile, showToken = false, footer }: { review: ReviewView; profile?: Profile; showToken?: boolean; footer?: ReactNode }) {
+  const { address } = useWallet();
   const sold = review.state.kind === 'sold';
-  const unmarked = review.state.kind === 'sold' && !review.state.marked;
+  const boughtBack = review.state.kind === 'sold' && !!review.state.boughtBack;
+  // the on-chain mark needs a balance below half now, on the current contract
+  const unmarked = review.state.kind === 'sold' && !review.state.marked && !boughtBack && !review.retired;
+  const mine = !!address && address.toLowerCase() === review.author.toLowerCase();
   return (
     <article className={`card flex flex-col gap-3 p-5 ${sold || review.state.kind === 'replaced' ? 'opacity-70' : ''}`}>
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <OwnerChip address={review.author} profile={profile} size={28} className="font-display text-[15px] font-bold text-white" />
-        <span className="text-[12px] text-mist">honesty rep {repText(review.rep)}</span>
+        {!review.retired && <span className="text-[12px] text-mist">honesty rep {repText(review.rep)}</span>}
+        <CountLabel review={review} />
         <span className="ml-auto">
           <StatusPill review={review} />
         </span>
@@ -198,6 +249,25 @@ export function ReviewCard({ review, profile, showToken = false, footer }: { rev
         <p className="text-[14px] italic text-mist">Rating only, no text.</p>
       )}
       <p className="text-[12px] text-mist">{positionLine(review)}</p>
+      {boughtBack && (
+        <p className="text-[12px] leading-relaxed text-mist">
+          Their balance went below half of the most they’d held, then came back. It can’t be locked on-chain because they hold again, but it counts as sold.
+        </p>
+      )}
+      {review.retired && (
+        <p className="text-[12px] text-mist">
+          <b className="text-white/80">Retired:</b> posted on PRISM’s first contract. Shown as history; it doesn’t count.
+          {mine && review.status === 'active' && (
+            <>
+              {' '}
+              <Link to={`${tokenPath(review.token)}/review?from=${review.id}`} className="text-lime hover:underline">
+                Re-post on the new contract
+              </Link>{' '}
+              (while you still hold).
+            </>
+          )}
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]">
         <Link to={reviewPath(review.id)} className="text-mist hover:text-lime">
           Review #{review.id} ↗

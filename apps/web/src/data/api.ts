@@ -13,7 +13,8 @@ import type {
 
 /*
  * The site's own read-only API (apps/web/server/data.ts): everything it returns was read from the
- * chain. Answers are cached by the CDN for 20 s; `refresh` asks for a fresh read (right after posting).
+ * chain. Answers are cached by the CDN for 20 s; right after posting, `refresh` asks for a state that
+ * includes the block the transaction landed in.
  */
 
 export class ApiError extends Error {
@@ -25,8 +26,9 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(path: string, fresh = false): Promise<T> {
-  const url = fresh ? `${path}${path.includes('?') ? '&' : '?'}fresh=1&t=${Date.now()}` : path;
+/** `freshBlock`: the answer must include this block (a review just posted there). */
+export async function api<T>(path: string, freshBlock: bigint | null = null): Promise<T> {
+  const url = freshBlock !== null ? `${path}${path.includes('?') ? '&' : '?'}fresh=${freshBlock}` : path;
   const res = await fetch(url, { headers: { accept: 'application/json' } });
   const body = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
   if (!res.ok || !body) throw new ApiError(res.status, body?.error ?? 'Couldn’t load this right now.');
@@ -35,7 +37,9 @@ export async function api<T>(path: string, fresh = false): Promise<T> {
 
 export interface TokenData {
   asset: ReviewableAsset;
-  launch: { curve: Address; gen: number; block: number; graduatedBlock: number | null } | null;
+  launch: { curve: Address; gen: number; block: number; graduatedBlock: number | null; creator: Address } | null;
+  /** the smallest position that counts (base units): worth $1 now ('usd'), or a millionth of the supply ('supply') */
+  floor: { units: string; basis: 'usd' | 'supply' } | null;
   setup: (LaunchSetup & { airdrop?: { wallets: number; tokens: string } | null }) | null;
   setupLines: SetupLine[] | null;
   score: ScoreSummary;
@@ -130,14 +134,15 @@ export const useSearch = (q: string, limit = 8): UseQueryResult<SearchData, ApiE
     retry: 1,
   });
 
-/** Re-read everything about reviews from the chain (after posting or marking a sale). */
+/** Re-read everything about reviews (after posting or marking a sale in `block`). */
 export function useRefreshReviews() {
   const qc = useQueryClient();
-  return async (paths: { token?: string; author?: string; id?: number | bigint }) => {
-    const jobs: Array<Promise<unknown>> = [api<FeedData>('/api/feed', true).then((d) => qc.setQueryData(['api', 'feed'], d))];
-    if (paths.token) jobs.push(api<TokenData>(`/api/token?address=${paths.token}`, true).then((d) => qc.setQueryData(['api', 'token', paths.token!.toLowerCase()], d)));
-    if (paths.author) jobs.push(api<ReviewerData>(`/api/reviewer?address=${paths.author}`, true).then((d) => qc.setQueryData(['api', 'reviewer', paths.author!.toLowerCase()], d)));
-    if (paths.id !== undefined) jobs.push(api<ReviewData>(`/api/review?id=${paths.id}`, true).then((d) => qc.setQueryData(['api', 'review', String(paths.id)], d)));
+  return async (paths: { block: bigint; token?: string; author?: string; id?: number | bigint }) => {
+    const b = paths.block;
+    const jobs: Array<Promise<unknown>> = [api<FeedData>('/api/feed', b).then((d) => qc.setQueryData(['api', 'feed'], d))];
+    if (paths.token) jobs.push(api<TokenData>(`/api/token?address=${paths.token}`, b).then((d) => qc.setQueryData(['api', 'token', paths.token!.toLowerCase()], d)));
+    if (paths.author) jobs.push(api<ReviewerData>(`/api/reviewer?address=${paths.author}`, b).then((d) => qc.setQueryData(['api', 'reviewer', paths.author!.toLowerCase()], d)));
+    if (paths.id !== undefined) jobs.push(api<ReviewData>(`/api/review?id=${paths.id}`, b).then((d) => qc.setQueryData(['api', 'review', String(paths.id)], d)));
     await Promise.allSettled(jobs);
     void qc.invalidateQueries({ queryKey: ['api', 'leaderboards'] });
   };

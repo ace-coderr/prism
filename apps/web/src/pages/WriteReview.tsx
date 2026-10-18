@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { decodeEventLog, getAddress, isAddress, type Address } from 'viem';
 import { simulateContract } from 'wagmi/actions';
 import { SHARE_TEXT, prismReviewsAbi, reviewPath, tokenPath } from '@prism/core';
@@ -9,7 +9,7 @@ import { Stars, StarInput, reviewsContract } from '../components/reviews';
 import { ShareOnX } from '../components/ShareOnX';
 import { GuideNote } from '../components/Viber';
 import { BuyOnVibe } from '../components/vibe';
-import { useRefreshReviews, useToken } from '../data/api';
+import { useRefreshReviews, useReview, useToken, type TokenData } from '../data/api';
 import { dateText, formatShare, formatTokens } from '../data/format';
 import { useHolding } from '../data/holding';
 import { TARGET_CHAIN, wagmiConfig } from '../wallet/config';
@@ -39,7 +39,7 @@ export default function WriteReview() {
         <PageHeader
           label="Write a review"
           lead={asset ? `Review $${asset.symbol}` : 'Review'}
-          subtitle="Only holders can review. What you hold is recorded with your review, and if you sell, it says SOLD for everyone."
+          subtitle="Only holders can review. What you hold is recorded with your review, and if you sell below half of the most you’ve held since, it says SOLD for everyone."
         />
       </div>
       {!valid ? (
@@ -49,17 +49,26 @@ export default function WriteReview() {
       ) : !asset ? (
         <p className="text-mist">Reading the chain…</p>
       ) : (
-        <Form token={getAddress(asset.token)} symbol={asset.symbol} kind={asset.kind} />
+        <Form token={getAddress(asset.token)} symbol={asset.symbol} kind={asset.kind} floor={token.data?.floor ?? null} creator={token.data?.launch?.creator ?? null} />
       )}
     </PageScroll>
   );
 }
 
-function Form({ token, symbol, kind }: { token: Address; symbol: string; kind: 'stock' | 'launch' }) {
+function Form({ token, symbol, kind, floor, creator }: { token: Address; symbol: string; kind: 'stock' | 'launch'; floor: TokenData['floor']; creator: Address | null }) {
   const h = useHolding(token);
   const [rating, setRating] = useState(0);
   const [text, setText] = useState('');
   const [posted, setPosted] = useState<{ id: bigint; rating: number } | null>(null);
+  // "Re-post on the new contract": ?from=<id> of the author's retired review fills in its rating and text
+  const [params] = useSearchParams();
+  const from = useReview(params.get('from') ?? undefined);
+  const retired = from.data?.review.retired && from.data.review.token.toLowerCase() === token.toLowerCase() && from.data.review.author.toLowerCase() === h.address?.toLowerCase() ? from.data.review : null;
+  useEffect(() => {
+    if (!retired) return;
+    setRating((r) => r || retired.rating);
+    setText((t) => t || retired.text);
+  }, [retired?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const tx = useTxSteps();
   const refresh = useRefreshReviews();
   const contract = reviewsContract();
@@ -109,8 +118,11 @@ function Form({ token, symbol, kind }: { token: Address; symbol: string; kind: '
   const share = h.supply && h.balance !== null && h.supply > 0n ? Number((h.balance * 1_000_000n) / h.supply) / 1_000_000 : null;
   const canPost = !!contract && rating >= 1 && size <= MAX_BYTES && !waiting && !tx.running;
 
+  const isCreator = !!creator && !!h.address && creator.toLowerCase() === h.address.toLowerCase();
+  const tooSmall = !!floor && h.balance !== null && h.balance < BigInt(floor.units);
   const post = async () => {
     let id: bigint | null = null;
+    let block = 0n;
     const ok = await tx.run([
       {
         label: old ? 'Posting your new review' : 'Posting your review',
@@ -120,6 +132,7 @@ function Form({ token, symbol, kind }: { token: Address; symbol: string; kind: '
           return write(request);
         },
         after: (receipt) => {
+          block = receipt.blockNumber;
           for (const log of receipt.logs) {
             if (log.address.toLowerCase() !== contract!.toLowerCase()) continue;
             try {
@@ -136,7 +149,7 @@ function Form({ token, symbol, kind }: { token: Address; symbol: string; kind: '
     if (ok && id !== null) {
       setPosted({ id, rating });
       void h.refetch();
-      await refresh({ token, author: h.address, id });
+      await refresh({ block, token, author: h.address, id });
     }
   };
 
@@ -155,9 +168,15 @@ function Form({ token, symbol, kind }: { token: Address; symbol: string; kind: '
             <p className="text-[13px] text-mist">
               {old.status === 'sold'
                 ? 'It was marked SOLD and stays that way. A new review starts fresh, linked to it.'
-                : 'Posting again adds a new review that replaces it. The old one stays visible, marked as replaced.'}
+                : `Posting again adds a new review that replaces it (the old one stays visible, marked as replaced). SOLD stays measured from the most you’ve held since your first review: ${formatTokens(old.baseline, h.decimals)} $${symbol}, or more if you hold more now.`}
             </p>
             {waiting && <p className="text-[13px] text-gold">One review per hour per token: you can post again at {timeText(availableAt)}.</p>}
+          </div>
+        )}
+        {retired && (
+          <div className="card flex flex-col gap-1 border-lime/30 p-5 text-[13px] text-mist">
+            <p className="section-label text-lime">Re-posting review #{retired.id}</p>
+            <p>Your review from PRISM’s first contract, filled in below. Posting it on the new contract records what you hold now.</p>
           </div>
         )}
         <div className="flex flex-col gap-2">
@@ -200,9 +219,24 @@ function Form({ token, symbol, kind }: { token: Address; symbol: string; kind: '
             <dd className="break-all font-mono text-[11px] text-white">{h.address}</dd>
           </dl>
           <p className="text-[12px] leading-relaxed text-mist">
-            If you later hold less than half of this, anyone can mark your review SOLD. It can’t be deleted or edited, only replaced by a newer one.
+            If you ever hold less than half of the most you’ve held since your first review of ${symbol}, your review says SOLD. Moving tokens out of your wallet (to another
+            wallet, a pool, staking or an exchange) counts as selling, and selling below half then buying back still shows SOLD. Reviews can’t be deleted or edited,
+            only replaced by a newer one.
           </p>
         </div>
+        {isCreator && (
+          <p className="rounded-2xl border border-gold/40 bg-gold/5 p-4 text-[13px] leading-relaxed text-white/90">
+            You created ${symbol}. Your review will show with a <b>Creator</b> label, but it won’t count toward its score or your honesty rep.
+          </p>
+        )}
+        {tooSmall && !isCreator && (
+          <p className="rounded-2xl border border-gold/40 bg-gold/5 p-4 text-[13px] leading-relaxed text-white/90">
+            {floor!.basis === 'usd'
+              ? `Your position is worth less than $1 at the current price ($1 is about ${formatTokens(BigInt(floor!.units), h.decimals)} $${symbol}).`
+              : `Your position is less than a millionth of the supply (${formatTokens(BigInt(floor!.units), h.decimals)} $${symbol}); PRISM can’t price ${symbol} right now.`}{' '}
+            Your review will show, labelled “Too small to count”, but it won’t count toward the score, your honesty rep or badges.
+          </p>
+        )}
         <button type="button" className="btn btn-primary btn-lg" disabled={!canPost} onClick={() => void post()}>
           {tx.running ? 'Posting…' : rating === 0 ? 'Pick a rating first' : old ? 'Post new review' : 'Post review'}
         </button>

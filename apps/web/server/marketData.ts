@@ -68,7 +68,8 @@ const memo = <T>(ms: number, f: () => Promise<T>) => {
     return v.p;
   };
 };
-const usd = memo(5 * 60_000, () => readEthUsd(mainnetClient));
+/** Dollars per ETH (Chainlink, mainnet), cached 5 minutes. */
+export const usd = memo(5 * 60_000, () => readEthUsd(mainnetClient));
 const head = memo(15_000, () => client.getBlockNumber());
 let dayBlocks: { at: number; n: bigint } | null = null;
 async function blocksInDay(h: bigint) {
@@ -76,7 +77,8 @@ async function blocksInDay(h: bigint) {
   return dayBlocks.n;
 }
 const pairPrices = new Map<string, { at: number; p: Promise<number | null> }>();
-function ethPerPairUnit(pair: Address | null): Promise<number | null> {
+/** Whole ETH per base unit of a pair (ETH, a test stock or WETH); null for other pairs. */
+export function ethPerPairUnit(pair: Address | null): Promise<number | null> {
   if (!pair) return Promise.resolve(1e-18); // wei
   const t = TESTNET_TOKENS.find((x) => x.address.toLowerCase() === pair.toLowerCase());
   if (!t) return Promise.resolve(null); // another launch's token: not priced in ETH

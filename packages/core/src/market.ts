@@ -233,13 +233,23 @@ export async function readPool(client: PublicClient, poolId: Hex): Promise<{ sqr
   return sqrtPriceX96 === 0n ? null : { sqrtPriceX96, liquidity: BigInt(r[1]) & ((1n << 128n) - 1n) };
 }
 
-/** ETH per base unit of a test token with an ETH pool (WETH = 1), else null. */
+/** Whole ETH per base unit of a test token with an ETH pool (WETH = 1e-18, like ETH's own wei), else null. */
 export async function ethPerUnit(client: PublicClient, t: TestnetToken): Promise<number | null> {
-  if (t.id === 'WETH') return 1;
+  if (t.id === 'WETH') return 1e-18;
   if (!t.pool) return null;
   const p = await readPool(client, poolIdOf({ currency0: NATIVE, currency1: t.address, ...t.pool })).catch(() => null);
-  // currency0 = ETH: price = token1 per token0, so ETH per token unit is its inverse
-  return p ? 1 / poolPrice(p.sqrtPriceX96, NATIVE, t.address) : null;
+  return p ? ethPerBaseUnit(p.sqrtPriceX96, t.address) : null;
+}
+
+/**
+ * Whole ETH per base unit of `token`, from its ETH pool's price. The pool price is in base units on
+ * both sides (wei per token base unit), so it is scaled by 1e-18 to whole ETH: without that, a
+ * launch paired with a test stock showed a market cap 10^18 times too big.
+ */
+export function ethPerBaseUnit(sqrtPriceX96: bigint, token: Address): number {
+  // currency0 = ETH: the price is token units per wei, so wei per token unit is its inverse
+  const tokenPerWei = poolPrice(sqrtPriceX96, NATIVE, token);
+  return tokenPerWei > 0 ? 1e-18 / tokenPerWei : 0;
 }
 
 /**
@@ -432,3 +442,40 @@ export async function readTransfers(client: PublicClient, token: Address, from: 
 }
 
 export { NATIVE as NATIVE_ETH, DEAD as DEAD_ADDRESS };
+
+// ------------------------------------------------------------------ the smallest position that counts
+
+/** A review counts only if the position is worth at least this much at the current price. */
+export const MIN_POSITION_USD = 1;
+/** Without a price, at least this share of the supply (one millionth). */
+export const MIN_POSITION_SUPPLY_SHARE = 1_000_000n;
+
+export interface MinPosition {
+  /** base units */
+  units: bigint;
+  /** 'usd': worth MIN_POSITION_USD at the current price; 'supply': a millionth of the supply (unpriced) */
+  basis: 'usd' | 'supply';
+}
+
+/**
+ * The smallest position that counts, in base units: worth $1 at `usdPerUnit` (dollars per base unit),
+ * or, when the price is unknown, a millionth of the supply. null when neither is known.
+ */
+export function minPosition(usdPerUnit: number | null, supply: bigint | null): MinPosition | null {
+  if (usdPerUnit !== null && Number.isFinite(usdPerUnit) && usdPerUnit > 0) {
+    const units = MIN_POSITION_USD / usdPerUnit;
+    if (Number.isFinite(units)) return { units: units < 1 ? 1n : BigInt(Math.ceil(units)), basis: 'usd' };
+  }
+  if (supply !== null && supply > 0n) return { units: (supply + MIN_POSITION_SUPPLY_SHARE - 1n) / MIN_POSITION_SUPPLY_SHARE, basis: 'supply' };
+  return null;
+}
+
+/**
+ * Dollars per base unit of a token from its market state: (cap / supply) in the pair's base units,
+ * times whole ETH per pair base unit, times dollars per ETH. null when any part is unknown.
+ */
+export function usdPerBaseUnit(cap: bigint | null, supply: bigint | null, ethPerPairUnit: number | null, usdPerEth: number | null): number | null {
+  if (cap === null || supply === null || supply === 0n || ethPerPairUnit === null || usdPerEth === null) return null;
+  const v = (Number(cap) / Number(supply)) * ethPerPairUnit * usdPerEth;
+  return Number.isFinite(v) && v > 0 ? v : null;
+}

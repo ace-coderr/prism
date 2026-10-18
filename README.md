@@ -7,11 +7,15 @@ stocks) on Robinhood Chain Testnet, where reviews can't lie:
 
 - **Only holders can review.** The review contract checks your balance when you post.
 - **Your position is shown.** Each review records how much you held, as an amount and a share of supply.
-- **Sell, and it says SOLD.** If a reviewer later holds less than half of what they reviewed with,
-  anyone can mark the review SOLD, for good. Smaller sales show as "trimmed X%". Reviews can't be
-  deleted or edited, only replaced by a newer one (the old one stays visible).
+- **Sell, and it says SOLD.** If a reviewer holds less than half of the most they've held since
+  their first review of the token, anyone can mark the review SOLD, for good. Moving tokens out of
+  your wallet (to another wallet, a pool, staking or an exchange) counts as selling, and selling
+  below half then buying back still shows SOLD in the app. Smaller sales show as "trimmed X%".
+  Reviews can't be deleted or edited, only replaced by a newer one (the old one stays visible).
 - **True colors.** Each token's score counts only reviewers who are still holding, weighted by
-  position (no wallet over 10%), holding time and honesty rep. It shows once 3 holders have reviewed.
+  position (no wallet over 10% once 10 or more count), holding time and honesty rep. It shows once 3
+  holders have reviewed. The creator's own review and positions worth under $1 show, labelled, but
+  don't count; reviews of tokens PRISM doesn't list don't appear.
 - **Honesty rep.** The share of a reviewer's positions they kept for at least 7 days after reviewing.
 
 Test assets only, no real value.
@@ -26,7 +30,7 @@ Test assets only, no real value.
 | `/t/<address>/review` | Write or update a review: login, holder check, rating + 280 bytes of text, a preview of exactly what's recorded, one transaction, then Share on X. |
 | `/r/<id>` | One review, shareable (with its own share image). |
 | `/u/<name or address>` | Honesty rep, counts, badges (First review, Truth keeper, Held 30 days, Early reviewer), reviews. Edit profile sets your PrismProfiles username. |
-| `/leaderboards` | Launches (true colors, 3+ holders), reviewers (honesty rep, 3+ reviews), truth keepers. |
+| `/leaderboards` | Launches (true colors, 3+ holders), reviewers (honesty rep, once 3+ positions are decided, ranked by (kept + 1) / (decided + 2)), truth keepers. |
 | `/stocks` | The five test stocks, their reviews, and the launches paired with each. |
 | `/legacy` | PRISM v1 crystal holders: see what's inside and "Empty & burn" to get it all back in one transaction. |
 
@@ -43,9 +47,11 @@ has been archived" note. v1 is archived on the
 - **No admin.** No owner, no pause, no upgrades, no fees. Nobody, including PRISM, can edit or
   delete a review or undo a SOLD mark.
 - **Reviews are permanent** and public, on-chain.
-- **Known limits** (see `contracts/SECURITY.md`): SOLD needs someone to call `markSold` (the site
-  shows sold reviews from live balances in the meantime, and anyone can make them permanent); a
-  wallet can sell and buy back between checks; balances are per wallet, so one person can use several.
+- **Known limits** (see `contracts/SECURITY.md`): SOLD on-chain needs someone to call `markSold`
+  (the site shows sold reviews from live balances in the meantime, and anyone can make them
+  permanent); a wallet that sells below half and buys back before anyone checks can't be marked
+  on-chain, so the site replays its transfers and shows it SOLD anyway; balances are per wallet, so
+  one person can use several (positions under $1 don't count).
 - vibe/vibe data comes **from the chain only** (their launch contracts' events and views), never
   from vibe/vibe's API.
 
@@ -55,7 +61,8 @@ Deployed from the owner's browser wallet via the dev-only `/deploy` page, source
 
 | Contract | Address |
 | --- | --- |
-| PrismReviews | [`0xb6f28fa52DE204cB6CccbA1dF43c52a01B9f08C3`](https://explorer.testnet.chain.robinhood.com/address/0xb6f28fa52DE204cB6CccbA1dF43c52a01B9f08C3#code) (block 132977970) |
+| PrismReviews (v2) | [`0x9e05AF8cbAC4877CAC1B0Ef089b7e023fFB23B40`](https://explorer.testnet.chain.robinhood.com/address/0x9e05AF8cbAC4877CAC1B0Ef089b7e023fFB23B40#code) (block 138031161) |
+| PrismReviews (v1, retired) | [`0xb6f28fa52DE204cB6CccbA1dF43c52a01B9f08C3`](https://explorer.testnet.chain.robinhood.com/address/0xb6f28fa52DE204cB6CccbA1dF43c52a01B9f08C3#code) (block 132977970): its reviews show as history and never count |
 | PrismProfiles | [`0xf7Da2Ee9dF52422eB87E8FBc3Be347a4B5611300`](https://explorer.testnet.chain.robinhood.com/address/0xf7Da2Ee9dF52422eB87E8FBc3Be347a4B5611300#code) (usernames) |
 | PrismCrystal (v1, legacy) | [`0x59ce49dE3782FA87E94850b23FEB1457009f9f40`](https://explorer.testnet.chain.robinhood.com/address/0x59ce49dE3782FA87E94850b23FEB1457009f9f40#code) (only `/legacy` uses it) |
 | PrismForgeRouter (v1, legacy) | [`0xD1340ad67A4b5C0995CC050bE773ee74293fD24D`](https://explorer.testnet.chain.robinhood.com/address/0xD1340ad67A4b5C0995CC050bE773ee74293fD24D#code) |

@@ -13,6 +13,8 @@ export interface MyReview {
   status: (typeof STATUS)[number];
   postedAt: number;
   heldAtPost: bigint;
+  /** the most held since the run's first review: SOLD is below half of this */
+  baseline: bigint;
 }
 
 /**
@@ -33,10 +35,10 @@ export function useHolding(token: Address | undefined) {
   });
   const [bal, supply, decimals, review] = q.data ?? [];
   const balance = bal?.status === 'success' ? (bal.result as bigint) : null;
-  const mine = review?.status === 'success' ? (review.result as readonly [bigint, { rating: number; status: number; postedAt: number; heldAtPost: bigint }]) : null;
+  const mine = review?.status === 'success' ? (review.result as readonly [bigint, { rating: number; status: number; postedAt: number; heldAtPost: bigint; baseline: bigint }]) : null;
   const myReview: MyReview | null =
     mine && mine[0] > 0n
-      ? { id: mine[0], rating: Number(mine[1].rating), status: STATUS[Number(mine[1].status)] ?? 'none', postedAt: Number(mine[1].postedAt), heldAtPost: mine[1].heldAtPost }
+      ? { id: mine[0], rating: Number(mine[1].rating), status: STATUS[Number(mine[1].status)] ?? 'none', postedAt: Number(mine[1].postedAt), heldAtPost: mine[1].heldAtPost, baseline: mine[1].baseline }
       : null;
   return {
     address,

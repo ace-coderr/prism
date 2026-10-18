@@ -16,7 +16,7 @@ import { TokenAvatar } from '../components/token';
 const STEPS = [
   { n: '01', title: 'Only holders can review', text: 'You can review a vibe/vibe launch or a test stock only while you hold it. No holders, no reviews.' },
   { n: '02', title: 'Your position is shown', text: 'Every review records how much the reviewer held, so you can see who has skin in the game.' },
-  { n: '03', title: 'Sell, and it says SOLD', text: 'Sell after praising and your review is marked SOLD for everyone, for good. Reviews can’t be deleted.' },
+  { n: '03', title: 'Sell, and it says SOLD', text: 'Drop below half of the most you’ve held since reviewing (moving tokens out of your wallet counts) and your review says SOLD for everyone, for good. Reviews can’t be deleted.' },
 ];
 
 export default function Home() {
@@ -142,11 +142,19 @@ function FeedReview({ review, caught = false }: { review: ReviewView; caught?: b
           <StatusPill review={review} />
         </span>
       </span>
-      <span className="flex items-center gap-3">
+      <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Stars rating={review.rating} size={14} />
         <span className="text-[11px] text-mist">
           {caught ? `sold ${daysText(review.days)} after reviewing` : ago(review.postedAt)}
         </span>
+        {review.retired && (
+          <span
+            title="Posted on PRISM’s first contract. Shown as history; it doesn’t count toward scores, honesty rep, badges or leaderboards."
+            className="rounded-full border border-white/15 px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-mist"
+          >
+            Retired
+          </span>
+        )}
       </span>
       {review.text && <span className="line-clamp-2 text-[14px] leading-relaxed text-white/85">{review.text}</span>}
     </Link>

@@ -7,8 +7,11 @@ import {
   applyTransfers,
   constantProductDayChange,
   dayStats,
+  ethPerBaseUnit,
   ethUsdFromRound,
   holderCount,
+  minPosition,
+  usdPerBaseUnit,
   poolCap,
   poolIdOf,
   poolPairReserve,
@@ -64,6 +67,14 @@ describe('pools', () => {
     expect(poolPairReserve(10n ** 6n, Q96, HIGH, null)).toBe(10n ** 6n);
   });
 
+  it('a test stock’s ETH price is in whole ETH per base unit (stock-paired caps were 10^18 too big)', () => {
+    // 0.5 stock per ETH (sqrtP² = 0.5): one stock is worth 2 ETH, so one base unit is 2e-18 ETH
+    const sqrtHalf = BigInt(Math.round(Math.sqrt(0.5) * 2 ** 48)) * 2n ** 48n;
+    expect(ethPerBaseUnit(sqrtHalf, HIGH)).toBeCloseTo(2e-18, 26);
+    // a launch paired with that stock and a cap of 1000 whole stock units is worth about 2000 ETH
+    expect(Number(1000n * E18) * ethPerBaseUnit(sqrtHalf, HIGH)).toBeCloseTo(2000, 6);
+  });
+
   it('computes pool ids like v4-core (NVDA’s ETH pool)', () => {
     const nvda = tokenById('NVDA')!;
     expect(poolIdOf({ currency0: '0x0000000000000000000000000000000000000000', currency1: nvda.address, ...nvda.pool! })).toMatch(/^0x[0-9a-f]{64}$/);
@@ -111,5 +122,27 @@ describe('24h figures and holders', () => {
       { from: a, to: '0x000000000000000000000000000000000000dEaD', value: 1n },
     ]);
     expect(holderCount(bal, [curve, POOL_MANAGER, token])).toBe(2); // a and c
+  });
+});
+
+describe('the smallest position that counts ($1, or a millionth of the supply)', () => {
+  it('is $1 at the current price, in base units', () => {
+    // a launch at 3.6e-9 ETH per token and $2,414 per ETH: $1 is about 115,000 tokens
+    const perUnit = usdPerBaseUnit(36n * 10n ** 17n, 10n ** 27n, 1e-18, 2414)!; // a 3.6 ETH cap, 1B tokens
+    const m = minPosition(perUnit, 10n ** 27n)!;
+    expect(m.basis).toBe('usd');
+    expect(Number(m.units / 10n ** 18n)).toBeGreaterThan(110_000);
+    expect(Number(m.units / 10n ** 18n)).toBeLessThan(120_000);
+  });
+
+  it('a pricey test stock needs a sliver; an unpriced token a millionth of its supply', () => {
+    // ~2 ETH a share at $2,414: $1 is about 0.0002 of a share
+    const stock = minPosition(2e-18 * 2414, 10n ** 24n)!;
+    expect(Number(stock.units) / 1e18).toBeCloseTo(1 / (2 * 2414), 6);
+    expect(minPosition(null, 10n ** 27n)).toEqual({ units: 10n ** 21n, basis: 'supply' });
+    expect(minPosition(null, 999_999n)).toEqual({ units: 1n, basis: 'supply' });
+    expect(minPosition(null, null)).toBeNull();
+    expect(usdPerBaseUnit(null, 1n, 1, 1)).toBeNull();
+    expect(usdPerBaseUnit(1n, 1n, null, 1)).toBeNull();
   });
 });

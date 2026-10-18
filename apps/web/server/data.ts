@@ -14,16 +14,17 @@
  *   /badge/0x….svg                   a live true colors badge for creators
  *
  * Everything comes from the chain (public RPC, read-only): the launch index (see launchIndex.ts),
- * PrismReviews and live balances. `?fresh=1` skips the caches (used right after posting).
+ * PrismReviews and live balances. `?fresh=<block>` asks for a state that includes that block (right
+ * after posting); fresh reads are shared and rate-limited per instance (reviewState.ts).
  * Packaged as a Vercel function by scripts/vercel-output.mjs; served by Vite in dev.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { getAddress, isAddress, type Address } from 'viem';
 import {
-  MIN_LEADERBOARD_REVIEWS,
   REVIEWABLE_STOCK_IDS,
   filterReviews,
   rankLaunches,
+  rankReviewers,
   readLaunchSetup,
   reviewableStocks,
   searchAssets,
@@ -39,6 +40,7 @@ import { reviewState, type ReviewState } from './reviewState';
 import { marketOf } from './marketData';
 import { badgeSvg } from './svg';
 import { tokenMeta } from './tokenMeta';
+import { floorFor } from './floors';
 
 export const CACHE_CONTROL = 'public, max-age=0, s-maxage=20, stale-while-revalidate=120';
 
@@ -88,7 +90,7 @@ const pairedWith = (s: ReviewState, stock: Address) => {
 };
 
 /** One handler per route: returns a JSON-able body. */
-const routes: Record<string, (url: URL, fresh: boolean) => Promise<unknown>> = {
+const routes: Record<string, (url: URL, minBlock: bigint) => Promise<unknown>> = {
   async launches(url) {
     const { index, stale, assets } = await currentIndex();
     const meta = { block: index.toBlock, generatedAt: index.generatedAt, stale, launches: index.launches.length };
@@ -108,7 +110,7 @@ const routes: Record<string, (url: URL, fresh: boolean) => Promise<unknown>> = {
         items: items.map((a) => {
           if (!s) return { ...a, reviews: null, score: null };
           const k = a.token.toLowerCase();
-          const reviews = s.world.views.filter((v) => v.token.toLowerCase() === k && v.state.kind !== 'replaced').length;
+          const reviews = s.world.views.filter((v) => v.token.toLowerCase() === k && !v.retired && v.status !== 'replaced').length;
           return { ...a, reviews, score: reviews ? tokenScore(s.world, a.token, s.balances) : null };
         }),
       };
@@ -118,18 +120,21 @@ const routes: Record<string, (url: URL, fresh: boolean) => Promise<unknown>> = {
     return { ...meta, stocks: reviewableStocks(), items: assets.filter((a) => a.kind === 'launch').slice(offset, offset + limit) };
   },
 
-  async token(url, fresh) {
+  async token(url, minBlock) {
     const address = addressParam(url);
-    const s = await reviewState(fresh);
+    const s = await reviewState(minBlock);
     const asset = s.index.assetByToken.get(address.toLowerCase());
     if (!asset) throw new HttpError(404, 'Not a test stock or a vibe/vibe launch.');
     const setup = await setupOf(asset, s).catch(() => null);
     const pair = asset.quote?.symbol ?? 'ETH';
     const reviews = s.world.views.filter((v) => v.token.toLowerCase() === address.toLowerCase()).sort((a, b) => b.id - a.id);
     const launch = s.index.launchByToken.get(address.toLowerCase());
+    const floor = s.floors.get(address.toLowerCase()) ?? (await floorFor(asset, launch ?? null).catch(() => null));
     return {
       asset,
-      launch: launch ? { curve: launch.curve, gen: launch.gen, block: launch.block, graduatedBlock: launch.graduatedBlock } : null,
+      launch: launch ? { curve: launch.curve, gen: launch.gen, block: launch.block, graduatedBlock: launch.graduatedBlock, creator: launch.creator } : null,
+      /** the smallest position that counts (base units): worth $1 now, or a millionth of the supply if unpriced */
+      floor: floor ? { units: floor.units.toString(), basis: floor.basis } : null,
       setup,
       setupLines: setup ? setupLines(setup, `$${asset.symbol}`, pair) : null,
       score: tokenScore(s.world, address, s.balances),
@@ -158,40 +163,40 @@ const routes: Record<string, (url: URL, fresh: boolean) => Promise<unknown>> = {
     return new Cached(body, 'public, max-age=60, s-maxage=180, stale-while-revalidate=600');
   },
 
-  async review(url, fresh) {
+  async review(url, minBlock) {
     const id = int(url.searchParams.get('id'), -1, Number.MAX_SAFE_INTEGER);
-    const s = await reviewState(fresh);
+    const s = await reviewState(minBlock);
     const review = s.world.byId.get(id);
     if (!review) throw new HttpError(404, 'No review with that number.');
     const asset = s.index.assetByToken.get(review.token.toLowerCase()) ?? null;
     // the whole chain of this author's reviews of this token, newest first
-    const history = s.world.views.filter((v) => v.author === review.author && v.token === review.token).sort((a, b) => b.id - a.id);
+    const history = s.world.views.filter((v) => v.author === review.author && v.token === review.token && v.retired === review.retired).sort((a, b) => b.id - a.id);
     return { review, asset, score: tokenScore(s.world, review.token, s.balances), history };
   },
 
-  async reviewer(url, fresh) {
+  async reviewer(url, minBlock) {
     const address = addressParam(url);
-    const s = await reviewState(fresh);
+    const s = await reviewState(minBlock);
     const summary = s.reviewers.get(address.toLowerCase()) ?? null;
-    const reviews = s.world.views.filter((v) => v.author.toLowerCase() === address.toLowerCase()).sort((a, b) => b.id - a.id);
+    // reviews of tokens PRISM lists (retired ones too, as history)
+    const reviews = s.world.views.filter((v) => v.author.toLowerCase() === address.toLowerCase() && v.listed).sort((a, b) => b.id - a.id);
     return { summary, reviews };
   },
 
-  async feed(_url, fresh) {
-    const s = await reviewState(fresh);
-    return { ...s.feeds, launches: s.index.index.launches.length, reviews: filterReviews(s.world.views, 'all').length };
+  async feed(_url, minBlock) {
+    const s = await reviewState(minBlock);
+    // the count includes the first contract's reviews: they show in "latest" as history
+    return { ...s.feeds, launches: s.index.index.launches.length, reviews: filterReviews(s.world.views.filter((v) => v.listed), 'all').length };
   },
 
   async leaderboards() {
     const s = await reviewState();
-    const tokens = [...new Map(s.world.views.map((v) => [v.token.toLowerCase(), v])).values()];
+    // counted reviews only: listed tokens, not the creator, at least the floor, current contract
+    const tokens = [...new Map(s.world.counted.map((r) => [r.token.toLowerCase(), s.world.byId.get(r.id)!])).values()];
     const reviewers = [...s.reviewers.values()];
     return {
       launches: rankLaunches(s.world, tokens, s.balances).slice(0, 50),
-      reviewers: reviewers
-        .filter((r) => r.reviews >= MIN_LEADERBOARD_REVIEWS && r.rep !== null)
-        .sort((a, b) => b.rep! - a.rep! || b.decided - a.decided || b.reviews - a.reviews)
-        .slice(0, 50),
+      reviewers: rankReviewers(reviewers).slice(0, 50),
       truthKeepers: reviewers.filter((r) => r.marks > 0).sort((a, b) => b.marks - a.marks).slice(0, 50),
     };
   },
@@ -239,7 +244,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const m = /^\/badge\/(0x[0-9a-fA-F]{40})\.svg$/.exec(url.pathname);
     if (m) url.searchParams.set('address', m[1]!);
   }
-  const fresh = url.searchParams.get('fresh') === '1';
+  // ?fresh=<block>: a state that includes that block (fresh=1, from older pages, means "recent")
+  const freshParam = url.searchParams.get('fresh');
+  const fresh = freshParam !== null;
+  const minBlock = freshParam && /^\d{1,12}$/.test(freshParam) ? BigInt(freshParam) : 0n;
   try {
     if (route === 'badge') {
       const address = addressParam(url);
@@ -250,7 +258,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     const fn = routes[route];
     if (!fn) throw new HttpError(404, 'Not found');
-    const out = await fn(url, fresh);
+    const out = await fn(url, minBlock);
     const [body, cache] = out instanceof Cached ? [out.body, out.cache] : [out, CACHE_CONTROL];
     return send(res, req, 200, json(body), 'application/json; charset=utf-8', fresh ? 'no-store' : cache);
   } catch (e) {

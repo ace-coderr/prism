@@ -172,7 +172,7 @@ function ReviewAction({ asset }: { asset: ReviewableAsset }) {
         }
       >
         You hold <b className="text-white">{formatTokens(h.balance, h.decimals)} ${asset.symbol}</b>.{' '}
-        {active ? 'You already reviewed it; a new review replaces yours (the old one stays visible).' : 'Your review records this position, and shows SOLD if you sell.'}
+        {active ? 'You already reviewed it; a new review replaces yours (the old one stays visible).' : 'Your review records this position, and shows SOLD if you drop below half of the most you’ve held since.'}
       </GuideNote>
     );
   } else {

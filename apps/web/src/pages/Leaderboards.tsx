@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Address } from 'viem';
-import { MIN_LEADERBOARD_REVIEWS, MIN_SCORE_REVIEWERS, formatScore, scoreColor, tokenPath } from '@prism/core';
+import { MIN_DECIDED_FOR_LEADERBOARD, MIN_SCORE_REVIEWERS, formatScore, scoreColor, tokenPath } from '@prism/core';
 import { PageHeader, PageScroll } from '../components/PageHeader';
 import { GuideNote } from '../components/Viber';
 import { useLeaderboards } from '../data/api';
@@ -11,7 +11,7 @@ import { MarketLine, TokenAvatar } from '../components/token';
 
 const TABS = [
   { id: 'launches', label: 'Launches', note: `By true colors, from at least ${MIN_SCORE_REVIEWERS} holders still in.` },
-  { id: 'reviewers', label: 'Reviewers', note: `By honesty rep, from at least ${MIN_LEADERBOARD_REVIEWS} reviews.` },
+  { id: 'reviewers', label: 'Reviewers', note: `By honesty rep, once at least ${MIN_DECIDED_FOR_LEADERBOARD} positions are decided (kept 7 days, or sold). Ranked by (kept + 1) / (decided + 2), so one lucky review doesn’t top a long record.` },
   { id: 'keepers', label: 'Truth keepers', note: 'People who made sales permanent with “Make it permanent”.' },
 ] as const;
 type Tab = (typeof TABS)[number]['id'];
@@ -78,7 +78,7 @@ export default function Leaderboards() {
               return (
                 <GuideNote index={3}>
                   {tab === 'reviewers'
-                    ? `Nobody has ${MIN_LEADERBOARD_REVIEWS} reviews yet. Review what you hold, keep holding, and your rep climbs.`
+                    ? `Nobody has ${MIN_DECIDED_FOR_LEADERBOARD} decided positions yet. Review what you hold, keep holding a week, and your rep climbs.`
                     : 'Nobody has made a sale permanent yet. When a reviewer sells, “Make it permanent” shows on their review.'}
                 </GuideNote>
               );
@@ -91,7 +91,7 @@ export default function Leaderboards() {
                     <OwnerChip address={r.address} profile={profiles.get(r.address.toLowerCase())} size={28} className="min-w-0 flex-1 font-bold text-white" />
                     <span className="text-right">
                       <span className="block font-display text-2xl font-bold text-lime">{tab === 'reviewers' ? repText(r.rep) : r.marks}</span>
-                      <span className="block text-[11px] text-mist">{tab === 'reviewers' ? plural(r.reviews, 'review') : plural(r.marks, 'sale') + ' made permanent'}</span>
+                      <span className="block text-[11px] text-mist">{tab === 'reviewers' ? `kept ${r.kept} of ${r.decided}` : plural(r.marks, 'sale') + ' made permanent'}</span>
                     </span>
                   </li>
                 ))}

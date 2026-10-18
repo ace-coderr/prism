@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import type { Abi, Address, Hex } from 'viem';
+import { useReadContract } from 'wagmi';
 import { deployContract } from 'wagmi/actions';
-import { explorerAddressUrl, getDeployment, prismReviewsAbi, prismReviewsBytecode } from '@prism/core';
+import { explorerAddressUrl, getDeployment, prismReviewsAbi, prismReviewsBytecode, prismReviewsV1Abi } from '@prism/core';
 import { Panel } from '../components/ui';
 import { TARGET_CHAIN, wagmiConfig } from '../wallet/config';
 import { StepList, useTxSteps } from '../wallet/steps';
@@ -15,6 +16,10 @@ import { PageScroll } from '../components/PageHeader';
  * longer deployable from here; their source is archived at the crystal-v1 tag.
  */
 export default function Deploy() {
+  const retired = getDeployment(TARGET_CHAIN.id)?.retiredReviews;
+  // v2's ids continue after the first contract's last review
+  const v1 = useReadContract({ address: retired?.address, abi: prismReviewsV1Abi, functionName: 'reviewCount', chainId: TARGET_CHAIN.id, query: { enabled: !!retired } });
+  const firstId = retired ? (v1.data !== undefined ? (v1.data as bigint) + 1n : null) : 1n;
   return (
     <PageScroll className="max-w-2xl gap-4">
       <h1 className="headline text-3xl">Deploy</h1>
@@ -31,17 +36,35 @@ export default function Deploy() {
         existing={getDeployment(TARGET_CHAIN.id)?.prismReviews}
         abi={prismReviewsAbi}
         bytecode={prismReviewsBytecode}
-        fixed={null}
-        gas="about 0.8M gas"
-        about={
-          <p>
-            Holder-only reviews: only an address holding a token can review it (rating 1–5, up to 280 bytes), each review
-            records the balance held, and anyone can mark a review SOLD once its author holds less than half of that. Reviews
-            are permanent. No owner, no admin, no fees, no upgrades; it holds no funds and refuses ETH. Tested (unit + fork
-            tests) but not audited (see contracts/SECURITY.md).
-          </p>
+        args={firstId !== null ? [firstId] : undefined}
+        fixed={
+          firstId === null ? (
+            'Reading the first contract’s review count…'
+          ) : (
+            <>
+              firstId = {firstId.toString()}: review ids continue after PRISM’s first contract
+              {retired ? ` (its ${(firstId - 1n).toString()} review${firstId === 2n ? ' stays' : 's stay'} as retired history)` : ''}.
+            </>
+          )
         }
-        record={(d) => `prismReviews: '${d.address}',\nprismReviewsTx: '${d.tx}',\nprismReviewsFromBlock: ${d.block}n,`}
+        gas="about 0.9M gas"
+        about={
+          <>
+            <p>
+              Holder-only reviews, v2: only an address holding a token can review it (rating 1–5, up to 280 bytes). Each review records the balance held and the
+              run’s baseline: the most the author has held since their first review of that token. Anyone can mark a review SOLD once its author holds less than
+              half of the baseline, so selling a little before each update no longer escapes SOLD. Reviews are permanent. No owner, no admin, no fees, no
+              upgrades; it holds no funds and refuses ETH. Tested (unit, fuzz and fork tests) but not audited (see contracts/SECURITY.md).
+            </p>
+            <p className="mt-2">
+              For users: moving tokens out of your wallet (to another wallet, a pool, staking or an exchange) counts as selling; selling below half and buying
+              back still shows SOLD in the app; creator reviews and positions under $1 show but don’t count.
+            </p>
+          </>
+        }
+        record={(d) =>
+          `prismReviews: '${d.address}',\nprismReviewsTx: '${d.tx}',\nprismReviewsFromBlock: ${d.block}n,\n// retiredReviews.lastId: ${firstId !== null ? (firstId - 1n).toString() : '?'}`
+        }
       />
     </PageScroll>
   );
@@ -55,7 +78,7 @@ export function DeploySection({
   existing,
   abi,
   bytecode,
-  args = [],
+  args,
   gas,
   record,
 }: {
@@ -63,11 +86,12 @@ export function DeploySection({
   about: ReactNode;
   /** constructor arguments in words, or null when there are none */
   fixed: ReactNode | null;
+  /** constructor arguments; undefined while they're still being read (the button waits) */
   /** already in deployments.ts: the button stays locked */
   existing?: Address;
   abi: Abi;
   bytecode: Hex;
-  args?: readonly unknown[];
+  args?: readonly unknown[] | undefined;
   /** "about 1.2M gas" */
   gas: string;
   /** lines to paste into deployments.ts */
@@ -80,6 +104,7 @@ export function DeploySection({
 
   const deploy = () =>
     !existing &&
+    args !== undefined &&
     run([
       {
         label: `Deploy ${name}`,
@@ -115,7 +140,7 @@ export function DeploySection({
         <p className="label text-mist">Fixed at deploy (can never change)</p>
         <div className="font-mono text-[11px] text-white/90">{fixed ?? 'Nothing: no constructor arguments.'}</div>
         <div className="flex flex-wrap items-center gap-3">
-          <button className="btn btn-primary" disabled={!!existing || !onTarget || running || !!deployed} onClick={deploy}>
+          <button className="btn btn-primary" disabled={!!existing || !onTarget || running || !!deployed || args === undefined} onClick={deploy}>
             {existing ? 'Already deployed' : running ? 'Deploying…' : deployed ? 'Deployed' : `Deploy ${name}`}
           </button>
           {!existing && !isConnected && <span className="text-xs text-mist">Connect a wallet first.</span>}

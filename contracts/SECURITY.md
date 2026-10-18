@@ -1,8 +1,13 @@
 # PrismReviews — security notes
 
-`contracts/PrismReviews.sol` stores holder-only reviews of tokens. **Status: tested (unit + fork
-tests), not audited. Deployed on Robinhood Chain Testnet at
-0xb6f28fa52DE204cB6CccbA1dF43c52a01B9f08C3 (block 132977970), source verified on the explorer.**
+`contracts/PrismReviews.sol` (v2) stores holder-only reviews of tokens. **Status: tested (unit,
+fuzz/invariant and fork tests), not audited. Deployed on Robinhood Chain Testnet at
+0x9e05AF8cbAC4877CAC1B0Ef089b7e023fFB23B40 (block 138031161), source verified on the explorer.**
+
+PRISM's first PrismReviews (v1, 0xb6f28fa52DE204cB6CccbA1dF43c52a01B9f08C3, block 132977970) is
+**retired**: the app shows its reviews as history, with their live status by its rules, and never
+counts them. It still works on-chain and nobody can turn it off; PRISM sends nothing to it. v2's
+review ids continue after its last one, so links never clash.
 
 ## Trust model, in plain words
 
@@ -14,38 +19,60 @@ by `selfdestruct`; there is no way to take it out, and nothing reads it.)
 
 **There is no admin.** No owner, no pause, no upgrade path (no proxy), no fees, no allow-list, no
 "rescue" function. Once deployed, nobody — including whoever deployed it — can change a rule,
-edit or delete a review, or undo a SOLD mark.
+edit or delete a review, or undo a SOLD mark. The only value fixed at deploy is `firstId`, where
+its review numbering starts.
 
 **The rules, all enforced on-chain:**
 
 - **Holders only.** `post(token, rating, text)` reverts unless the caller holds more than 0 of
-  `token` right now. The review stores `heldAtPost`, the caller's balance at that moment. Rating
-  is 1–5; text is at most 280 bytes (UTF-8, so emoji count 4) and lives only in the event.
+  `token` right now. Rating is 1–5; text is at most 280 bytes (UTF-8, so emoji count 4) and lives
+  only in the event.
+- **What a review records.** `heldAtPost`, the balance at posting (for display), and the
+  `baseline`: the most the author has held since the first review of this *run*. A run starts with
+  a first review, or with a new review after a SOLD one (baseline = the balance then). An update
+  that replaces an Active, not-sold review keeps the run: baseline = max(old baseline, balance).
+  So a run's baseline never goes down, and selling a little before each update (1000 → 600 →
+  update → 350) no longer escapes SOLD, as it could in v1.
 - **One current review per author per token.** Posting again links the new review to the one it
   replaces (`previous`), which stays readable with status `Replaced`. Allowed only while still
-  holding, and only `UPDATE_COOLDOWN` (1 hour) after the author's last review of that token (spam
-  limit).
+  holding, and only `UPDATE_COOLDOWN` (1 hour) after the author's last review of that token.
 - **Reviews are permanent.** There is no delete and no edit; every review and its text stay
   readable forever.
 - **The SOLD rule.** `markSold(id)` can be called by anyone. If the author now holds *less than
-  half* of `heldAtPost` (exactly half is still holding), the review becomes `Sold` with a
-  timestamp and a `ReviewSold` event, permanently. Otherwise it reverts with `StillHolding`. Only
-  the author's current review can be marked. An update can't hide a sale either: if the author is
-  below half when posting again, the old review is marked SOLD in the same transaction. Smaller
-  drops aren't recorded on-chain; the app shows them as "trimmed X%" from live balances.
+  half* of the review's `baseline` (exactly half is still holding), the review becomes `Sold` with a
+  timestamp and a `ReviewSold` event (with the baseline), permanently. Otherwise it reverts with
+  `StillHolding`. Only the author's current review can be marked. An update can't hide a sale
+  either: if the author is below half of the baseline when posting again, the old review is marked
+  SOLD in the same transaction and the new one starts a new run. Smaller drops aren't recorded
+  on-chain; the app shows them as "trimmed X%" from live balances.
+
+## What the app adds (read from the chain, nothing stored)
+
+- **Sold and bought back.** SOLD on-chain needs a balance below half *at the moment someone calls
+  `markSold`*. A reviewer who dumps and buys back before anyone checks can't be marked on-chain any
+  more. The app replays the author's `Transfer` events for the token across the whole run, against
+  the baseline in force at each moment; a dip below half shows the review as SOLD ("sold below half
+  on <date>, bought back later"), out of the score and counted as a sale for honesty rep. If the
+  replay doesn't add up to the recorded and live balances (rebasing, reflections, some
+  fee-on-transfer tokens), the app doesn't accuse anyone and falls back to the live balance.
+- **What counts.** Every review shows, but only some count toward scores, honesty rep, badges,
+  leaderboards and truth keeper marks: tokens PRISM lists (the test stocks and indexed vibe/vibe
+  launches; reviews of other tokens don't appear at all), not the launch's own creator (labelled
+  "Creator"), and positions worth at least $1 at the current price (or, unpriced, a millionth of the
+  supply; smaller ones are labelled "Too small to count"). A truth keeper mark counts only on
+  someone else's counted review.
 
 ## Known limitations
 
-- **SOLD is checked, not watched.** Nothing happens until someone calls `markSold`. A reviewer who
-  sells and **buys back before anyone checks** keeps an Active review; the app compares live
-  balances to `heldAtPost` on every view, so it shows the review as sold or trimmed while the
-  balance is low, but only an on-chain `markSold` makes it permanent.
-- **Balance, not ownership history.** A holder can move tokens to another wallet they control and
-  review from both, or borrow tokens for a moment to post. The review records how much they held,
-  so tiny positions carry little weight off-chain, but the contract can't tell people apart.
-- **Any ERC-20 can be reviewed.** The contract accepts any address that answers `balanceOf`,
-  including a token someone deployed to fake balances. The app only shows reviews of indexed
-  vibe/vibe launches and the five test stocks.
+- **Moving tokens counts as selling.** The contract and the app see balances, not intentions:
+  moving tokens to another wallet, a pool, staking or an exchange lowers the balance like a sale.
+- **Balance, not ownership history.** A holder can split a position across wallets and review from
+  each, or borrow tokens for a moment to post. The review records how much they held, positions
+  under $1 don't count, and no wallet counts for more than 10% once 10 or more reviewers count, but
+  the contract can't tell people apart.
+- **Any ERC-20 can be reviewed on-chain.** The contract accepts any address that answers
+  `balanceOf`, including a token someone deployed to fake balances. The app only shows and counts
+  reviews of the test stocks and indexed vibe/vibe launches.
 - **Tokens decide balances.** A token with a broken or malicious `balanceOf` can make reviews of
   that token wrong (or `markSold` revert); it can't affect reviews of other tokens.
 - **Rebasing / fee-on-transfer tokens** change balances on their own; a big negative rebase can

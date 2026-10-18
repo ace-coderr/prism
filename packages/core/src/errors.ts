@@ -63,7 +63,8 @@ const MESSAGES: Record<string, Explain> = {
       : 'You reviewed this token less than an hour ago. Try again later.',
   UnknownReview: 'That review doesn’t exist.',
   NotActive: 'That review was already replaced or marked SOLD.',
-  StillHolding: 'The reviewer still holds at least half of what they held when posting, so it can’t be marked SOLD.',
+  StillHolding: 'The reviewer still holds at least half of the most they’ve held since their first review, so it can’t be marked SOLD.',
+  InvalidFirstId: 'The first review id must be 1 or more.',
 };
 
 /** Standard errors the PRISM contracts can bubble up from the tokens they move. */

@@ -9,7 +9,7 @@ const COOLDOWN = 3600;
 
 async function deploy() {
   const [alice, bob, carol] = await ethers.getSigners();
-  const reviews = (await ethers.deployContract('PrismReviews')) as unknown as PrismReviews;
+  const reviews = (await ethers.deployContract('PrismReviews', [1])) as unknown as PrismReviews;
   const token = (await ethers.deployContract('MockERC20', ['Moon Dog', 'MOON', 18])) as unknown as MockERC20;
   const other = (await ethers.deployContract('MockERC20', ['Other', 'OTH', 18])) as unknown as MockERC20;
   await token.mint(alice.address, 1000n);
@@ -29,7 +29,7 @@ describe('PrismReviews', () => {
     it('has no admin, delete, edit, withdraw or payable function at all', async () => {
       const { reviews } = await loadFixture(deploy);
       const fns = reviews.interface.fragments.filter((f) => f.type === 'function').map((f) => (f as { name: string }).name);
-      expect(fns.sort()).to.deep.equal(['MAX_TEXT_BYTES', 'UPDATE_COOLDOWN', 'canMarkSold', 'getReview', 'markSold', 'post', 'reviewCount', 'reviewOf'].sort());
+      expect(fns.sort()).to.deep.equal(['MAX_TEXT_BYTES', 'UPDATE_COOLDOWN', 'canMarkSold', 'firstId', 'getReview', 'markSold', 'post', 'reviewCount', 'reviewOf'].sort());
       for (const f of reviews.interface.fragments) {
         if (f.type === 'function') expect((f as { payable: boolean }).payable, (f as { name: string }).name).to.equal(false);
       }
@@ -52,12 +52,13 @@ describe('PrismReviews', () => {
       const t = await token.getAddress();
       await expect(reviews.post(t, 4, 'Solid team, slow chart.'))
         .to.emit(reviews, 'ReviewPosted')
-        .withArgs(1n, alice.address, t, 4, 1000n, 0n, 'Solid team, slow chart.');
+        .withArgs(1n, alice.address, t, 4, 1000n, 1000n, 0n, 'Solid team, slow chart.');
       const r = await reviews.getReview(1n);
       expect(r.author).to.equal(alice.address);
       expect(r.token).to.equal(t);
       expect(r.rating).to.equal(4n);
       expect(r.heldAtPost).to.equal(1000n);
+      expect(r.baseline).to.equal(1000n);
       expect(r.postedAt).to.equal(BigInt(await time.latest()));
       expect(r.status).to.equal(Status.Active);
       expect(r.soldAt).to.equal(0n);
@@ -98,7 +99,7 @@ describe('PrismReviews', () => {
       const t = await token.getAddress();
       await expect(reviews.post(t, 3, 'a'.repeat(281))).to.be.revertedWithCustomError(reviews, 'TextTooLong').withArgs(281);
       await expect(reviews.post(t, 3, '🚀'.repeat(71))).to.be.revertedWithCustomError(reviews, 'TextTooLong').withArgs(284);
-      await expect(reviews.post(t, 3, '🚀'.repeat(70))).to.emit(reviews, 'ReviewPosted').withArgs(1n, anyValue, t, 3, 1000n, 0n, '🚀'.repeat(70));
+      await expect(reviews.post(t, 3, '🚀'.repeat(70))).to.emit(reviews, 'ReviewPosted').withArgs(1n, anyValue, t, 3, 1000n, 1000n, 0n, '🚀'.repeat(70));
       await expect(reviews.post(await other.getAddress(), 3, '')).to.emit(reviews, 'ReviewPosted');
     });
   });
@@ -113,7 +114,7 @@ describe('PrismReviews', () => {
       await time.setNextBlockTimestamp(availableAt - 1n);
       await expect(reviews.post(t, 4, 'better now')).to.be.revertedWithCustomError(reviews, 'TooSoon');
       await time.setNextBlockTimestamp(availableAt);
-      await expect(reviews.post(t, 4, 'better now')).to.emit(reviews, 'ReviewPosted').withArgs(2n, alice.address, t, 4, 1000n, 1n, 'better now');
+      await expect(reviews.post(t, 4, 'better now')).to.emit(reviews, 'ReviewPosted').withArgs(2n, alice.address, t, 4, 1000n, 1000n, 1n, 'better now');
       expect((await reviews.getReview(1n)).status).to.equal(Status.Replaced);
       expect((await reviews.getReview(2n)).status).to.equal(Status.Active);
       expect((await reviews.getReview(2n)).previous).to.equal(1n);
@@ -140,7 +141,7 @@ describe('PrismReviews', () => {
         .to.emit(reviews, 'ReviewSold')
         .withArgs(1n, alice.address, t, 100n, 1000n)
         .and.to.emit(reviews, 'ReviewPosted')
-        .withArgs(2n, alice.address, t, 5, 100n, 1n, 'still bullish');
+        .withArgs(2n, alice.address, t, 5, 100n, 100n, 1n, 'still bullish');
       expect((await reviews.getReview(1n)).status).to.equal(Status.Sold);
     });
 
@@ -203,7 +204,7 @@ describe('PrismReviews', () => {
       await time.increase(COOLDOWN);
       await expect(reviews.markSold(1n)).to.be.revertedWithCustomError(reviews, 'NotActive').withArgs(1n, Status.Sold);
       // a fresh review after buying back is a new review; the SOLD one stays SOLD
-      await expect(reviews.post(await token.getAddress(), 4, 'back in')).to.emit(reviews, 'ReviewPosted').withArgs(2n, alice.address, anyValue, 4, 5000n, 1n, 'back in');
+      await expect(reviews.post(await token.getAddress(), 4, 'back in')).to.emit(reviews, 'ReviewPosted').withArgs(2n, alice.address, anyValue, 4, 5000n, 5000n, 1n, 'back in');
       const r = await reviews.getReview(1n);
       expect(r.status).to.equal(Status.Sold);
       expect(r.soldAt).to.equal(soldAt);
@@ -218,6 +219,236 @@ describe('PrismReviews', () => {
       await expect(reviews.markSold(2n)).to.emit(reviews, 'ReviewSold');
       await expect(reviews.markSold(99n)).to.be.revertedWithCustomError(reviews, 'UnknownReview').withArgs(99n);
       expect(await reviews.canMarkSold(99n)).to.equal(false);
+    });
+  });
+
+  describe('v2: the baseline (the most held since the run began)', () => {
+    it('the update ladder ends SOLD: 1000 → 600 → update → 350 → update marks the run SOLD', async () => {
+      const { reviews, token, alice, carol } = await loadFixture(deploy);
+      const t = await token.getAddress();
+      await reviews.post(t, 5, 'all in'); // 1000
+      await time.increase(COOLDOWN);
+      await setBalance(token, alice, carol.address, 600n);
+      // 600 is not below half of 1000: the update continues the run, keeping the baseline at 1000
+      await expect(reviews.post(t, 5, 'still in')).to.emit(reviews, 'ReviewPosted').withArgs(2n, alice.address, t, 5, 600n, 1000n, 1n, 'still in');
+      expect((await reviews.getReview(2n)).baseline).to.equal(1000n);
+      await time.increase(COOLDOWN);
+      await setBalance(token, alice, carol.address, 350n);
+      // in v1 the reference had become 600 (350 ≥ 300: never SOLD); in v2 it's still 1000
+      expect(await reviews.canMarkSold(2n)).to.equal(true);
+      await expect(reviews.post(t, 5, 'trust me'))
+        .to.emit(reviews, 'ReviewSold')
+        .withArgs(2n, alice.address, t, 350n, 1000n)
+        .and.to.emit(reviews, 'ReviewPosted')
+        .withArgs(3n, alice.address, t, 5, 350n, 350n, 2n, 'trust me'); // a new run starts at 350
+      expect((await reviews.getReview(2n)).status).to.equal(Status.Sold);
+      expect((await reviews.getReview(1n)).status).to.equal(Status.Replaced);
+    });
+
+    it('…and markSold catches the same ladder without an update', async () => {
+      const { reviews, token, alice, carol, bob } = await loadFixture(deploy);
+      const t = await token.getAddress();
+      await reviews.post(t, 5, 'all in');
+      await time.increase(COOLDOWN);
+      await setBalance(token, alice, carol.address, 600n);
+      await reviews.post(t, 5, 'still in');
+      await setBalance(token, alice, carol.address, 499n);
+      await expect(reviews.connect(bob).markSold(2n)).to.emit(reviews, 'ReviewSold').withArgs(2n, alice.address, t, 499n, 1000n);
+    });
+
+    it('buying more and updating raises the baseline', async () => {
+      const { reviews, token, alice, carol } = await loadFixture(deploy);
+      const t = await token.getAddress();
+      await reviews.post(t, 4, 'starter bag');
+      await time.increase(COOLDOWN);
+      await setBalance(token, alice, carol.address, 3000n);
+      await expect(reviews.post(t, 5, 'bought more')).to.emit(reviews, 'ReviewPosted').withArgs(2n, alice.address, t, 5, 3000n, 3000n, 1n, 'bought more');
+      // now below half of 3000 is SOLD, even though it's above half of the first 1000
+      await setBalance(token, alice, carol.address, 1400n);
+      expect(await reviews.canMarkSold(2n)).to.equal(true);
+      await expect(reviews.markSold(2n)).to.emit(reviews, 'ReviewSold').withArgs(2n, alice.address, t, 1400n, 3000n);
+    });
+
+    it('a new run after SOLD starts fresh at the balance then', async () => {
+      const { reviews, token, alice, carol } = await loadFixture(deploy);
+      const t = await token.getAddress();
+      await reviews.post(t, 5, 'run one'); // 1000
+      await setBalance(token, alice, carol.address, 10n);
+      await reviews.markSold(1n);
+      await time.increase(COOLDOWN);
+      await setBalance(token, alice, carol.address, 200n);
+      await expect(reviews.post(t, 3, 'run two')).to.emit(reviews, 'ReviewPosted').withArgs(2n, alice.address, t, 3, 200n, 200n, 1n, 'run two');
+      // 150 is fine against the new run's 200 (it would be SOLD against the old 1000)
+      await setBalance(token, alice, carol.address, 150n);
+      expect(await reviews.canMarkSold(2n)).to.equal(false);
+    });
+
+    it('exactly half of the baseline still holds; one unit less is SOLD', async () => {
+      const { reviews, token, alice, carol } = await loadFixture(deploy);
+      const t = await token.getAddress();
+      await reviews.post(t, 5, 'a');
+      await time.increase(COOLDOWN);
+      await setBalance(token, alice, carol.address, 800n);
+      await reviews.post(t, 5, 'b'); // baseline stays 1000
+      await setBalance(token, alice, carol.address, 500n);
+      expect(await reviews.canMarkSold(2n)).to.equal(false);
+      await expect(reviews.markSold(2n)).to.be.revertedWithCustomError(reviews, 'StillHolding').withArgs(500n, 1000n);
+      await setBalance(token, alice, carol.address, 499n);
+      await expect(reviews.markSold(2n)).to.emit(reviews, 'ReviewSold');
+    });
+
+    it('updates while holding less than the baseline keep it (it never goes down within a run)', async () => {
+      const { reviews, token, alice, carol } = await loadFixture(deploy);
+      const t = await token.getAddress();
+      await reviews.post(t, 5, 'a'); // 1000
+      for (const [i, bal] of [
+        [2n, 700n],
+        [3n, 900n],
+        [4n, 520n],
+      ] as const) {
+        await time.increase(COOLDOWN);
+        await setBalance(token, alice, carol.address, bal);
+        await reviews.post(t, 4, 'update');
+        expect((await reviews.getReview(i)).baseline).to.equal(1000n);
+        expect((await reviews.getReview(i)).heldAtPost).to.equal(bal);
+      }
+    });
+
+    it('a zero balance can’t post, not even an update', async () => {
+      const { reviews, token, alice, carol } = await loadFixture(deploy);
+      const t = await token.getAddress();
+      await reviews.post(t, 5, 'a');
+      await time.increase(COOLDOWN);
+      await setBalance(token, alice, carol.address, 0n);
+      await expect(reviews.post(t, 5, 'b')).to.be.revertedWithCustomError(reviews, 'NotHolder');
+    });
+
+    it('the cooldown applies to updates and to new runs after SOLD alike', async () => {
+      const { reviews, token, alice, carol } = await loadFixture(deploy);
+      const t = await token.getAddress();
+      await reviews.post(t, 5, 'a');
+      await setBalance(token, alice, carol.address, 1n);
+      await reviews.markSold(1n);
+      await expect(reviews.post(t, 5, 'b')).to.be.revertedWithCustomError(reviews, 'TooSoon');
+      await time.increase(COOLDOWN);
+      await expect(reviews.post(t, 5, 'b')).to.emit(reviews, 'ReviewPosted');
+    });
+  });
+
+  describe('v2: ids continue after the first contract', () => {
+    it('starts at firstId, fixed at deploy; ids below it are unknown', async () => {
+      const [alice] = await ethers.getSigners();
+      const reviews = (await ethers.deployContract('PrismReviews', [2])) as unknown as PrismReviews;
+      const token = (await ethers.deployContract('MockERC20', ['T', 'T', 18])) as unknown as MockERC20;
+      await token.mint(alice!.address, 10n);
+      expect(await reviews.firstId()).to.equal(2n);
+      expect(await reviews.reviewCount()).to.equal(1n); // none yet: the last id is firstId - 1
+      await expect(reviews.post(await token.getAddress(), 5, 'first on v2')).to.emit(reviews, 'ReviewPosted').withArgs(2n, alice!.address, anyValue, 5, 10n, 10n, 0n, 'first on v2');
+      expect(await reviews.reviewCount()).to.equal(2n);
+      await expect(reviews.markSold(1n)).to.be.revertedWithCustomError(reviews, 'UnknownReview').withArgs(1n);
+    });
+
+    it('refuses a first id of 0 (0 means "none")', async () => {
+      const f = await ethers.getContractFactory('PrismReviews');
+      await expect(ethers.deployContract('PrismReviews', [0])).to.be.revertedWithCustomError(f, 'InvalidFirstId');
+    });
+  });
+
+  describe('v2 invariants (seeded random actions, checked against a model of the rules)', function () {
+    // thousands of transactions and checks: well past mocha's default timeout
+    this.timeout(600_000);
+    it('500 random posts, balance moves, markSold calls and waits by 3 holders on 2 tokens', async () => {
+      const [a1, a2, a3, sink] = await ethers.getSigners();
+      const reviews = (await ethers.deployContract('PrismReviews', [1])) as unknown as PrismReviews;
+      const tokens = [
+        (await ethers.deployContract('MockERC20', ['A', 'A', 18])) as unknown as MockERC20,
+        (await ethers.deployContract('MockERC20', ['B', 'B', 18])) as unknown as MockERC20,
+      ];
+      const authors = [a1!, a2!, a3!];
+      // mulberry32: a small seeded PRNG (the same sequence every run)
+      let seed = 20261018;
+      const rnd = (n: number) => {
+        seed = (seed + 0x6d2b79f5) | 0;
+        let x = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+        return (((x ^ (x >>> 14)) >>> 0) % n);
+      };
+      type M = { id: number; author: number; token: number; status: bigint; baseline: bigint; soldAt: bigint; previous: number; postedAt: number };
+      const model = new Map<number, M>();
+      const latest = new Map<string, number>();
+      let next = 1;
+      const isSold = (bal: bigint, base: bigint) => bal < base - base / 2n;
+      for (let step = 0; step < 500; step++) {
+        const ai = rnd(3);
+        const ti = rnd(2);
+        const author = authors[ai]!;
+        const token = tokens[ti]!;
+        const t = await token.getAddress();
+        const action = rnd(10);
+        if (action < 3) {
+          // move the balance (often to values right around half)
+          const target = [0n, 1n, 499n, 500n, 501n, 1000n, 2000n, 3000n][rnd(8)]! + BigInt(rnd(3)) * 37n;
+          await setBalance(token, author, sink!.address, target);
+        } else if (action < 4) {
+          await time.increase(rnd(2) ? COOLDOWN : 600);
+        } else if (action < 8) {
+          const bal = await token.balanceOf(author.address);
+          const key = `${ai}:${ti}`;
+          const prevId = latest.get(key) ?? 0;
+          const prev = prevId ? model.get(prevId)! : null;
+          const now = (await time.latest()) + 1;
+          await time.setNextBlockTimestamp(now);
+          const tooSoon = prev !== null && now < prev.postedAt + COOLDOWN;
+          const tx = reviews.connect(author).post(t, 1 + rnd(5), `step ${step}`);
+          if (bal === 0n) {
+            await expect(tx).to.be.revertedWithCustomError(reviews, 'NotHolder');
+            continue;
+          }
+          if (tooSoon) {
+            await expect(tx).to.be.revertedWithCustomError(reviews, 'TooSoon');
+            continue;
+          }
+          await (await tx).wait();
+          let baseline = bal;
+          if (prev && prev.status === Status.Active) {
+            if (isSold(bal, prev.baseline)) Object.assign(prev, { status: Status.Sold, soldAt: BigInt(now) });
+            else {
+              prev.status = Status.Replaced;
+              if (prev.baseline > baseline) baseline = prev.baseline;
+            }
+          }
+          model.set(next, { id: next, author: ai, token: ti, status: Status.Active, baseline, soldAt: 0n, previous: prevId, postedAt: now });
+          latest.set(key, next++);
+        } else if (model.size) {
+          const id = 1 + rnd(next - 1);
+          const m = model.get(id)!;
+          const bal = await tokens[m.token]!.balanceOf(authors[m.author]!.address);
+          const now = (await time.latest()) + 1;
+          await time.setNextBlockTimestamp(now);
+          const tx = reviews.connect(sink!).markSold(id);
+          if (m.status !== Status.Active) await expect(tx).to.be.revertedWithCustomError(reviews, 'NotActive');
+          else if (!isSold(bal, m.baseline)) await expect(tx).to.be.revertedWithCustomError(reviews, 'StillHolding');
+          else {
+            await (await tx).wait();
+            Object.assign(m, { status: Status.Sold, soldAt: BigInt(now) });
+          }
+        }
+        // the contract agrees with the model on every review, after every step (so SOLD never changed back)
+        for (const m of model.values()) {
+          const r = await reviews.getReview(m.id);
+          expect([r.status, r.baseline, r.soldAt, r.previous], `review ${m.id} at step ${step}`).to.deep.equal([m.status, m.baseline, m.soldAt, BigInt(m.previous)]);
+        }
+      }
+      // within a run (a link that doesn't cross a SOLD review) the baseline never goes down
+      let runs = 0;
+      for (const m of model.values()) {
+        const p = m.previous ? model.get(m.previous)! : null;
+        if (p && p.status !== Status.Sold) expect(m.baseline >= p.baseline, `review ${m.id}`).to.equal(true);
+        else runs++;
+      }
+      expect(next - 1).to.be.greaterThan(60); // enough reviews were actually posted
+      expect(runs).to.be.greaterThan(5);
+      expect([...model.values()].filter((m) => m.status === Status.Sold).length).to.be.greaterThan(5);
     });
   });
 

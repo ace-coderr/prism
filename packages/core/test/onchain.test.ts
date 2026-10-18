@@ -50,10 +50,23 @@ describe('deployments', () => {
 });
 
 describe('PrismReviews deployment', () => {
-  it('records the testnet deployment: address, creation transaction and block', () => {
+  it('records PRISM’s first contract as retired, with the last id its reviews use', () => {
+    const r = getDeployment(46630)!.retiredReviews!;
+    expect(r.address).toBe('0xb6f28fa52DE204cB6CccbA1dF43c52a01B9f08C3');
+    expect(r.tx).toBe('0xaf4a702931d482394da5c1b52bd6fecedac09bb3258f590d5a7899e169ca66c2');
+    expect(r.fromBlock).toBe(132977970n);
+    expect(r.lastId).toBeGreaterThanOrEqual(1);
+    // its reviews' text is read from exactly these blocks (their history is frozen)
+    expect(r.postBlocks).toHaveLength(r.lastId);
+    for (const b of r.postBlocks) expect(b).toBeGreaterThan(r.fromBlock);
+  });
+
+  it('records v2 (once deployed): address, creation transaction and block, numbered on from the first contract', () => {
     const d = getDeployment(46630)!;
-    expect(d.prismReviews).toBe('0xb6f28fa52DE204cB6CccbA1dF43c52a01B9f08C3');
-    expect(d.prismReviewsTx).toBe('0xaf4a702931d482394da5c1b52bd6fecedac09bb3258f590d5a7899e169ca66c2');
-    expect(d.prismReviewsFromBlock).toBe(132977970n);
+    if (!d.prismReviews) return; // not deployed yet: the app says reviews are off
+    expect(d.prismReviews).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    expect(d.prismReviews).not.toBe(d.retiredReviews!.address);
+    expect(d.prismReviewsTx).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(d.prismReviewsFromBlock!).toBeGreaterThan(d.retiredReviews!.fromBlock);
   });
 });

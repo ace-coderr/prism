@@ -39,7 +39,7 @@ const addr = (topic: string) => ethers.getAddress(`0x${topic.slice(26)}`);
     await network.provider.send('evm_mine'); // a local block first: the fork's own block has no known hardfork
     expect((await ethers.provider.getNetwork()).chainId).to.equal(46630n);
     [me] = await ethers.getSigners();
-    reviews = (await ethers.deployContract('PrismReviews')) as unknown as PrismReviews;
+    reviews = (await ethers.deployContract('PrismReviews', [1])) as unknown as PrismReviews;
   });
 
   /** Newest launches of a factory in the last `blocks` blocks, newest first. */
@@ -110,6 +110,59 @@ const addr = (topic: string) => ethers.getAddress(`0x${topic.slice(26)}`);
         await (await curve.sell(await t.balanceOf(me.address), 0, me.address, await deadline())).wait();
       });
       console.log(`      v6 ${token}: held ${held}, ${left} left after selling`);
+      return;
+    }
+    throw new Error('no ETH-paired v6 launch still on its curve in the last 50k blocks');
+  });
+
+  it('v2 on a real launch: the update ladder ends SOLD; buying more raises the baseline', async () => {
+    for (const l of await recentLaunches(V6_FACTORY, V6_LAUNCHED, 50_000)) {
+      if (!/^0x0{64}$/.test(`0x${l.data.slice(2 + 4 * 64, 2 + 5 * 64)}`)) continue; // ETH-paired only
+      const token = addr(l.topics[3]!);
+      const curveAddress = ethers.getAddress(`0x${l.data.slice(26, 66)}`);
+      const curve = new ethers.Contract(curveAddress, v6Curve, me);
+      if (await curve.complete()) continue;
+      const buy = async (eth: string) => {
+        const amount = E(eth);
+        const data = V6_BUY + ethers.AbiCoder.defaultAbiCoder().encode(['uint256', 'uint256', 'address', 'uint256'], [amount, 0, me.address, await deadline()]).slice(2);
+        await (await me.sendTransaction({ to: curveAddress, data, value: amount })).wait();
+      };
+      try {
+        await buy('0.002');
+      } catch {
+        continue;
+      }
+      const t = new ethers.Contract(token, erc20, me);
+      await (await t.approve(curveAddress, ethers.MaxUint256)).wait();
+      const sellTo = async (left: bigint) => {
+        const now = (await t.balanceOf(me.address)) as bigint;
+        await (await curve.sell(now - left, 0, me.address, await deadline())).wait();
+      };
+      const wait = () => network.provider.send('evm_increaseTime', [3600]).then(() => network.provider.send('evm_mine'));
+      const held = (await t.balanceOf(me.address)) as bigint;
+      // the ladder: review, sell to 60%, update, sell to 35%, update → the run is SOLD
+      await wait(); // an earlier test may have reviewed this launch less than an hour ago
+      await reviews.post(token, 5, 'ladder step 1');
+      const first = await reviews.reviewCount();
+      await wait();
+      await sellTo((held * 60n) / 100n);
+      await reviews.post(token, 5, 'ladder step 2');
+      const second = await reviews.reviewCount();
+      expect((await reviews.getReview(second)).baseline).to.equal(held);
+      await wait();
+      await sellTo((held * 35n) / 100n);
+      await expect(reviews.post(token, 5, 'ladder step 3')).to.emit(reviews, 'ReviewSold');
+      expect((await reviews.getReview(second)).status).to.equal(3n); // SOLD
+      expect((await reviews.getReview(first)).status).to.equal(2n); // replaced
+      // the new run starts at 35%; buying more and updating raises its baseline
+      const third = await reviews.reviewCount();
+      expect((await reviews.getReview(third)).baseline).to.equal((held * 35n) / 100n);
+      await buy('0.003');
+      await wait();
+      const more = (await t.balanceOf(me.address)) as bigint;
+      await reviews.post(token, 4, 'bought more');
+      expect((await reviews.getReview(await reviews.reviewCount())).baseline).to.equal(more);
+      console.log(`      v6 ${token}: held ${held}, run 2 baseline ${more}`);
       return;
     }
     throw new Error('no ETH-paired v6 launch still on its curve in the last 50k blocks');

@@ -14,13 +14,26 @@ export interface PrismDeployment {
   /** PrismProfiles' creation transaction. */
   prismProfilesTx?: `0x${string}`;
   /**
-   * PrismReviews (holder-only reviews, SOLD marks). Empty until it is deployed via /deploy;
-   * reviews stay off in the app until then.
+   * PrismReviews v2 (holder-only reviews, SOLD measured from the run's baseline). Empty until it is
+   * deployed via /deploy; reviews stay off in the app until then.
    */
   prismReviews?: Address;
   /** PrismReviews' creation transaction and block (review events are read from there). */
   prismReviewsTx?: `0x${string}`;
   prismReviewsFromBlock?: bigint;
+  /**
+   * PRISM's first PrismReviews (v1), retired: its reviews (ids 1..lastId) are shown as history with
+   * their live status by its rules, and never counted. v2's ids start at lastId + 1. The contract
+   * still works on-chain and nobody can turn it off; the app doesn't send anything to it.
+   */
+  retiredReviews?: {
+    address: Address;
+    tx: `0x${string}`;
+    fromBlock: bigint;
+    lastId: number;
+    /** the blocks its reviews 1..lastId were posted in (their text is read from just these) */
+    postBlocks: bigint[];
+  };
   /**
    * LEGACY: the archived crystal app's contracts (branch archive/crystal-v1, tag crystal-v1).
    * Kept for the record only. They still work on-chain and nobody can turn them off, but
@@ -42,10 +55,20 @@ export const DEPLOYMENTS: Partial<Record<number, PrismDeployment>> = {
     // 2026-10-05, block 128964290
     prismProfiles: '0xf7Da2Ee9dF52422eB87E8FBc3Be347a4B5611300',
     prismProfilesTx: '0x4b51aa09788555c4acfa10609f9c4bd49ee529d3693706d9e3829aa4e06d7717',
-    // 2026-10-11; creation input and runtime code checked byte for byte against the compiled contract
-    prismReviews: '0xb6f28fa52DE204cB6CccbA1dF43c52a01B9f08C3',
-    prismReviewsTx: '0xaf4a702931d482394da5c1b52bd6fecedac09bb3258f590d5a7899e169ca66c2',
-    prismReviewsFromBlock: 132977970n,
+    // PrismReviews v2, 2026-10-18; creation input and runtime code checked byte for byte against the
+    // compiled contract (packages/core/scripts/check-deployment.ts), source verified on the explorer
+    prismReviews: '0x9e05AF8cbAC4877CAC1B0Ef089b7e023fFB23B40',
+    prismReviewsTx: '0x3855b080a60b9c76c993d67eefb0d224159b09633409d5daa52c120e1e6d5f80',
+    prismReviewsFromBlock: 138031161n,
+    // v1, 2026-10-11 (block 132977970), retired: creation input and runtime code were checked byte for
+    // byte against its compiled contract; source verified on the explorer
+    retiredReviews: {
+      address: '0xb6f28fa52DE204cB6CccbA1dF43c52a01B9f08C3',
+      tx: '0xaf4a702931d482394da5c1b52bd6fecedac09bb3258f590d5a7899e169ca66c2',
+      fromBlock: 132977970n,
+      lastId: 1,
+      postBlocks: [134310919n],
+    },
     legacy: {
       // 2026-10-04
       prismCrystal: '0x59ce49dE3782FA87E94850b23FEB1457009f9f40',

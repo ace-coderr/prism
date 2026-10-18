@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   index:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 180 # a first build reads ~223k launches (hours); later runs take a few minutes
     steps:
       - uses: actions/checkout@v7
@@ -60,4 +60,4 @@ jobs:
       - name: Warm token pictures
         continue-on-error: true
         timeout-minutes: 25
-        run: npx tsx packages/core/scripts/warm-pictures.ts launches.json.gz https://seeprism.vercel.app --minutes 20
+        run: npx tsx packages/core/scripts/warm-pictures.ts launches.json.gz https://seeprism.xyz --minutes 20

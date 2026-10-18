@@ -1,6 +1,6 @@
 # PRISM
 
-**See every launch's true colors.** https://seeprism.vercel.app · [@holdprism](https://x.com/holdprism)
+**See every launch's true colors.** https://seeprism.xyz · [@holdprism](https://x.com/holdprism)
 
 PRISM is a review site for [vibe/vibe](https://testnet.vibevibe.fun) launches (and vibe/vibe's test
 stocks) on Robinhood Chain Testnet, where reviews can't lie:

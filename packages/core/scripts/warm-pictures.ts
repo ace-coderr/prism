@@ -2,7 +2,7 @@
  * Pre-warms the site's token picture cache so visitors rarely wait for IPFS (read-only: public RPC
  * and plain GETs to the site, no keys):
  *
- *   npx tsx packages/core/scripts/warm-pictures.ts launches.json.gz [https://seeprism.vercel.app] [--minutes 20]
+ *   npx tsx packages/core/scripts/warm-pictures.ts launches.json.gz [https://seeprism.xyz] [--minutes 20]
  *
  * Which tokens: the newest 500 launches, the 300 most traded on their curve in the last 24h (counted
  * from the curves' own trade events), the 200 most recently graduated, every token with PRISM
@@ -21,7 +21,7 @@ import { EVENTS, REVIEWABLE_STOCK_IDS, blocksPerDay, decodeIndex, getLogsSplit, 
 const args = process.argv.slice(2);
 const minutesAt = args.indexOf('--minutes');
 const minutes = minutesAt >= 0 ? Number(args[minutesAt + 1]) : 20;
-const [indexPath, site = 'https://seeprism.vercel.app'] = args.filter((a, i) => !a.startsWith('--') && (minutesAt < 0 || i !== minutesAt + 1));
+const [indexPath, site = 'https://seeprism.xyz'] = args.filter((a, i) => !a.startsWith('--') && (minutesAt < 0 || i !== minutesAt + 1));
 if (!indexPath) {
   console.error('usage: warm-pictures.ts launches.json.gz [site] [--minutes 20]');
   process.exit(1);

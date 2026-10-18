@@ -4,7 +4,7 @@
 import type { Address } from 'viem';
 
 /** The one address of the site. */
-export const SITE_URL = 'https://seeprism.vercel.app';
+export const SITE_URL = 'https://seeprism.xyz';
 /** The site as people type it in a post (no https://; X links it anyway). */
 export const SITE_HOST = SITE_URL.replace(/^https?:\/\//, '');
 export const X_HANDLE = 'holdprism';

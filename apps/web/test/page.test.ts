@@ -11,13 +11,13 @@ describe('share-ready pages', () => {
       title: '$BULO true colors: 4.2 from 12 holders · PRISM',
       description: 'What $BULO (bulo) holders “really” think & more <3',
       path: '/t/0xabc',
-      image: 'https://seeprism.vercel.app/api/og/t/0xabc.png',
+      image: 'https://seeprism.xyz/api/og/t/0xabc.png',
     });
     expect(out).toContain('<title>$BULO true colors: 4.2 from 12 holders · PRISM</title>');
-    expect(out).toContain('<meta property="og:url" content="https://seeprism.vercel.app/t/0xabc" />');
-    expect(out).toContain('<meta property="og:image" content="https://seeprism.vercel.app/api/og/t/0xabc.png" />');
+    expect(out).toContain('<meta property="og:url" content="https://seeprism.xyz/t/0xabc" />');
+    expect(out).toContain('<meta property="og:image" content="https://seeprism.xyz/api/og/t/0xabc.png" />');
     expect(out).toContain('<meta property="og:image:type" content="image/png" />');
-    expect(out).toContain('<meta name="twitter:image" content="https://seeprism.vercel.app/api/og/t/0xabc.png" />');
+    expect(out).toContain('<meta name="twitter:image" content="https://seeprism.xyz/api/og/t/0xabc.png" />');
     expect(out).toContain('<meta name="twitter:card" content="summary_large_image" />');
     // escaped, so a review's text can't break out of the attribute
     expect(out).toContain('content="What $BULO (bulo) holders “really” think &amp; more &lt;3"');

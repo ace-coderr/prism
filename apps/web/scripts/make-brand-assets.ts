@@ -73,7 +73,7 @@ write(
 <svg x="1150" y="100" width="300" height="300" viewBox="0 0 64 64">${markShapes()}</svg>
 <text x="480" y="200" font-family="${GROTESK}" font-weight="700" font-size="70" letter-spacing="-2.5" fill="${WHITE}">See every launch’s</text>
 <text x="480" y="284" font-family="${GROTESK}" font-weight="700" font-size="70" letter-spacing="-2.5" fill="${LIME}">true colors</text>
-<text x="482" y="340" font-family="${MONO}" font-size="24" fill="${MIST}">Holder-only reviews · seeprism.vercel.app</text>
+<text x="482" y="340" font-family="${MONO}" font-size="24" fill="${MIST}">Holder-only reviews · seeprism.xyz</text>
 </svg>`),
 );
 

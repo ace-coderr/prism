@@ -6,8 +6,8 @@ const TOKEN = getAddress('0xa56dd43b6b2963990e852d3144f689b8e3f26afb');
 const SOMEONE = '0x7Ed162246748A218E0404542683eeE0FC08fE4bD';
 
 describe('site links', () => {
-  it('lives at seeprism.vercel.app only', () => {
-    expect(SITE_URL).toBe('https://seeprism.vercel.app');
+  it('lives at seeprism.xyz only', () => {
+    expect(SITE_URL).toBe('https://seeprism.xyz');
   });
 
   it('“Buy on vibe/vibe” carries PRISM’s invite, kept in one place', () => {
@@ -21,8 +21,8 @@ describe('site links', () => {
   });
 
   it('writes the share posts word for word', () => {
-    expect(SHARE_TEXT.review('BULO', 4, 12)).toBe('I hold $BULO and gave it ★4 on @holdprism. If I sell, it\'ll say SOLD 👀 seeprism.vercel.app/r/12');
-    expect(SHARE_TEXT.launch('BULO', 4.2, 12, TOKEN)).toBe(`$BULO true colors: 4.2 from 12 holders who are still in. seeprism.vercel.app/t/${TOKEN} @holdprism`);
+    expect(SHARE_TEXT.review('BULO', 4, 12)).toBe('I hold $BULO and gave it ★4 on @holdprism. If I sell, it\'ll say SOLD 👀 seeprism.xyz/r/12');
+    expect(SHARE_TEXT.launch('BULO', 4.2, 12, TOKEN)).toBe(`$BULO true colors: 4.2 from 12 holders who are still in. seeprism.xyz/t/${TOKEN} @holdprism`);
     expect(SHARE_TEXT.launch('X', 3, 1, TOKEN)).toContain('from 1 holder who is still in');
     expect(cashtag('$Moon Dog')).toBe('$MoonDog');
     expect(formatScore(4.25)).toBe('4.3');

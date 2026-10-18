@@ -95,6 +95,7 @@ export function ScoreBlock({ score, symbol, holders, compact = false }: { score:
         <p className="mt-3 text-[15px] leading-relaxed text-mist">
           {noScoreText(score.reviewers, symbol, holders)}
         </p>
+        {!compact && <ScoreRules />}
       </div>
     );
   }

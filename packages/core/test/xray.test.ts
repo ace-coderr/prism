@@ -216,6 +216,13 @@ describe('the first buyers', () => {
     expect(x.early).toMatchObject({ counted: 1, stillHolding: 1, goneWithinHour: 0 });
   });
 
+  it('reads naturally when there has only been one buyer', () => {
+    const held = xray(input({ transfers: launched([buyAt(A(0x41), LAUNCH_BLOCK + 1)]) }));
+    expect(textOf(held, 'early')).toBe('Its first buyer still holds.');
+    const gone = xray(input({ transfers: launched([buyAt(A(0x41), LAUNCH_BLOCK + 1), t(A(0x41), CURVE, E(100), LAUNCH_BLOCK + 2)]) }));
+    expect(textOf(gone, 'early')).toBe('Its first buyer is out, within an hour of buying.');
+  });
+
   it('looks at the first 20 buyers only', () => {
     const buys = Array.from({ length: 30 }, (_, i) => buyAt(A(0x100 + i), LAUNCH_BLOCK + 1 + i));
     expect(xray(input({ transfers: launched(buys) })).early!.counted).toBe(EARLY_BUYERS);
@@ -247,11 +254,14 @@ describe('holders over the last day', () => {
     const recent = NOW_BLOCK - 1000;
     const transfers = launched([t(CURVE, A(0x61), E(10), old), t(CURVE, A(0x62), E(10), recent), t(CURVE, A(0x63), E(10), recent)]);
     expect(textOf(xray(input({ transfers })), 'holders')).toBe('3 wallets hold it, +2 in the last day.');
+    // one holder reads as one wallet, not "1 wallets"
+    const one = launched([t(CURVE, A(0x61), E(10), NOW_BLOCK - 800_000)]);
+    expect(textOf(xray(input({ transfers: one })), 'holders')).toBe('1 wallet holds it, the same as yesterday.');
   });
 
   it('says there is nothing to compare on a launch younger than a day', () => {
     const young = xray(input({ launchBlock: NOW_BLOCK - 1000, transfers: [t(ZERO, CURVE, SUPPLY, NOW_BLOCK - 1000), t(CURVE, A(0x61), E(10), NOW_BLOCK - 900)] }));
-    expect(textOf(young, 'holders')).toBe('It is less than a day old, so there is nothing to compare yet: 1 wallets hold it.');
+    expect(textOf(young, 'holders')).toBe('It is less than a day old, so there is nothing to compare yet: 1 wallet holds it.');
   });
 });
 
@@ -265,7 +275,8 @@ describe('the tax', () => {
 
   it('older launches charge a fixed curve fee instead', () => {
     const old: LaunchSetup = { kind: 'curve-fee', feeBps: 125, creatorShareBps: 7500, creatorVault: null, createdAt: null, progress: 0.2, graduated: false };
-    expect(textOf(xray(input({ setup: old })), 'tax')).toBe('An older launch: a fixed 1.25% curve fee, none of it to holders.');
+    // "earlier generation", not "older launch": a brand-new gen 2 launch has this setup too
+    expect(textOf(xray(input({ setup: old })), 'tax')).toBe('From an earlier vibe/vibe generation: no creator tax, a fixed 1.25% curve fee, none of it to holders.');
     expect(unreadOf(xray(input({ setup: null })), 'tax')).toBe('PRISM couldn’t read this launch’s setup.');
   });
 });

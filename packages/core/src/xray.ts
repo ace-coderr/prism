@@ -150,6 +150,9 @@ export function amount(base: bigint, decimals: number): string {
   return n.toLocaleString('en-US', { maximumSignificantDigits: n >= 1 ? 4 : 2 });
 }
 
+/** "1 wallet holds", "143 wallets hold". */
+const wallets = (n: number) => `${n.toLocaleString('en-US')} wallet${n === 1 ? ' holds' : 's hold'}`;
+
 /** A share as a percentage: "92%", "0.4%", "<0.1%". */
 export function share(v: number): string {
   const p = v * 100;
@@ -414,10 +417,14 @@ export function xray(input: XrayInput): Xray {
         if (out.at - bought.at <= HOUR) goneWithinHour++;
       }
       early = { counted: firstBuy.size, stillHolding, goneWithinHour, exactTimes };
-      const of = `Of its first ${firstBuy.size === 1 ? 'buyer' : `${firstBuy.size} buyers`}`;
+      const gone = goneWithinHour > 0 ? ` and ${goneWithinHour} ${goneWithinHour === 1 ? 'was' : 'were'} out within an hour` : '';
+      const text =
+        firstBuy.size === 1
+          ? `Its first buyer ${stillHolding === 1 ? 'still holds' : 'is out'}${goneWithinHour > 0 ? ', within an hour of buying' : ''}.`
+          : `Of its first ${firstBuy.size} buyers, ${stillHolding} still hold${stillHolding === 1 ? 's' : ''}${gone}.`;
       signals.push({
         id: 'early',
-        text: `${of}, ${stillHolding} still hold${stillHolding === 1 ? 's' : ''}${goneWithinHour > 0 ? ` and ${goneWithinHour} ${goneWithinHour === 1 ? 'was' : 'were'} out within an hour` : ''}.`,
+        text,
         evidence: null,
         estimated: !exactTimes,
       });
@@ -428,11 +435,16 @@ export function xray(input: XrayInput): Xray {
   if (!input.complete) {
     unread.push({ id: 'holders', text: 'PRISM couldn’t read the holder history yet.' });
   } else if (holdersThen === null) {
-    signals.push({ id: 'holders', text: `It is less than a day old, so there is nothing to compare yet: ${holdersNow.toLocaleString('en-US')} wallets hold it.`, evidence: null, estimated: false });
+    signals.push({
+      id: 'holders',
+      text: `It is less than a day old, so there is nothing to compare yet: ${wallets(holdersNow)} it.`,
+      evidence: null,
+      estimated: false,
+    });
   } else {
     const diff = holdersNow - holdersThen;
     const moved = diff === 0 ? 'the same as yesterday' : `${diff > 0 ? '+' : '−'}${Math.abs(diff).toLocaleString('en-US')} in the last day`;
-    signals.push({ id: 'holders', text: `${holdersNow.toLocaleString('en-US')} wallets hold it, ${moved}.`, evidence: null, estimated: true });
+    signals.push({ id: 'holders', text: `${wallets(holdersNow)} it, ${moved}.`, evidence: null, estimated: true });
   }
 
   // ---------------------------------------------------------------- the tax
@@ -455,7 +467,11 @@ export function xray(input: XrayInput): Xray {
     const fee = setup.feeBps;
     signals.push({
       id: 'tax',
-      text: fee === null ? 'An older launch: its curve charges a fixed fee, which PRISM couldn’t read.' : `An older launch: a fixed ${Number((fee / 100).toFixed(2))}% curve fee, none of it to holders.`,
+      // gen 0/1/2: the creator picks no tax, the curve charges a fixed fee (nothing to do with the launch's age)
+      text:
+        fee === null
+          ? 'From an earlier vibe/vibe generation: no creator tax, a fixed curve fee PRISM couldn’t read.'
+          : `From an earlier vibe/vibe generation: no creator tax, a fixed ${Number((fee / 100).toFixed(2))}% curve fee, none of it to holders.`,
       evidence: { kind: 'address', value: input.token },
       estimated: false,
     });

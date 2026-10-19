@@ -42,7 +42,7 @@ import { marketOf } from './marketData';
 import { badgeSvg } from './svg';
 import { tokenMeta } from './tokenMeta';
 import { floorFor } from './floors';
-import { cachedFlags, creatorsSelling, xrayOf } from './xray';
+import { cachedFlags, creatorsSelling, recentlyOpened, xrayOf } from './xray';
 
 export const CACHE_CONTROL = 'public, max-age=0, s-maxage=20, stale-while-revalidate=120';
 
@@ -166,6 +166,10 @@ const routes: Record<string, (url: URL, minBlock: bigint) => Promise<unknown>> =
   },
 
   async xray(url) {
+    if (url.searchParams.get('recent') === '1') {
+      // for the scheduled job: the launches people have opened here lately
+      return new Cached({ tokens: recentlyOpened() }, 'no-store');
+    }
     const many = url.searchParams.get('tokens');
     if (many !== null) {
       const tokens = many.split(',').filter((t) => isAddress(t, { strict: false })).slice(0, 50);
@@ -202,13 +206,10 @@ const routes: Record<string, (url: URL, minBlock: bigint) => Promise<unknown>> =
 
   async feed(_url, minBlock) {
     const s = await reviewState(minBlock);
-    // the newest launches, for the chain-only "creators selling" feed
-    const newest = s.index.assets
-      .filter((a) => a.kind === 'launch')
-      .slice(0, 40)
-      .map((asset) => ({ asset, launch: s.index.launchByToken.get(asset.token.toLowerCase()) ?? null }));
+    // the chain-only "creators selling" feed, from the published creator watch (no reads here)
+    const launches = s.index.assets.filter((a) => a.kind === 'launch').map((asset) => ({ asset, launch: s.index.launchByToken.get(asset.token.toLowerCase()) ?? null }));
     // the count includes the first contract's reviews: they show in "latest" as history
-    return { ...s.feeds, creatorsSelling: creatorsSelling(newest), launches: s.index.index.launches.length, reviews: filterReviews(s.world.views.filter((v) => v.listed), 'all').length };
+    return { ...s.feeds, creatorsSelling: creatorsSelling(launches), launches: s.index.index.launches.length, reviews: filterReviews(s.world.views.filter((v) => v.listed), 'all').length };
   },
 
   async leaderboards() {

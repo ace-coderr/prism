@@ -15,6 +15,12 @@ import {
   POOL_MANAGER,
   blocksNeeded,
   blocksPerDay,
+  creatorHolds,
+  creatorLine,
+  flagOf,
+  movedOutShare,
+  soldEverything,
+  soldMost,
   readLaunchSetup,
   readTransferLog,
   xray,
@@ -22,10 +28,13 @@ import {
   type LaunchSetup,
   type ReviewableAsset,
   type TokenTransfer,
+  type CreatorFacts,
+  type WatchedCreator,
   type Xray,
 } from '@prism/core';
 import { erc20Abi } from 'viem';
 import { client } from './chain';
+import { creatorWatch, watchedCreator } from './xrayCache';
 
 
 /** Re-read a token's new blocks at most this often. */
@@ -52,6 +61,8 @@ const history = new Map<string, History>();
 const reading = new Map<string, Promise<History>>();
 const times = new Map<number, number>();
 const results = new Map<string, { at: number; xray: Xray }>();
+/** tokens whose X-ray someone asked for, oldest first */
+const opened = new Set<Address>();
 const setups = new Map<string, { at: number; setup: LaunchSetup | null }>();
 
 /** Unix times for `blocks`, looked up once each and kept (a block's time never changes). */
@@ -121,8 +132,10 @@ async function setupOf(asset: ReviewableAsset, launch: Launch | null): Promise<L
   const key = asset.token.toLowerCase();
   const hit = setups.get(key);
   if (hit && Date.now() - hit.at < 30 * 60_000) return hit.setup;
-  const setup = await readLaunchSetup(client, launch).catch(() => null);
-  setups.set(key, { at: Date.now(), setup });
+  // one retry: a single slow RPC answer shouldn't turn into "couldn't be read" for half an hour
+  const setup = await readLaunchSetup(client, launch).catch(() => readLaunchSetup(client, launch).catch(() => null));
+  // only a real answer is kept; a failure is tried again on the next request
+  if (setup) setups.set(key, { at: Date.now(), setup });
   if (setups.size > MAX_TOKENS) setups.delete(setups.keys().next().value!);
   return setup;
 }
@@ -184,6 +197,10 @@ export interface XrayAnswer {
  */
 export function xrayOf(asset: ReviewableAsset, launch: Launch | null): Promise<XrayAnswer> {
   const key = asset.token.toLowerCase();
+  // remember what people open, so the scheduled job can keep those warm
+  opened.delete(asset.token);
+  opened.add(asset.token);
+  if (opened.size > 300) opened.delete(opened.values().next().value!);
   const hit = results.get(key);
   const fresh = hit && Date.now() - hit.at < REFRESH_MS;
   if (hit && fresh) return Promise.resolve({ ready: true, xray: hit.xray });
@@ -205,24 +222,40 @@ export function xrayOf(asset: ReviewableAsset, launch: Launch | null): Promise<X
 // ------------------------------------------------------------------ flags, and creators selling
 
 /**
- * The one-line flags for launches whose X-ray this instance has already worked out. It never starts
- * a read: a list of search results can't pay for twenty launch histories, so flags appear for the
- * launches people have actually opened (and for the newest ones, which the feed below reads anyway).
+ * The one-line flag for each launch, without reading a single launch history: from the creator watch
+ * the scheduled job publishes, and from any full X-ray this instance happens to have worked out
+ * already (which knows more, e.g. how concentrated the holders are).
  */
 export function cachedFlags(tokens: readonly string[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (const t of tokens) {
-    const flag = results.get(t.toLowerCase())?.xray.flag;
-    if (flag) out[t.toLowerCase()] = flag;
+    const key = t.toLowerCase();
+    const full = results.get(key)?.xray.flag;
+    if (full) {
+      out[key] = full;
+      continue;
+    }
+    const watched = watchedCreator(key);
+    if (!watched) continue;
+    const flag = flagOf({ creator: creatorFactsOf(watched), concentration: null, early: null });
+    if (flag) out[key] = flag;
   }
   return out;
 }
 
-/** How many of the newest launches the "creators selling" feed watches. */
-const WATCH_NEWEST = 12;
-const FEED_MS = 3 * 60_000;
-let feed: { at: number; items: CreatorSold[] } = { at: 0, items: [] };
-let feeding: Promise<void> | null = null;
+/** The watch's creator moves as the X-ray's own facts (it knows no supply share). */
+const creatorFactsOf = (w: WatchedCreator): CreatorFacts => ({
+  address: w.creator,
+  acquired: w.moves.acquired,
+  holds: creatorHolds(w.moves),
+  movedOut: w.moves.movedOut,
+  firstInBlock: w.moves.firstInBlock,
+  firstOutBlock: w.moves.firstOutBlock,
+  biggestOut: w.moves.biggestOut,
+  biggestOutBlock: w.moves.biggestOutBlock,
+  soldEverything: soldEverything(w.moves),
+  shareOfSupply: null,
+});
 
 export interface CreatorSold {
   token: Address;
@@ -236,35 +269,32 @@ export interface CreatorSold {
 }
 
 /**
- * The newest launches whose creator has already sold most of what they bought, read from the chain.
- * Only the newest few are watched: their history is short, so this stays cheap, and it is exactly
- * where a creator selling is news. Refreshed in the background; a page never waits for it.
+ * The launches whose creator has sold most of what they bought, newest first, straight from the
+ * published creator watch: every launch of the last week is watched there, so this costs the site
+ * nothing and isn't limited to the handful it could afford to read itself.
  */
-export function creatorsSelling(newest: ReadonlyArray<{ asset: ReviewableAsset; launch: Launch | null }>): CreatorSold[] {
-  if (Date.now() - feed.at > FEED_MS && !feeding) {
-    feeding = (async () => {
-      const items: CreatorSold[] = [];
-      const deadline = Date.now() + 20_000;
-      for (const { asset, launch } of newest.slice(0, WATCH_NEWEST)) {
-        if (Date.now() > deadline) break;
-        const answer = await xrayOf(asset, launch).catch(() => null);
-        const c = answer?.xray?.creator;
-        if (!c || c.acquired === 0n || c.movedOut === 0n) continue;
-        const part = Number((c.movedOut * 1000n) / c.acquired) / 1000;
-        if (part < 0.5) continue;
-        items.push({
-          token: asset.token,
-          symbol: asset.symbol,
-          name: asset.name,
-          text: answer!.xray!.signals.find((s) => s.id === 'creator')?.text ?? '',
-          movedOut: Math.min(1, part),
-          launchBlock: launch?.block ?? 0,
-        });
-      }
-      feed = { at: Date.now(), items };
-    })().finally(() => {
-      feeding = null;
+export function creatorsSelling(assets: ReadonlyArray<{ asset: ReviewableAsset; launch: Launch | null }>, limit = 10): CreatorSold[] {
+  const watch = creatorWatch();
+  if (!watch) return [];
+  const out: CreatorSold[] = [];
+  for (const { asset, launch } of assets) {
+    const w = watch.byToken.get(asset.token.toLowerCase());
+    if (!w || !soldMost(w.moves)) continue;
+    out.push({
+      token: asset.token,
+      symbol: asset.symbol,
+      name: asset.name,
+      // vibe/vibe launches are all 18 decimals; the watch holds no supply or timing, so the line
+      // says what they bought and sold and nothing it can't back up
+      text: creatorLine({ moves: w.moves, holds: creatorHolds(w.moves), symbol: asset.symbol, decimals: 18, shareOfSupply: null, ageSeconds: null, soldAfterSeconds: null }),
+      movedOut: movedOutShare(w.moves),
+      launchBlock: launch?.block ?? 0,
     });
   }
-  return feed.items;
+  return out.sort((a, b) => b.launchBlock - a.launchBlock).slice(0, limit);
+}
+
+/** The launches people have opened here lately, newest first: what the scheduled job warms. */
+export function recentlyOpened(limit = 100): Address[] {
+  return [...opened].reverse().slice(0, limit);
 }

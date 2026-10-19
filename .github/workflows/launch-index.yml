@@ -1,8 +1,9 @@
 # Keeps the vibe/vibe launch index fresh: every 30 minutes it reads the new blocks from Robinhood
 # Chain Testnet (public RPC, read-only) and republishes launches.json.gz as an asset of the
 # "launch-index" release, which /api/launches serves, plus launch-meta.json.gz (every launch's
-# verified metadata, which /api/meta serves). Free for public repos; the only credential
-# is the workflow's own short-lived GITHUB_TOKEN (no secrets to set up).
+# verified metadata, which /api/meta serves) and launch-xray.json.gz (what each recent launch's
+# creator has done with their own tokens, which the X-ray's feed and flags use). Free for public
+# repos; the only credential is the workflow's own short-lived GITHUB_TOKEN (no secrets to set up).
 name: Launch index
 
 on:
@@ -55,6 +56,18 @@ jobs:
           gh release download launch-index --pattern launch-meta.json.gz --dir prev || echo "No previous metadata cache, so this starts one"
           npx tsx packages/core/scripts/cache-metadata.ts launches.json.gz prev/launch-meta.json.gz launch-meta.json.gz --minutes 12
           gh release upload launch-index launch-meta.json.gz --clobber
+      # what every launch of the last week's creator has done with their own tokens: two filtered
+      # queries each, so thousands fit in the budget. Then it warms the X-ray of the newest launches
+      # and the ones people opened recently, so no visitor pays for the first cold read.
+      - name: Watch creators and warm the X-ray
+        continue-on-error: true
+        timeout-minutes: 20
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download launch-index --pattern launch-xray.json.gz --dir prev || echo "No previous creator watch, so this starts one"
+          npx tsx packages/core/scripts/warm-xray.ts launches.json.gz prev/launch-xray.json.gz launch-xray.json.gz https://seeprism.xyz --minutes 14
+          gh release upload launch-index launch-xray.json.gz --clobber
       # visitors rarely wait for IPFS: fetch the pictures of the newest, most traded, recently graduated
       # and reviewed launches through the site so its cache has them (never fails the job)
       - name: Warm token pictures

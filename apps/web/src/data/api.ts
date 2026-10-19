@@ -70,6 +70,8 @@ export type FeedData = Feeds & {
   creatorsSelling: CreatorSold[];
   /** false while the published creator watch hasn't reached the server: an empty list means nothing yet. */
   creatorWatchReady: boolean;
+  /** unix seconds when the watch these lines come from was published (0 when it hasn't been read). */
+  creatorWatchUpdatedAt: number;
   launches: number;
   reviews: number;
 };

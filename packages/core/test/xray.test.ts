@@ -461,4 +461,19 @@ describe('the published creator watch', () => {
     );
   });
 
-);
+  it('puts the watch’s own lines in the past tense, because the file has an age', () => {
+    const asRead = { symbol: 'MOON', decimals: 18, shareOfSupply: null, ageSeconds: null, soldAfterSeconds: null, tense: 'asRead' } as const;
+    const part = W(E(100), E(60), E(50)).moves;
+    expect(creatorLine({ moves: part, holds: creatorHolds(part), ...asRead })).toBe('The creator had sold 60% of the $MOON they bought (biggest sale 50) and held 40.');
+    const kept = W(E(100), 0n).moves;
+    expect(creatorLine({ moves: kept, holds: creatorHolds(kept), ...asRead })).toBe('The creator held all 100 $MOON they bought.');
+    expect(creatorLine({ moves: W(0n, 0n).moves, holds: 0n, ...asRead })).toBe('The creator had never held any $MOON.');
+    // selling out is already in the past: the same sentence either way
+    const gone = W(E(100), E(100)).moves;
+    expect(creatorLine({ moves: gone, holds: 0n, ...asRead })).toBe(creatorLine({ moves: gone, holds: 0n, ...asRead, tense: 'now' }));
+    // and nothing read from the file claims to be the chain as it is now
+    for (const moves of [part, kept, gone]) {
+      expect(creatorLine({ moves, holds: creatorHolds(moves), ...asRead })).not.toMatch(/still holds|has sold|has never/);
+    }
+  });
+});

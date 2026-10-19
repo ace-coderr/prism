@@ -89,7 +89,12 @@ export default function Home() {
               {feed.data?.caught.slice(0, 6).map((r) => <FeedReview key={r.id} review={r} caught />)}
             </Feed>
             {/* reviewers who sold are above; this is creators, read from the chain with no reviews needed */}
-            <CreatorsSellingFeed creators={feed.data?.creatorsSelling} ready={feed.data?.creatorWatchReady} loading={feed.isLoading} />
+            <CreatorsSellingFeed
+              creators={feed.data?.creatorsSelling}
+              ready={feed.data?.creatorWatchReady}
+              updatedAt={feed.data?.creatorWatchUpdatedAt}
+              loading={feed.isLoading}
+            />
             <Feed title="Top launches by true colors" loading={feed.isLoading} empty="No launch has 3 holders reviewing it yet. Scores show from 3.">
               {feed.data?.topLaunches.slice(0, 6).map((l, i) => (
                 <Link key={l.token} to={tokenPath(l.token)} className="card card-hover flex items-center gap-4 p-4">

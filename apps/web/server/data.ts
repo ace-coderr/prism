@@ -223,6 +223,9 @@ const routes: Record<string, (url: URL, minBlock: bigint) => Promise<unknown>> =
       // false means "not read yet", not "nobody is selling": Home says which, and this answer is
       // barely cached so the section fills in as soon as the watch is here
       creatorWatchReady: selling.ready,
+      // when the scheduled job last published the watch: Home says how old these lines are, rather
+      // than letting them read as a live look at the chain
+      creatorWatchUpdatedAt: selling.updatedAt,
       launches: s.index.index.launches.length,
       reviews: filterReviews(s.world.views.filter((v) => v.listed), 'all').length,
     };

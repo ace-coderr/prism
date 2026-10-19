@@ -296,6 +296,10 @@ export function blocksNeeded(input: XrayInput): number[] {
  * What the creator did with their own launch, in one plain sentence. Shared by the X-ray on a
  * launch's page and the "creators selling" feed, which is built from the published creator watch,
  * so the two can never say it differently.
+ *
+ * `tense` is the one thing they don't share. The X-ray has just read the chain and can say what is
+ * true now; the feed is reading a file that may be hours old, and saying "still holds" of a figure
+ * nobody has checked since this morning claims more than it knows.
  */
 export function creatorLine(o: {
   moves: CreatorMoves;
@@ -308,22 +312,25 @@ export function creatorLine(o: {
   ageSeconds: number | null;
   /** how long after buying they first moved tokens out, when it is known */
   soldAfterSeconds: number | null;
+  /** 'now' (the default) for a live read; 'asRead' for the published watch, which has an age */
+  tense?: 'now' | 'asRead';
 }): string {
   const { acquired, movedOut, biggestOut } = o.moves;
+  const live = o.tense !== 'asRead';
   const sym = `$${o.symbol}`;
   const ofSupply = o.shareOfSupply === null ? '' : ` (${share(o.shareOfSupply)} of the supply)`;
-  if (acquired === 0n) return `The creator has never held any ${sym}.`;
+  if (acquired === 0n) return `The creator ${live ? 'has' : 'had'} never held any ${sym}.`;
   if (o.holds === 0n) {
     const when = o.soldAfterSeconds === null ? '' : `, starting ${duration(o.soldAfterSeconds)} after buying`;
     return `The creator sold every ${sym} they held (${amount(acquired, o.decimals)})${when}.`;
   }
   if (movedOut === 0n) {
     const since = o.ageSeconds === null ? '' : `, ${duration(o.ageSeconds)} after launching`;
-    return `The creator still holds all ${amount(o.holds, o.decimals)} ${sym} they bought${ofSupply}${since}.`;
+    return `The creator ${live ? 'still holds' : 'held'} all ${amount(o.holds, o.decimals)} ${sym} they bought${ofSupply}${since}.`;
   }
   const sold = share(Math.min(1, ratio(movedOut, acquired) ?? 0));
   const how = biggestOut === movedOut ? 'all in one sale' : `biggest sale ${amount(biggestOut, o.decimals)}`;
-  return `The creator has sold ${sold} of the ${sym} they bought (${how}) and still holds ${amount(o.holds, o.decimals)}${ofSupply}.`;
+  return `The creator ${live ? 'has sold' : 'had sold'} ${sold} of the ${sym} they bought (${how}) and ${live ? 'still holds' : 'held'} ${amount(o.holds, o.decimals)}${ofSupply}.`;
 }
 
 export function xray(input: XrayInput): Xray {

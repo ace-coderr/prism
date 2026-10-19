@@ -279,10 +279,10 @@ export interface CreatorSold {
 export async function creatorsSelling(
   assets: ReadonlyArray<{ asset: ReviewableAsset; launch: Launch | null }>,
   limit = 10,
-): Promise<{ ready: boolean; creators: CreatorSold[] }> {
+): Promise<{ ready: boolean; updatedAt: number; creators: CreatorSold[] }> {
   const watch = await creatorWatch();
   // no watch is not "no creator is selling": the page has to tell the two apart
-  if (!watch) return { ready: false, creators: [] };
+  if (!watch) return { ready: false, updatedAt: 0, creators: [] };
   const out: CreatorSold[] = [];
   for (const { asset, launch } of assets) {
     const w = watch.byToken.get(asset.token.toLowerCase());
@@ -292,13 +292,15 @@ export async function creatorsSelling(
       symbol: asset.symbol,
       name: asset.name,
       // vibe/vibe launches are all 18 decimals; the watch holds no supply or timing, so the line
-      // says what they bought and sold and nothing it can't back up
-      text: creatorLine({ moves: w.moves, holds: creatorHolds(w.moves), symbol: asset.symbol, decimals: 18, shareOfSupply: null, ageSeconds: null, soldAfterSeconds: null }),
+      // says what they bought and sold and nothing it can't back up — in the past tense, because
+      // this is a file read at `updatedAt`, not the chain as it is now
+      text: creatorLine({ moves: w.moves, holds: creatorHolds(w.moves), symbol: asset.symbol, decimals: 18, shareOfSupply: null, ageSeconds: null, soldAfterSeconds: null, tense: 'asRead' }),
       movedOut: movedOutShare(w.moves),
       launchBlock: launch?.block ?? 0,
     });
   }
-  return { ready: true, creators: out.sort((a, b) => b.launchBlock - a.launchBlock).slice(0, limit) };
+  // updatedAt is when the scheduled job last published, which is how old these lines are
+  return { ready: true, updatedAt: watch.updatedAt, creators: out.sort((a, b) => b.launchBlock - a.launchBlock).slice(0, limit) };
 }
 
 /** The launches people have opened here lately, newest first: what the scheduled job warms. */

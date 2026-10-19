@@ -7,7 +7,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { gzipSync } from 'node:zlib';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { encodeXrayCache, noMoves, type Address, type ReviewableAsset, type XrayCache } from '@prism/core';
-import { CREATORS_SELLING_TITLE, CreatorsSellingFeed, creatorsSellingEmpty } from '../src/components/feeds';
+import { CREATORS_SELLING_TITLE, CreatorsSellingFeed, creatorsSellingEmpty, watchAgeNote } from '../src/components/feeds';
 
 /*
  * Home's "creators selling their own launch" section disappeared from the live site once: the
@@ -71,25 +71,30 @@ describe('the server answering before it has the creator watch', () => {
     expect(first.ready).toBe(true);
     expect(first.creators.map((c) => c.symbol)).toEqual(['BOREDAPP']);
     expect(first.creators[0]!.text).toMatch(/BOREDAPP/);
+    // the page needs the file's own age to say how old these lines are
+    expect(first.updatedAt).toBeGreaterThan(Math.floor(Date.now() / 1000) - 120);
+    // and the words are the watch's past tense, not a claim about the chain right now
+    expect(first.creators[0]!.text).toMatch(/had sold .* and held /);
+    expect(first.creators[0]!.text).not.toMatch(/still holds/);
   });
 
   it('says it is not ready when the file is missing, instead of "nobody is selling"', async () => {
     const { creatorsSelling } = await freshServer(join(dir, 'not-published-yet.json.gz'));
-    expect(await creatorsSelling(launches)).toEqual({ ready: false, creators: [] });
+    expect(await creatorsSelling(launches)).toEqual({ ready: false, updatedAt: 0, creators: [] });
   });
 
   it('says it is not ready when the file is unreadable', async () => {
     const path = join(dir, 'half-written.json.gz');
     writeFileSync(path, gzipSync(JSON.stringify({ version: 1, rows: [] })).subarray(0, 12)); // a truncated gzip
     const { creatorsSelling } = await freshServer(path);
-    expect(await creatorsSelling(launches)).toEqual({ ready: false, creators: [] });
+    expect(await creatorsSelling(launches)).toEqual({ ready: false, updatedAt: 0, creators: [] });
   });
 
   it('says it is not ready when the file is a format it does not read', async () => {
     const path = join(dir, 'from-the-future.json.gz');
     writeFileSync(path, gzipSync(JSON.stringify({ version: 99, chainId: 46630, rows: [] })));
     const { creatorsSelling } = await freshServer(path);
-    expect(await creatorsSelling(launches)).toEqual({ ready: false, creators: [] });
+    expect(await creatorsSelling(launches)).toEqual({ ready: false, updatedAt: 0, creators: [] });
   });
 
   it('reports the same for the flags on cards', async () => {
@@ -139,5 +144,47 @@ describe('the Home section', () => {
     expect(html).toContain(`href="/t/${TOKEN}"`);
     expect(html).not.toContain(creatorsSellingEmpty(true));
     expect(html).not.toContain(creatorsSellingEmpty(false));
+  });
+});
+
+describe('saying how old these lines are', () => {
+  const NOW = Date.UTC(2026, 9, 19, 12);
+  const agoHours = (h: number) => Math.floor((NOW - h * 3_600_000) / 1000);
+
+  it('says when the watch was read, and where the live answer is', () => {
+    expect(watchAgeNote(agoHours(0.5), NOW)).toBe('As read 30 minutes ago · open a launch for a live read');
+    expect(watchAgeNote(agoHours(1), NOW)).toBe('As read 1 hour ago · open a launch for a live read');
+    expect(watchAgeNote(agoHours(3), NOW)).toBe('As read 3 hours ago · open a launch for a live read');
+  });
+
+  it('says it more plainly once it is hours old', () => {
+    const stale = watchAgeNote(agoHours(9), NOW)!;
+    expect(stale).toContain('Last read 9 hours ago');
+    expect(stale).toContain('may have bought back or sold more since');
+    expect(watchAgeNote(agoHours(50), NOW)).toContain('Last read 2 days ago');
+  });
+
+  it('says nothing when there is nothing to say', () => {
+    expect(watchAgeNote(undefined, NOW)).toBeNull();
+    expect(watchAgeNote(0, NOW)).toBeNull();
+    expect(watchAgeNote(agoHours(-2), NOW)).toBeNull(); // a clock ahead of ours
+  });
+
+  it('never claims the lines are live', () => {
+    for (const h of [0.2, 2, 9, 50]) {
+      const note = watchAgeNote(agoHours(h), NOW)!;
+      expect(note).toMatch(/read/);
+      expect(note).not.toMatch(/now|live now|currently/i);
+    }
+  });
+
+  it('puts the note on the section, next to the rows it describes', () => {
+    const creators = [{ token: TOKEN, symbol: 'BOREDAPP', name: 'Bored App', text: 'The creator had sold 63% of the $BOREDAPP they bought (all in one sale) and held 267.3M.', movedOut: 0.63, launchBlock: 10 }];
+    const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(CreatorsSellingFeed, { creators, ready: true, updatedAt: agoHours(2), now: NOW })));
+    expect(html).toContain('As read 2 hours ago');
+    expect(html).toContain('open a launch for a live read');
+    // no rows, nothing to date: the empty state carries the meaning instead
+    const none = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(CreatorsSellingFeed, { creators: [], ready: true, updatedAt: agoHours(2), now: NOW })));
+    expect(none).not.toContain('As read 2 hours ago');
   });
 });

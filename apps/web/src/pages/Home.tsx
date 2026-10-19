@@ -88,6 +88,22 @@ export default function Home() {
             <Feed title="Caught selling" loading={feed.isLoading} empty="Nobody has been caught selling after reviewing. When someone does, it shows up here.">
               {feed.data?.caught.slice(0, 6).map((r) => <FeedReview key={r.id} review={r} caught />)}
             </Feed>
+            {/* reviewers who sold are above; this is creators, read from the chain with no reviews needed */}
+            {(feed.data?.creatorsSelling.length ?? 0) > 0 && (
+              <Feed title="Creators selling their own launch" loading={false} empty="">
+                {feed.data!.creatorsSelling.slice(0, 6).map((c) => (
+                  <Link key={c.token} to={tokenPath(c.token)} className="card card-hover flex flex-col gap-1.5 p-4">
+                    <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <TokenAvatar token={c.token} size={22} />
+                      <span className="font-mono text-[12px] font-bold text-lime">${c.symbol}</span>
+                      <span className="truncate text-[13px] text-mist">{c.name}</span>
+                      <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.12em] text-gold">Launch X-ray</span>
+                    </span>
+                    <span className="text-[13px] leading-relaxed text-white/85">{c.text}</span>
+                  </Link>
+                ))}
+              </Feed>
+            )}
             <Feed title="Top launches by true colors" loading={feed.isLoading} empty="No launch has 3 holders reviewing it yet. Scores show from 3.">
               {feed.data?.topLaunches.slice(0, 6).map((l, i) => (
                 <Link key={l.token} to={tokenPath(l.token)} className="card card-hover flex items-center gap-4 p-4">

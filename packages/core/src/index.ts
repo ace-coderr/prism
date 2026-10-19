@@ -24,3 +24,4 @@ export * from './market';
 export * from './metaCache';
 export * from './text';
 export * from './replay';
+export * from './xray';

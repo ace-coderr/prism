@@ -4,7 +4,7 @@ import { PageHeader, PageScroll } from '../components/PageHeader';
 import { SearchBar } from '../components/SearchBar';
 import { SearchRow } from '../components/SearchRow';
 import { GuideNote } from '../components/Viber';
-import { useSearch } from '../data/api';
+import { useSearch, useXrayFlags } from '../data/api';
 
 /** /search?q=…: every match (up to 50), with pictures, market details and PRISM's reviews. */
 export default function Search() {
@@ -12,6 +12,7 @@ export default function Search() {
   const q = (params.get('q') ?? '').trim();
   const search = useSearch(q, 50);
   const items = search.data?.items ?? [];
+  const flags = useXrayFlags(items.map((a) => a.token));
   return (
     <PageScroll>
       <PageHeader label="Search" lead="Find a" accent="launch." subtitle="Every vibe/vibe launch and test stock, by name, $SYMBOL or address." />
@@ -35,7 +36,7 @@ export default function Search() {
             {items.map((a) => (
               <li key={a.token}>
                 <Link to={tokenPath(a.token)} className="card card-hover flex px-4 py-3">
-                  <SearchRow a={a} size="lg" />
+                  <SearchRow a={a} size="lg" flag={flags[a.token.toLowerCase()]} />
                 </Link>
               </li>
             ))}

@@ -9,6 +9,7 @@ import type { Address } from 'viem';
 import {
   POOL_MANAGER,
   TESTNET_TOKENS,
+  applyTransfers,
   blocksPerDay,
   constantProductDayChange,
   dayStats,
@@ -31,6 +32,7 @@ import {
   type Trade,
 } from '@prism/core';
 import { client, mainnetClient } from './chain';
+import { warmHistory } from './xray';
 
 export interface MarketBody {
   token: Address;
@@ -94,6 +96,14 @@ const holders = new Map<string, { toBlock: bigint; balances: Map<string, bigint>
 async function holdersOf(token: Address, from: bigint, to: bigint, exclude: string[]): Promise<number> {
   const key = token.toLowerCase();
   const prev = holders.get(key);
+  // the X-ray reads the same Transfers: reuse its history rather than scanning the chain twice
+  const warm = prev ? null : warmHistory(token, from);
+  if (warm && warm.toBlock >= to) {
+    const balances = new Map<string, bigint>();
+    applyTransfers(balances, warm.transfers);
+    holders.set(key, { toBlock: warm.toBlock, balances });
+    return holderCount(balances, exclude);
+  }
   const start = prev ? prev.toBlock + 1n : from;
   const balances = await readTransfers(client, token, start, to, prev ? new Map(prev.balances) : new Map());
   holders.set(key, { toBlock: to, balances });

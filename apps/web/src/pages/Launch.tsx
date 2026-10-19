@@ -5,6 +5,7 @@ import { SHARE_TEXT, SITE_URL, badgePath, explorerAddressUrl, stockDisclaimers, 
 import { DeepNav } from '../components/DeepNav';
 import { PageScroll } from '../components/PageHeader';
 import { ScoreBlock, ReviewList } from '../components/reviews';
+import { XrayPanel } from '../components/Xray';
 import { ShareOnX } from '../components/ShareOnX';
 import { SectionLabel } from '../components/design';
 import { GuideNote } from '../components/Viber';
@@ -60,6 +61,8 @@ function Launch({ data }: { data: TokenData }) {
         <ScoreBlock score={data.score} symbol={a.symbol} holders={holders} />
         <ReviewAction asset={a} />
       </div>
+
+      <XrayPanel token={token} />
 
       <section aria-labelledby="reviews" className="flex flex-col gap-5">
         <SectionLabel>

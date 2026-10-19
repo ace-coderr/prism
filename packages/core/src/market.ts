@@ -424,20 +424,31 @@ export async function poolPriceBefore(client: PublicClient, poolId: Hex, block: 
   return null;
 }
 
+/** Every Transfer of `token` in [from, to], in chain order (the one reader both holders and the X-ray use). */
+export async function readTransferLog(client: PublicClient, token: Address, from: bigint, to: bigint): Promise<TokenTransfer[]> {
+  const logs = await logsOf(client, token, [EVENTS.transfer], from, to);
+  logs.sort((x, y) => Number(x.blockNumber - y.blockNumber) || x.logIndex - y.logIndex);
+  return logs.map((l) => {
+    const a = l.args as { from: string; to: string; value: bigint };
+    return { from: a.from, to: a.to, value: a.value, block: Number(l.blockNumber), logIndex: l.logIndex };
+  });
+}
+
+/** One Transfer, with where it happened. */
+export interface TokenTransfer {
+  from: string;
+  to: string;
+  value: bigint;
+  block: number;
+  logIndex: number;
+}
+
 /**
  * Holder balances from every Transfer of `token` in [from, to], added onto `balances` (pass the
  * previous result and the next block to update incrementally).
  */
 export async function readTransfers(client: PublicClient, token: Address, from: bigint, to: bigint, balances = new Map<string, bigint>()) {
-  const logs = await logsOf(client, token, [EVENTS.transfer], from, to);
-  logs.sort((x, y) => Number(x.blockNumber - y.blockNumber) || x.logIndex - y.logIndex);
-  applyTransfers(
-    balances,
-    logs.map((l) => {
-      const a = l.args as { from: string; to: string; value: bigint };
-      return { from: a.from, to: a.to, value: a.value };
-    }),
-  );
+  applyTransfers(balances, await readTransferLog(client, token, from, to));
   return balances;
 }
 

@@ -11,6 +11,7 @@ The first PRISM (crystals) is archived at the `crystal-v1` tag and the `archive/
 - PrismReviews v2: holder-only permanent reviews; SOLD measured from the baseline, the most held since the first review of that run (deployed, verified)
 - The first contract's reviews stay readable as retired history
 - Anti-gaming: no escaping SOLD by selling in steps; sell below half and buy back still shows SOLD; creator reviews and positions under $1 don't count; only listed tokens count; dust wallets don't outweigh real holders; the honesty board needs 3 decided positions
+- Launch X-ray: plain facts from the chain on every launch, with no reviews needed — what the creator bought, holds and sold, how concentrated the holders are, what the first buyers did, the holder count over a day, the tax and its age; a one-line flag on cards and search, a "creators selling" feed on Home and the strongest line on share images
 - Launch index from the chain: four vibe/vibe factory generations + the test stocks, kept fresh by a scheduled job
 - Scoring: review status, true colors, honesty rep
 - Website at seeprism.xyz: Home (search, live feeds, the living gem), launch pages with on-chain setup, writing reviews, review pages, profiles with badges, leaderboards, stocks
@@ -19,7 +20,6 @@ The first PRISM (crystals) is archived at the `crystal-v1` tag and the `archive/
 
 ## Next
 - **Not started** · $PRISM on vibe/vibe: NVDA pair, Product & Utility; reviewed here like any other token
-- **Not started** · **Launch X-ray** — a verdict on every launch from day one, with no reviews needed. Plain facts read from the chain on each launch page: whether the creator still holds or dumped and when, how concentrated the top wallets are, how many buyers sold within the hour, how fast the first holders left. It makes all ~226k launches useful immediately, gives people a reason to check a token before buying, and that traffic is what brings the reviews in.
 - **Not started** · **Creator promises** — SOLD, but for creators. A creator commits on-chain ("I won't sell for 30 days") and PRISM stamps it KEPT or BROKEN, permanently. No funds are held; the chain checks the promise. Creators share the badge to sell their launch, which brings their holders here: the growth flywheel.
 
 ## Later

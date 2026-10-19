@@ -54,10 +54,12 @@ type ReviewBody = { review: ReviewView };
 
 export async function cardSvg(origin: string, kind: string, id: string): Promise<string | null> {
   if (kind === 't' && isAddress(id, { strict: false })) {
-    const [t, image, market] = await Promise.all([
+    const [t, image, market, x] = await Promise.all([
       getJson<TokenBody>(`${origin}/api/token?address=${id}`),
       pictureOf(origin, id),
       getJson<{ status: string; progress: number | null }>(`${origin}/api/market?token=${id}`),
+      // what the chain says, so a shared link carries it even with no reviews (skipped if not read yet)
+      getJson<{ ready: boolean; xray: { signals: Array<{ id: string; text: string }> } | null }>(`${origin}/api/xray?token=${id}`),
     ]);
     if (!t) return null;
     return launchCardSvg({
@@ -70,6 +72,9 @@ export async function cardSvg(origin: string, kind: string, id: string): Promise
       status: t.asset.kind === 'stock' ? null : market ? (market.status === 'graduated' ? 'graduated' : 'curve') : t.asset.status,
       progress: market?.progress ?? t.setup?.progress ?? null,
       score: t.score,
+      // the creator and how concentrated it is: what someone most wants to know before buying
+      xray: (x?.xray?.signals ?? []).filter((s) => s.id === 'creator' || s.id === 'concentration').map((s) => s.text),
+      // (the creator line first; concentration when there is nothing to say about the creator)
     });
   }
   if (kind === 'r' && /^\d+$/.test(id)) {

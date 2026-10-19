@@ -26,6 +26,7 @@ export const robinhoodChainMainnet = defineChain({
 });
 
 export const explorerTx = (hash: string) => `${robinhoodChainTestnet.blockExplorers.default.url}/tx/${hash}`;
+export const explorerBlockUrl = (block: number) => `${robinhoodChainTestnet.blockExplorers.default.url}/block/${block}`;
 export const explorerAddressUrl = (address: string) =>
   `${robinhoodChainTestnet.blockExplorers.default.url}/address/${address}`;
 

@@ -11,6 +11,7 @@
  *   /api/stocks                      the test stocks, their scores and the launches paired with them
  *   /api/meta?token=0x…              a launch's own metadata: description, picture, links (IPFS, verified)
  *   /api/market?token=0x…            price, market cap, progress, holders, liquidity and the last 24h
+ *   /api/xray?token=0x…               Launch X-ray: what the chain says about a launch (no reviews needed)
  *   /badge/0x….svg                   a live true colors badge for creators
  *
  * Everything comes from the chain (public RPC, read-only): the launch index (see launchIndex.ts),
@@ -41,6 +42,7 @@ import { marketOf } from './marketData';
 import { badgeSvg } from './svg';
 import { tokenMeta } from './tokenMeta';
 import { floorFor } from './floors';
+import { cachedFlags, creatorsSelling, xrayOf } from './xray';
 
 export const CACHE_CONTROL = 'public, max-age=0, s-maxage=20, stale-while-revalidate=120';
 
@@ -163,6 +165,21 @@ const routes: Record<string, (url: URL, minBlock: bigint) => Promise<unknown>> =
     return new Cached(body, 'public, max-age=60, s-maxage=180, stale-while-revalidate=600');
   },
 
+  async xray(url) {
+    const many = url.searchParams.get('tokens');
+    if (many !== null) {
+      const tokens = many.split(',').filter((t) => isAddress(t, { strict: false })).slice(0, 50);
+      return new Cached({ flags: cachedFlags(tokens) }, 'public, max-age=30, s-maxage=60');
+    }
+    const address = addressParam(url, 'token');
+    const { assetByToken, launchByToken } = await currentIndex();
+    const asset = assetByToken.get(address.toLowerCase());
+    if (!asset) throw new HttpError(404, 'Not a test stock or a vibe/vibe launch.');
+    const answer = await xrayOf(asset, launchByToken.get(address.toLowerCase()) ?? null);
+    // reading an old launch's whole history takes a while: don't cache "still reading"
+    return new Cached(answer, answer.ready ? 'public, max-age=60, s-maxage=180, stale-while-revalidate=600' : 'no-store');
+  },
+
   async review(url, minBlock) {
     const id = int(url.searchParams.get('id'), -1, Number.MAX_SAFE_INTEGER);
     const s = await reviewState(minBlock);
@@ -185,8 +202,13 @@ const routes: Record<string, (url: URL, minBlock: bigint) => Promise<unknown>> =
 
   async feed(_url, minBlock) {
     const s = await reviewState(minBlock);
+    // the newest launches, for the chain-only "creators selling" feed
+    const newest = s.index.assets
+      .filter((a) => a.kind === 'launch')
+      .slice(0, 40)
+      .map((asset) => ({ asset, launch: s.index.launchByToken.get(asset.token.toLowerCase()) ?? null }));
     // the count includes the first contract's reviews: they show in "latest" as history
-    return { ...s.feeds, launches: s.index.index.launches.length, reviews: filterReviews(s.world.views.filter((v) => v.listed), 'all').length };
+    return { ...s.feeds, creatorsSelling: creatorsSelling(newest), launches: s.index.index.launches.length, reviews: filterReviews(s.world.views.filter((v) => v.listed), 'all').length };
   },
 
   async leaderboards() {

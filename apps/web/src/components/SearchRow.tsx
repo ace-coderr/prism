@@ -19,7 +19,7 @@ function PrismNumbers({ a }: { a: SearchItem }) {
 }
 
 /** One search result: picture, name, $SYMBOL, pair and status, market cap and holders, PRISM reviews. */
-export function SearchRow({ a, size = 'md' }: { a: SearchItem; size?: 'md' | 'lg' }) {
+export function SearchRow({ a, size = 'md', flag }: { a: SearchItem; size?: 'md' | 'lg'; flag?: string }) {
   return (
     <span className="flex w-full min-w-0 items-center gap-3">
       <TokenAvatar token={a.token} size={size === 'lg' ? 48 : 36} />
@@ -32,6 +32,11 @@ export function SearchRow({ a, size = 'md' }: { a: SearchItem; size?: 'md' | 'lg
         </span>
         <span className="block truncate font-mono text-[10px] uppercase tracking-[0.08em] text-mist">{kindLabel(a)}</span>
         <MarketLine token={a.token} className="block truncate text-[12px] text-mist" />
+        {flag && (
+          <span className="block truncate font-mono text-[11px] text-gold" title="From the Launch X-ray: read from the chain">
+            ◆ {flag}
+          </span>
+        )}
       </span>
       <span className="shrink-0 text-right">
         <PrismNumbers a={a} />

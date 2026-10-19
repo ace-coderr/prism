@@ -17,6 +17,13 @@ stocks) on Robinhood Chain Testnet, where reviews can't lie:
   holders have reviewed. The creator's own review and positions worth under $1 show, labelled, but
   don't count; reviews of tokens PRISM doesn't list don't appear.
 - **Honesty rep.** The share of a reviewer's positions they kept for at least 7 days after reviewing.
+- **Launch X-ray.** Every launch gets a plain read of its own chain history, whether or not anyone
+  has reviewed it: what the creator bought, holds and sold, how concentrated the holders are, what
+  the first buyers did, how the holder count moved in a day, the tax, and its age. Facts with the
+  numbers behind them, each linking to the address or block they were read from. It states facts and
+  never advises: no buy / sell / avoid wording and no risk score. It can't know who is behind a
+  wallet, whether one person holds several, or what happens off-chain; anything it couldn't read
+  says so instead of guessing, and a time worked out from the block rate is marked `approx`.
 
 Test assets only, no real value.
 
@@ -25,7 +32,7 @@ Test assets only, no real value.
 | Page | What's there |
 | --- | --- |
 | `/` | Search (name, $SYMBOL or address), how it works, live feeds: latest reviews, caught selling, top launches, top honest reviewers. The living gem: a 3D cut gem whose facets are the latest real reviews (colored by rating, sized by position, grey and cracked once SOLD; point at one to see who said what), clear glass until the first review, and a still picture on slow devices or with reduced motion. |
-| `/t/<address>` | A launch or test stock: its picture, name, $SYMBOL, pair, on curve or graduated, creator and date; **market cap · holders · 24h volume · 24h change · progress**; the creator's description and links; **how it's set up** (read from its contracts), true colors, reviews (Holding · Trimmed · SOLD · All), "Make it permanent" on unmarked sales, Buy on vibe/vibe, share and a creator kit (live badge, "Ask my holders to review"). |
+| `/t/<address>` | A launch or test stock: its picture, name, $SYMBOL, pair, on curve or graduated, creator and date; **market cap · holders · 24h volume · 24h change · progress**; the creator's description and links; **Launch X-ray** (what the chain says, no reviews needed); **how it's set up** (read from its contracts), true colors, reviews (Holding · Trimmed · SOLD · All), "Make it permanent" on unmarked sales, Buy on vibe/vibe, share and a creator kit (live badge, "Ask my holders to review"). |
 | `/search?q=` | Every match with its picture, pair, status, market cap, holders and PRISM's reviews and score (the search box shows the top 8 the same way). |
 | `/t/<address>/review` | Write or update a review: login, holder check, rating + 280 bytes of text, a preview of exactly what's recorded, one transaction, then Share on X. |
 | `/r/<id>` | One review, shareable (with its own share image). |

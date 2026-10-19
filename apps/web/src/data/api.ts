@@ -2,6 +2,7 @@ import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-q
 import type { Address } from 'viem';
 import type {
   Feeds,
+  Xray,
   LaunchRank,
   LaunchSetup,
   ReviewView,
@@ -56,7 +57,16 @@ export interface ReviewerData {
   summary: ReviewerSummary | null;
   reviews: ReviewView[];
 }
-export type FeedData = Feeds & { launches: number; reviews: number };
+/** One of the newest launches whose creator has already sold most of what they bought. */
+export interface CreatorSold {
+  token: Address;
+  symbol: string;
+  name: string;
+  text: string;
+  movedOut: number;
+  launchBlock: number;
+}
+export type FeedData = Feeds & { creatorsSelling: CreatorSold[]; launches: number; reviews: number };
 export interface LeaderboardData {
   launches: LaunchRank[];
   reviewers: ReviewerSummary[];
@@ -80,6 +90,13 @@ export interface MetaData {
   links: { website?: string; x?: string; telegram?: string; discord?: string };
   verified: 'cid' | 'digest' | null;
   uri: string | null;
+}
+
+/** /api/xray: what the chain says about a launch, before anyone has reviewed it. */
+export interface XrayData {
+  /** false: PRISM is still reading this launch's history; ask again in a moment */
+  ready: boolean;
+  xray: Xray | null;
 }
 
 /** /api/market: price, market cap, progress, holders and the last 24h, read from the chain. */
@@ -117,6 +134,34 @@ export const useMeta = (token: string | undefined): UseQueryResult<MetaData, Api
 /** Market details refresh every few minutes (the server reads the chain; the CDN caches 3 minutes). */
 export const useMarket = (token: string | undefined): UseQueryResult<MarketData, ApiError> =>
   useQuery({ queryKey: ['api', 'market', token?.toLowerCase()], enabled: !!token, queryFn: () => api<MarketData>(`/api/market?token=${token}`), staleTime: 120_000, refetchInterval: 180_000, retry: 1 });
+
+/**
+ * The Launch X-ray. A launch from millions of blocks back takes a few requests to read, so this
+ * asks again while the answer says it isn't ready; the page shows everything else meanwhile.
+ */
+export function useXray(token: string | undefined): UseQueryResult<XrayData, ApiError> {
+  return useQuery({
+    queryKey: ['api', 'xray', token?.toLowerCase()],
+    enabled: !!token,
+    queryFn: () => api<XrayData>(`/api/xray?token=${token}`),
+    staleTime: 60_000,
+    retry: 1,
+    refetchInterval: (q) => (q.state.data && !q.state.data.ready ? 3_000 : false),
+  });
+}
+
+/** The one-line X-ray flags PRISM has already worked out for these launches (it starts no reads). */
+export function useXrayFlags(tokens: string[]): Record<string, string> {
+  const key = [...new Set(tokens.map((t) => t.toLowerCase()))].sort();
+  const q = useQuery({
+    queryKey: ['api', 'xray-flags', key.join(',')],
+    enabled: key.length > 0,
+    queryFn: () => api<{ flags: Record<string, string> }>(`/api/xray?tokens=${key.join(',')}`),
+    staleTime: 60_000,
+    retry: 1,
+  });
+  return q.data?.flags ?? {};
+}
 
 export const useFeed = (): UseQueryResult<FeedData, ApiError> => useQuery({ queryKey: ['api', 'feed'], queryFn: () => api<FeedData>('/api/feed'), ...opts });
 

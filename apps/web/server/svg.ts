@@ -84,6 +84,8 @@ export interface LaunchCard {
   score: ScoreSummary;
   /** the token's picture as a data: URI (PNG), or null */
   image?: string | null;
+  /** the strongest Launch X-ray lines, so a shared link carries what the chain says */
+  xray?: string[];
 }
 
 export function launchCardSvg(c: LaunchCard): string {
@@ -111,11 +113,15 @@ export function launchCardSvg(c: LaunchCard): string {
     ? `<clipPath id="pic"><rect x="64" y="160" width="156" height="156" rx="36"/></clipPath><rect x="64" y="160" width="156" height="156" rx="36" fill="${LINE}"/><image x="64" y="160" width="156" height="156" preserveAspectRatio="xMidYMid slice" clip-path="url(#pic)" href="${c.image}"/><rect x="64" y="160" width="156" height="156" rx="36" fill="none" stroke="${LINE}" stroke-width="3"/>`
     : '';
   const tx = c.image ? 252 : 64;
+  // the strongest X-ray line under the pills, wrapped: what the chain says, even with no reviews
+  const lines = wrap((c.xray ?? [])[0] ?? '', 58, 2);
+  const xrayLines = lines.map((l, i) => `<text x="64" y="${496 + i * 34}" font-family="${MONO}" font-size="23" fill="${MIST}">${escapeXml(l)}</text>`).join('');
   return frame(
     `${picture}
 <text x="${tx}" y="${c.image ? 248 : 270}" font-family="${GROTESK}" font-weight="700" font-size="${c.image ? symSize : c.symbol.length > 9 ? 76 : 104}" letter-spacing="-3" fill="${WHITE}">${escapeXml(c.image ? sym : fit(`$${drawable(c.symbol)}`, 13))}</text>
 <text x="${tx}" y="${c.image ? 300 : 334}" font-family="${MONO}" font-size="30" fill="${MIST}">${escapeXml(fit(drawable(c.name), c.image ? 22 : 30))}</text>
 ${pills.join('')}
+${xrayLines}
 ${right}`,
     `/t/${short(c.token)}`,
   );

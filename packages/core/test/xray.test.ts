@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getAddress, type Address } from 'viem';
 import {
   EARLY_BUYERS,
+  RECHECK_TIERS,
   amount,
   creatorHolds,
   creatorLine,
@@ -10,6 +11,8 @@ import {
   emptyXrayCache,
   encodeXrayCache,
   flagOf,
+  overdueBy,
+  recheckTier,
   movedOutShare,
   share,
   soldEverything,
@@ -416,6 +419,37 @@ describe('the published creator watch', () => {
     expect(creatorHolds(W(E(100), E(30)).moves)).toBe(E(70));
   });
 
+  it('reads a launch again by its age: every run on day one, rarely in week two', () => {
+    const HOUR = 3_600_000;
+    // a launch an hour old is read on every run; a 5-day-old one waits a day
+    expect(recheckTier(1 / 24).everyMs).toBe(20 * 60_000);
+    expect(recheckTier(1).everyMs).toBe(6 * HOUR); // the boundary belongs to the slower tier
+    expect(recheckTier(2).everyMs).toBe(6 * HOUR);
+    expect(recheckTier(5).everyMs).toBe(24 * HOUR);
+    expect(recheckTier(30).everyMs).toBe(72 * HOUR);
+    // the younger tier always comes first in the run's queue
+    expect(recheckTier(0.5).index).toBeLessThan(recheckTier(2).index);
+    expect(recheckTier(2).index).toBeLessThan(recheckTier(5).index);
+    // and the tiers only ever get slower with age
+    const everyMs = RECHECK_TIERS.map((t) => t.everyMs);
+    expect([...everyMs].sort((a, b) => a - b)).toEqual(everyMs);
+  });
+
+  it('puts what has waited longest for its own cadence first', () => {
+    const now = Date.UTC(2026, 9, 19, 12);
+    const HOUR = 3_600_000;
+    // never read: always first
+    expect(overdueBy(0.5, null, now)).toBe(Number.POSITIVE_INFINITY);
+    // a day-old launch read an hour ago is three times overdue on its 20-minute cadence
+    expect(overdueBy(0.5, now - HOUR, now)).toBeCloseTo(3, 6);
+    // a 5-day-old one read an hour ago is nowhere near due on its daily one
+    expect(overdueBy(5, now - HOUR, now)).toBeCloseTo(1 / 24, 6);
+    expect(overdueBy(5, now - 25 * HOUR, now)).toBeGreaterThan(1);
+    // being overdue is what makes a launch due, whatever its age
+    expect(overdueBy(0.1, now - 19 * 60_000, now)).toBeLessThan(1);
+    expect(overdueBy(0.1, now - 21 * 60_000, now)).toBeGreaterThan(1);
+  });
+
   it('says what a watched creator did in the same words as the X-ray itself', () => {
     const moves = W(E(100), E(100)).moves;
     expect(creatorLine({ moves, holds: creatorHolds(moves), symbol: 'MOON', decimals: 18, shareOfSupply: null, ageSeconds: null, soldAfterSeconds: null })).toBe(
@@ -426,4 +460,5 @@ describe('the published creator watch', () => {
       'The creator has sold 60% of the $MOON they bought (biggest sale 50) and still holds 40.',
     );
   });
-});
+
+);

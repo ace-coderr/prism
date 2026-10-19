@@ -11,6 +11,8 @@
  *    own address: two filtered queries covering the launch's whole life, about half a second each,
  *    rather than its full history. The result is published next to the launch index, and the site
  *    builds the "creators selling" feed and the one-line flags from it without reading anything.
+ *    A run can't read them all, so it reads by age (RECHECK_TIERS): every launch of the last day
+ *    on every run, older ones every few runs.
  * 2. Warming. Ask the site for the X-ray of the newest launches and of the ones people have opened
  *    recently, so a visitor doesn't pay for the first cold read of a launch from millions of blocks
  *    back. Exactly what warm-pictures.ts does for token pictures.
@@ -22,12 +24,15 @@ import { gunzipSync, gzipSync } from 'node:zlib';
 import { writeWhole } from './saveFile';
 import { createPublicClient, http, parseAbiItem, type Address, type PublicClient } from 'viem';
 import {
+  RECHECK_TIERS,
   blockRanges,
   creatorMoves,
   decodeIndex,
   decodeXrayCache,
   emptyXrayCache,
   encodeXrayCache,
+  overdueBy,
+  recheckTier,
   robinhoodChainTestnet,
   soldMost,
   type Launch,
@@ -49,8 +54,7 @@ if (!indexPath || !outPath) {
 
 /** Launches this new are watched for their creator selling. */
 const WATCH_DAYS = 7;
-/** Re-check a watched launch at most this often (its creator may sell at any time). */
-const RECHECK_MS = 25 * 60_000;
+/** How often each launch is read again, by its age: RECHECK_TIERS in @prism/core xrayCache.ts. */
 /** Creator checks at once, and how long to wait after the public RPC starts refusing. */
 const PARALLEL = 6;
 const RETRIES = 2;
@@ -144,15 +148,44 @@ const watchFrom = Number(head) - Math.round(perDay * WATCH_DAYS);
 const now = Date.now();
 const recent = index.launches.filter((l) => l.block >= watchFrom);
 const alreadyWatched = index.launches.filter((l) => l.block < watchFrom && cache.byToken.has(l.token.toLowerCase()));
-// newest first, and nothing re-checked too soon
-const queue: Launch[] = [...recent, ...alreadyWatched]
-  .sort((a, b) => b.block - a.block)
-  .filter((l) => {
-    const had = cache.byToken.get(l.token.toLowerCase());
-    return !had || now - had.checkedAt * 1000 > RECHECK_MS;
-  });
 
-console.log(`creator watch: ${recent.length.toLocaleString()} launches in the last ${WATCH_DAYS} days, ${cache.byToken.size.toLocaleString()} already watched, ${queue.length.toLocaleString()} to check`);
+/** How old the launch is, in days, from its block (the chain's block time is steady). */
+const ageDays = (l: Launch) => Math.max(0, (Number(head) - l.block) / perDay);
+
+/*
+ * The run reads what is most worth reading rather than an even slice of everything: the youngest
+ * tier first (a creator selling on day one is news), and inside a tier whatever has waited longest
+ * for its own cadence, so nothing older is starved while the budget lasts.
+ */
+const waiting = [...recent, ...alreadyWatched]
+  .map((l) => {
+    const had = cache.byToken.get(l.token.toLowerCase());
+    const age = ageDays(l);
+    return { launch: l, tier: recheckTier(age).index, overdue: overdueBy(age, had ? had.checkedAt * 1000 : null, now) };
+  })
+  .filter((x) => x.overdue >= 1)
+  .sort((a, b) => a.tier - b.tier || b.overdue - a.overdue || b.launch.block - a.launch.block);
+
+/*
+ * One read in RESERVE_EVERY is kept for the two slowest tiers, however much the young ones want.
+ * Youngest-first on its own spends the whole run on the first days and never comes back to a
+ * launch that has aged past them, so its card would keep the figure it had on the day it aged out,
+ * for good. The reserve costs a tenth of the run and means nothing watched is frozen.
+ */
+const RESERVE_EVERY = 10;
+const young = waiting.filter((x) => x.tier < 2);
+const older = waiting.filter((x) => x.tier >= 2).sort((a, b) => b.overdue - a.overdue);
+const queue: Launch[] = [];
+for (let i = 0; young.length > 0 || older.length > 0; i++) {
+  const takeOlder = older.length > 0 && (young.length === 0 || i % RESERVE_EVERY === RESERVE_EVERY - 1);
+  queue.push((takeOlder ? older.shift() : young.shift())!.launch);
+}
+
+console.log(`creator watch: ${recent.length.toLocaleString()} launches in the last ${WATCH_DAYS} days, ${cache.byToken.size.toLocaleString()} already watched, ${queue.length.toLocaleString()} due a read`);
+for (const [i, t] of RECHECK_TIERS.entries()) {
+  const due = waiting.filter((x) => x.tier === i).length;
+  if (due) console.log(`  ${due.toLocaleString()} ${t.what} (read again every ${Math.round(t.everyMs / 60_000) >= 60 ? `${Math.round(t.everyMs / 3_600_000)}h` : `${Math.round(t.everyMs / 60_000)} min`})`);
+}
 let checked = 0;
 let selling = 0;
 let failed = 0;

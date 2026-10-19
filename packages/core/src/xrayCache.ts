@@ -18,6 +18,38 @@ export const XRAY_CACHE_VERSION = 1;
 /** Published by the scheduled job as an asset of the launch index's release. Public data. */
 export const XRAY_CACHE_URL = 'https://github.com/ace-coderr/prism/releases/download/launch-index/launch-xray.json.gz';
 
+/**
+ * How often a watched launch is read again, by how old it is.
+ *
+ * A run can only read so many launches, and reading them all equally often meant a launch's first
+ * day — the day a creator selling is news — was refreshed no more often than its seventh. The
+ * youngest are read on every run; the rest wait, so the time goes where something is likely to have
+ * changed. `upToDays` is exclusive, and the last tier catches everything older.
+ */
+export const RECHECK_TIERS: ReadonlyArray<{ upToDays: number; everyMs: number; what: string }> = [
+  { upToDays: 1, everyMs: 20 * 60_000, what: 'under a day old' },
+  { upToDays: 3, everyMs: 6 * 3_600_000, what: '1 to 3 days old' },
+  { upToDays: 7, everyMs: 24 * 3_600_000, what: '3 to 7 days old' },
+  { upToDays: Number.POSITIVE_INFINITY, everyMs: 72 * 3_600_000, what: 'a week or older' },
+];
+
+/** The tier a launch of this age falls in: how often to read it again, and how soon it comes first. */
+export function recheckTier(ageDays: number): { index: number; everyMs: number; what: string } {
+  const i = RECHECK_TIERS.findIndex((t) => ageDays < t.upToDays);
+  const index = i < 0 ? RECHECK_TIERS.length - 1 : i;
+  return { index, ...RECHECK_TIERS[index]! };
+}
+
+/**
+ * How overdue a reading is, as a multiple of its tier's interval: 1 means due now, 2 means it has
+ * waited twice as long as it should, Infinity means it has never been read. A run reads the
+ * youngest tier first and, within a tier, whatever has waited longest for its own cadence.
+ */
+export function overdueBy(ageDays: number, checkedAtMs: number | null, now: number): number {
+  if (checkedAtMs === null) return Number.POSITIVE_INFINITY;
+  return (now - checkedAtMs) / recheckTier(ageDays).everyMs;
+}
+
 export interface WatchedCreator {
   token: Address;
   creator: Address;

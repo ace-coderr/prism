@@ -12,7 +12,7 @@ import type { Address } from 'viem';
 import { LAUNCH_INDEX_URL, allAssets, decodeIndex, updateIndex, type Launch, type LaunchIndex, type ReviewableAsset } from '@prism/core';
 import { client } from './chain';
 
-/** Re-download the published index this often (it changes every ~30 minutes). */
+/** Re-download the published index this often (the scheduled job republishes it hourly). */
 const BASE_MS = 10 * 60_000;
 /** Re-read the newest blocks this often. */
 const TAIL_MS = 30_000;

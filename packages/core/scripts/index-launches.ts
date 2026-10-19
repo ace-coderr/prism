@@ -9,8 +9,9 @@
  * saved after every step, and a failed step is retried from the last save. Run by
  * .github/workflows/launch-index.yml.
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { gunzipSync, gzipSync } from 'node:zlib';
+import { writeWhole } from './saveFile';
 import { createPublicClient, http, type PublicClient } from 'viem';
 import { LAUNCH_INDEX_VERSION, backfillGenerations, decodeIndex, encodeIndex, robinhoodChainTestnet, updateIndex, type LaunchIndex } from '../src';
 
@@ -38,7 +39,7 @@ function load(path: string | undefined): LaunchIndex | null {
   return null;
 }
 
-const save = (index: LaunchIndex) => writeFileSync(outPath, gzipSync(JSON.stringify(encodeIndex(index)), { level: 9 }));
+const save = (index: LaunchIndex) => writeWhole(outPath, gzipSync(JSON.stringify(encodeIndex(index)), { level: 9 }));
 const started = Date.now();
 const progress = (i: LaunchIndex, what: string) => {
   const graduated = i.launches.filter((l) => l.graduatedBlock !== null).length;

@@ -13,8 +13,9 @@
  * gateway, the others join only if that one is slow or fails, and when most reads fail the job
  * pauses, then stops for this run if they keep failing.
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { gunzipSync, gzipSync } from 'node:zlib';
+import { writeWhole } from './saveFile';
 import { createPublicClient, http, type PublicClient } from 'viem';
 import {
   IPFS_GATEWAYS,
@@ -59,9 +60,13 @@ for (const p of [prevPath, outPath]) {
   const c = decodeMetaCache(gunzipJson(p));
   if (c && c.chainId === index.chainId && c.rows.size >= cache.rows.size) cache = c;
 }
+/** Saved at least this often, so a run stopped mid-batch keeps all but a few seconds of work. */
+const SAVE_EVERY_MS = 10_000;
+let lastSave = 0; // 0: the first result is saved straight away, so a file exists from the start
 const save = () => {
   cache.updatedAt = Math.floor(Date.now() / 1000);
-  writeFileSync(outPath, gzipSync(JSON.stringify(encodeMetaCache(cache)), { level: 9 }));
+  writeWhole(outPath, gzipSync(JSON.stringify(encodeMetaCache(cache)), { level: 9 }));
+  lastSave = Date.now();
 };
 
 const client = createPublicClient({
@@ -103,6 +108,7 @@ for (let i = 0; i < pending.length && Date.now() < deadline && !refused(); i += 
           continue;
         }
         const read = await readLaunchMetadata(refs.get(key)!, { timeoutMs: 20_000, gateways: gatewaysFor(turn++), staggerMs: STAGGER_MS });
+        if (Date.now() - lastSave > SAVE_EVERY_MS) save();
         const row = metaRow(key, read);
         if (row) {
           cache.rows.set(key, row);

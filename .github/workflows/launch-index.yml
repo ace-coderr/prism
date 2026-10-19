@@ -1,19 +1,29 @@
-# Keeps the vibe/vibe launch index fresh: every 30 minutes it reads the new blocks from Robinhood
-# Chain Testnet (public RPC, read-only) and republishes launches.json.gz as an asset of the
-# "launch-index" release, which /api/launches serves, plus launch-meta.json.gz (every launch's
-# verified metadata, which /api/meta serves) and launch-xray.json.gz (what each recent launch's
-# creator has done with their own tokens, which the X-ray's feed and flags use). Free for public
-# repos; the only credential is the workflow's own short-lived GITHUB_TOKEN (no secrets to set up).
+# Keeps the vibe/vibe launch index fresh: every hour it reads the new blocks from Robinhood Chain
+# Testnet (public RPC, read-only) and republishes launches.json.gz as an asset of the "launch-index"
+# release, which /api/launches serves, plus launch-meta.json.gz (every launch's verified metadata,
+# which /api/meta serves) and launch-xray.json.gz (what each recent launch's creator has done with
+# their own tokens, which the X-ray's feed and flags use). Free for public repos; the only credential
+# is the workflow's own short-lived GITHUB_TOKEN (no secrets to set up).
+#
+# A whole run takes a little over half an hour, so it runs hourly: on the half hour the chain has
+# moved on, but nothing is waiting on it. The concurrency group below means a run never starts while
+# one is in flight, whatever the schedule says.
+#
+# Every step here can be stopped part-way (its own time budget, a step timeout, a cancelled run) and
+# that is normal: each script saves its progress as it goes, publishes whatever it finished, and the
+# next run carries on from there rather than starting over.
 name: Launch index
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '7 * * * *' # hourly, off the hour: GitHub's scheduler is busiest on it
   workflow_dispatch:
 
 permissions:
   contents: write # publish the release asset
 
+# one run at a time: a run that arrives while one is going waits for it rather than racing it to
+# publish the same files, and the one already going is never cancelled
 concurrency:
   group: launch-index
   cancel-in-progress: false
@@ -36,17 +46,26 @@ jobs:
         run: |
           gh release download launch-index --pattern launches.json.gz --dir prev || echo "No previous index, so this is a first build"
       - name: Read the new blocks
+        id: read
+        continue-on-error: true # a run cut short still publishes the blocks it did read
         run: npx tsx packages/core/scripts/index-launches.ts prev/launches.json.gz launches.json.gz
-      - name: Publish
+      # the index records the block it was read up to, so publishing a part-finished one simply means
+      # it is less fresh, and the next run carries on from there
+      - name: Publish the index
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view launch-index >/dev/null 2>&1 || gh release create launch-index --prerelease --latest=false \
-            --title "Launch index (data)" \
-            --notes "Every vibe/vibe launch on Robinhood Chain Testnet, read from the chain. Updated automatically by .github/workflows/launch-index.yml; served by /api/launches."
-          gh release upload launch-index launches.json.gz --clobber
+          ./.github/publish.sh launches.json.gz \
+            --create "Launch index (data)" \
+            "Every vibe/vibe launch on Robinhood Chain Testnet, read from the chain. Updated automatically by .github/workflows/launch-index.yml; served by /api/launches."
+      - name: Stop if the index could not be read at all
+        if: steps.read.outcome == 'failure' && hashFiles('launches.json.gz') == ''
+        run: |
+          echo "The index couldn't be read and nothing was published; the next run tries again."
+          exit 1
       # every launch's verified metadata, kept for good (IPFS content never changes): carries over the
-      # previous cache and reads the launches it doesn't have yet, newest first (never fails the job)
+      # previous cache and reads the launches it doesn't have yet, newest first
       - name: Cache token metadata
         continue-on-error: true
         timeout-minutes: 18
@@ -55,7 +74,12 @@ jobs:
         run: |
           gh release download launch-index --pattern launch-meta.json.gz --dir prev || echo "No previous metadata cache, so this starts one"
           npx tsx packages/core/scripts/cache-metadata.ts launches.json.gz prev/launch-meta.json.gz launch-meta.json.gz --minutes 12
-          gh release upload launch-index launch-meta.json.gz --clobber
+      - name: Publish the metadata cache
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./.github/publish.sh launch-meta.json.gz
       # what every launch of the last week's creator has done with their own tokens: two filtered
       # queries each, so thousands fit in the budget. Then it warms the X-ray of the newest launches
       # and the ones people opened recently, so no visitor pays for the first cold read.
@@ -67,7 +91,12 @@ jobs:
         run: |
           gh release download launch-index --pattern launch-xray.json.gz --dir prev || echo "No previous creator watch, so this starts one"
           npx tsx packages/core/scripts/warm-xray.ts launches.json.gz prev/launch-xray.json.gz launch-xray.json.gz https://seeprism.xyz --minutes 14
-          gh release upload launch-index launch-xray.json.gz --clobber
+      - name: Publish the creator watch
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./.github/publish.sh launch-xray.json.gz
       # visitors rarely wait for IPFS: fetch the pictures of the newest, most traded, recently graduated
       # and reviewed launches through the site so its cache has them (never fails the job)
       - name: Warm token pictures

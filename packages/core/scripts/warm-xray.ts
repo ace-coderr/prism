@@ -17,8 +17,9 @@
  *
  * Newest first, and whatever it doesn't reach this run it reaches on the next one.
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { gunzipSync, gzipSync } from 'node:zlib';
+import { writeWhole } from './saveFile';
 import { createPublicClient, http, parseAbiItem, type Address, type PublicClient } from 'viem';
 import {
   blockRanges,
@@ -75,9 +76,16 @@ for (const p of [prevPath, outPath]) {
   const c = decodeXrayCache(gunzipJson(p));
   if (c && c.chainId === index.chainId && c.byToken.size >= cache.byToken.size) cache = c;
 }
+/** Saved at least this often, so a run stopped at any moment keeps all but a few seconds of work. */
+const SAVE_EVERY_MS = 10_000;
+let lastSave = 0; // 0: the first result is saved straight away, so a file exists from the start
 const save = () => {
   cache.updatedAt = Math.floor(Date.now() / 1000);
-  writeFileSync(outPath, gzipSync(JSON.stringify(encodeXrayCache(cache)), { level: 9 }));
+  writeWhole(outPath, gzipSync(JSON.stringify(encodeXrayCache(cache)), { level: 9 }));
+  lastSave = Date.now();
+};
+const saveIfDue = () => {
+  if (Date.now() - lastSave > SAVE_EVERY_MS) save();
 };
 
 const client = createPublicClient({
@@ -158,6 +166,7 @@ await Promise.all(
         cache.byToken.set(l.token.toLowerCase(), { token: l.token, creator: l.creator, moves, checkedToBlock: Number(head), checkedAt: Math.floor(Date.now() / 1000) });
         checked++;
         if (soldMost(moves)) selling++;
+        saveIfDue();
         if (checked % 250 === 0) {
           save();
           console.log(`  ${checked.toLocaleString()} checked, ${selling} selling (${Math.round((Date.now() - started) / 1000)}s)`);

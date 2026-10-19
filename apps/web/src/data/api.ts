@@ -66,7 +66,13 @@ export interface CreatorSold {
   movedOut: number;
   launchBlock: number;
 }
-export type FeedData = Feeds & { creatorsSelling: CreatorSold[]; launches: number; reviews: number };
+export type FeedData = Feeds & {
+  creatorsSelling: CreatorSold[];
+  /** false while the published creator watch hasn't reached the server: an empty list means nothing yet. */
+  creatorWatchReady: boolean;
+  launches: number;
+  reviews: number;
+};
 export interface LeaderboardData {
   launches: LaunchRank[];
   reviewers: ReviewerSummary[];

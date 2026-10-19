@@ -45,6 +45,12 @@ import { floorFor } from './floors';
 import { cachedFlags, creatorsSelling, recentlyOpened, xrayOf } from './xray';
 
 export const CACHE_CONTROL = 'public, max-age=0, s-maxage=20, stale-while-revalidate=120';
+/**
+ * For an answer that is missing a part of itself (the published creator watch hasn't arrived on this
+ * instance yet). The normal header would keep it in the CDN for two minutes and serve it stale for
+ * two more, so one cold instance could hide the "creators selling" section from everybody.
+ */
+export const CACHE_INCOMPLETE = 'public, max-age=0, s-maxage=5';
 
 /** A body with its own cache lifetime (the default is CACHE_CONTROL). */
 class Cached {
@@ -173,7 +179,8 @@ const routes: Record<string, (url: URL, minBlock: bigint) => Promise<unknown>> =
     const many = url.searchParams.get('tokens');
     if (many !== null) {
       const tokens = many.split(',').filter((t) => isAddress(t, { strict: false })).slice(0, 50);
-      return new Cached({ flags: cachedFlags(tokens) }, 'public, max-age=30, s-maxage=60');
+      const { ready, flags } = await cachedFlags(tokens);
+      return new Cached({ flags }, ready ? 'public, max-age=30, s-maxage=60' : CACHE_INCOMPLETE);
     }
     const address = addressParam(url, 'token');
     const { assetByToken, launchByToken } = await currentIndex();
@@ -208,8 +215,18 @@ const routes: Record<string, (url: URL, minBlock: bigint) => Promise<unknown>> =
     const s = await reviewState(minBlock);
     // the chain-only "creators selling" feed, from the published creator watch (no reads here)
     const launches = s.index.assets.filter((a) => a.kind === 'launch').map((asset) => ({ asset, launch: s.index.launchByToken.get(asset.token.toLowerCase()) ?? null }));
+    const selling = await creatorsSelling(launches);
     // the count includes the first contract's reviews: they show in "latest" as history
-    return { ...s.feeds, creatorsSelling: creatorsSelling(launches), launches: s.index.index.launches.length, reviews: filterReviews(s.world.views.filter((v) => v.listed), 'all').length };
+    const body = {
+      ...s.feeds,
+      creatorsSelling: selling.creators,
+      // false means "not read yet", not "nobody is selling": Home says which, and this answer is
+      // barely cached so the section fills in as soon as the watch is here
+      creatorWatchReady: selling.ready,
+      launches: s.index.index.launches.length,
+      reviews: filterReviews(s.world.views.filter((v) => v.listed), 'all').length,
+    };
+    return new Cached(body, selling.ready ? CACHE_CONTROL : CACHE_INCOMPLETE);
   },
 
   async leaderboards() {

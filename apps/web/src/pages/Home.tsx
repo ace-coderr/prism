@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { Address } from 'viem';
 import { PRISM_TOKEN, formatScore, reviewPath, scoreColor, tokenPath, type ReviewView } from '@prism/core';
@@ -6,6 +5,7 @@ import { LivingGem } from '../components/Gem';
 import { SearchBar } from '../components/SearchBar';
 import { Stars, StatusPill } from '../components/reviews';
 import { Reveal, SectionLabel } from '../components/design';
+import { CreatorsSellingFeed, Feed } from '../components/feeds';
 import { TestEthNote } from '../components/TestEthNote';
 import { GuideNote } from '../components/Viber';
 import { useFeed } from '../data/api';
@@ -89,21 +89,7 @@ export default function Home() {
               {feed.data?.caught.slice(0, 6).map((r) => <FeedReview key={r.id} review={r} caught />)}
             </Feed>
             {/* reviewers who sold are above; this is creators, read from the chain with no reviews needed */}
-            {(feed.data?.creatorsSelling.length ?? 0) > 0 && (
-              <Feed title="Creators selling their own launch" loading={false} empty="">
-                {feed.data!.creatorsSelling.slice(0, 6).map((c) => (
-                  <Link key={c.token} to={tokenPath(c.token)} className="card card-hover flex flex-col gap-1.5 p-4">
-                    <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                      <TokenAvatar token={c.token} size={22} />
-                      <span className="font-mono text-[12px] font-bold text-lime">${c.symbol}</span>
-                      <span className="truncate text-[13px] text-mist">{c.name}</span>
-                      <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.12em] text-gold">Launch X-ray</span>
-                    </span>
-                    <span className="text-[13px] leading-relaxed text-white/85">{c.text}</span>
-                  </Link>
-                ))}
-              </Feed>
-            )}
+            <CreatorsSellingFeed creators={feed.data?.creatorsSelling} ready={feed.data?.creatorWatchReady} loading={feed.isLoading} />
             <Feed title="Top launches by true colors" loading={feed.isLoading} empty="No launch has 3 holders reviewing it yet. Scores show from 3.">
               {feed.data?.topLaunches.slice(0, 6).map((l, i) => (
                 <Link key={l.token} to={tokenPath(l.token)} className="card card-hover flex items-center gap-4 p-4">
@@ -126,22 +112,6 @@ export default function Home() {
         )}
       </div>
     </>
-  );
-}
-
-function Feed({ title, loading, empty, children }: { title: string; loading: boolean; empty: string; children?: ReactNode[] | ReactNode }) {
-  const list = Array.isArray(children) ? children : children ? [children] : [];
-  return (
-    <section className="flex min-w-0 flex-col gap-4">
-      <SectionLabel>{title}</SectionLabel>
-      {loading ? (
-        <p className="text-sm text-mist">Reading the chain…</p>
-      ) : list.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-white/10 p-5 text-[14px] leading-relaxed text-mist">{empty}</p>
-      ) : (
-        <div className="flex flex-col gap-3">{list}</div>
-      )}
-    </section>
   );
 }
 

@@ -34,7 +34,7 @@ import {
 } from '@prism/core';
 import { erc20Abi } from 'viem';
 import { client } from './chain';
-import { creatorWatch, watchedCreator } from './xrayCache';
+import { creatorWatch } from './xrayCache';
 
 
 /** Re-read a token's new blocks at most this often. */
@@ -226,7 +226,8 @@ export function xrayOf(asset: ReviewableAsset, launch: Launch | null): Promise<X
  * the scheduled job publishes, and from any full X-ray this instance happens to have worked out
  * already (which knows more, e.g. how concentrated the holders are).
  */
-export function cachedFlags(tokens: readonly string[]): Record<string, string> {
+export async function cachedFlags(tokens: readonly string[]): Promise<{ ready: boolean; flags: Record<string, string> }> {
+  const watch = await creatorWatch();
   const out: Record<string, string> = {};
   for (const t of tokens) {
     const key = t.toLowerCase();
@@ -235,12 +236,14 @@ export function cachedFlags(tokens: readonly string[]): Record<string, string> {
       out[key] = full;
       continue;
     }
-    const watched = watchedCreator(key);
+    const watched = watch?.byToken.get(key);
     if (!watched) continue;
     const flag = flagOf({ creator: creatorFactsOf(watched), concentration: null, early: null });
     if (flag) out[key] = flag;
   }
-  return out;
+  // without the watch these flags are only what this instance happens to have read: say so, so the
+  // answer isn't cached as if it were the whole truth
+  return { ready: watch !== null, flags: out };
 }
 
 /** The watch's creator moves as the X-ray's own facts (it knows no supply share). */
@@ -273,9 +276,13 @@ export interface CreatorSold {
  * published creator watch: every launch of the last week is watched there, so this costs the site
  * nothing and isn't limited to the handful it could afford to read itself.
  */
-export function creatorsSelling(assets: ReadonlyArray<{ asset: ReviewableAsset; launch: Launch | null }>, limit = 10): CreatorSold[] {
-  const watch = creatorWatch();
-  if (!watch) return [];
+export async function creatorsSelling(
+  assets: ReadonlyArray<{ asset: ReviewableAsset; launch: Launch | null }>,
+  limit = 10,
+): Promise<{ ready: boolean; creators: CreatorSold[] }> {
+  const watch = await creatorWatch();
+  // no watch is not "no creator is selling": the page has to tell the two apart
+  if (!watch) return { ready: false, creators: [] };
   const out: CreatorSold[] = [];
   for (const { asset, launch } of assets) {
     const w = watch.byToken.get(asset.token.toLowerCase());
@@ -291,7 +298,7 @@ export function creatorsSelling(assets: ReadonlyArray<{ asset: ReviewableAsset; 
       launchBlock: launch?.block ?? 0,
     });
   }
-  return out.sort((a, b) => b.launchBlock - a.launchBlock).slice(0, limit);
+  return { ready: true, creators: out.sort((a, b) => b.launchBlock - a.launchBlock).slice(0, limit) };
 }
 
 /** The launches people have opened here lately, newest first: what the scheduled job warms. */

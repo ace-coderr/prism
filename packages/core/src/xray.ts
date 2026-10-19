@@ -456,7 +456,11 @@ export function xray(input: XrayInput): Xray {
     } else if (holdersNow === 1) {
       signals.push({ id: 'concentration', text: `One wallet holds ${share(top3 ?? 0)} of the supply, and nobody else holds any.${parkedLine}`, evidence, estimated: false });
     } else {
-      const parts = [top3 === null ? null : `the top 3 hold ${share(top3)} of the supply`, holdersNow > 3 && top10 !== null ? `the top 10 hold ${share(top10)}` : null].filter(Boolean);
+      // never "the top 3" of two wallets
+      const parts = [
+        top3 === null ? null : `the top ${Math.min(3, holdersNow)} hold ${share(top3)} of the supply`,
+        holdersNow > 3 && top10 !== null ? `the top ${Math.min(10, holdersNow)} hold ${share(top10)}` : null,
+      ].filter(Boolean);
       signals.push({
         id: 'concentration',
         text: `Of the ${holdersNow.toLocaleString('en-US')} wallets holding $${input.symbol}, ${parts.join(' and ')}.${parkedLine}`,

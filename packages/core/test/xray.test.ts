@@ -209,8 +209,16 @@ describe('concentration', () => {
     const x = xray(input({ transfers, graduatedBlock: LAUNCH_BLOCK + 1 }));
     expect(x.concentration!.top3).toBeCloseTo(0.04, 6);
     expect(x.concentration!.notInWallets).toBeCloseTo(0.96, 6);
-    expect(textOf(x, 'concentration')).toBe('Of the 4 wallets holding $MOON, the top 3 hold 4% of the supply and the top 10 hold 4.3%. Another 96% sits in its pool, in nobody’s wallet.');
+    expect(textOf(x, 'concentration')).toBe('Of the 4 wallets holding $MOON, the top 3 hold 4% of the supply and the top 4 hold 4.3%. Another 96% sits in its pool, in nobody’s wallet.');
     expect(x.flag).toBeNull(); // nothing to flag: these three hold 4% of the token
+  });
+
+  it('never says "the top 3" of fewer than three wallets', () => {
+    const two = xray(input({ transfers: launched([t(CURVE, A(0x21), E(60), LAUNCH_BLOCK + 1), t(CURVE, A(0x22), E(40), LAUNCH_BLOCK + 2)]) }));
+    expect(textOf(two, 'concentration')).toContain('the top 2 hold');
+    expect(textOf(two, 'concentration')).not.toContain('top 3');
+    const five = xray(input({ transfers: launched([1, 2, 3, 4, 5].map((i) => t(CURVE, A(0x30 + i), E(10), LAUNCH_BLOCK + i))) }));
+    expect(textOf(five, 'concentration')).toContain('the top 5 hold'); // the top 10 of five wallets
   });
 
   it('says so plainly when PRISM couldn’t read the supply', () => {

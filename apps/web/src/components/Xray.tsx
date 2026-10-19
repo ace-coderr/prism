@@ -1,4 +1,4 @@
-import { explorerAddressUrl, explorerBlockUrl, type XrayEvidence, type XraySignal } from '@prism/core';
+import { EARLY_BUYERS, explorerAddressUrl, explorerBlockUrl, type XrayEvidence, type XraySignal } from '@prism/core';
 import { useXray } from '../data/api';
 import { SectionLabel } from './design';
 
@@ -36,8 +36,10 @@ export function XrayPanel({ token }: { token: string }) {
         <span id="xray">Launch X-ray</span>
       </SectionLabel>
       <p className="text-[13px] leading-relaxed text-mist">
-        Read from the chain itself, not from any website: what the creator did, who holds it and what the first buyers did. Facts, not advice — PRISM doesn’t tell
-        you whether to buy. It can’t know who is behind a wallet, or whether someone holds more in another one.
+        Read from the chain itself, not from any website: what the creator did, who holds it and what the first buyers did. “The first buyers” means the first{' '}
+        {EARLY_BUYERS} wallets to buy, and “within an hour” means they had sent their tokens out again within 60 minutes of buying. Shares are of the whole
+        supply, so tokens sitting in the pool aren’t counted as someone’s holding. Facts, not advice — PRISM doesn’t tell you whether to buy, and it can’t know
+        who is behind a wallet or whether one person holds several.
       </p>
       <div className="card p-5 md:p-6">
         {q.isError ? (

@@ -19,11 +19,16 @@ stocks) on Robinhood Chain Testnet, where reviews can't lie:
 - **Honesty rep.** The share of a reviewer's positions they kept for at least 7 days after reviewing.
 - **Launch X-ray.** Every launch gets a plain read of its own chain history, whether or not anyone
   has reviewed it: what the creator bought, holds and sold, how concentrated the holders are, what
-  the first buyers did, how the holder count moved in a day, the tax, and its age. Facts with the
-  numbers behind them, each linking to the address or block they were read from. It states facts and
-  never advises: no buy / sell / avoid wording and no risk score. It can't know who is behind a
-  wallet, whether one person holds several, or what happens off-chain; anything it couldn't read
-  says so instead of guessing, and a time worked out from the block rate is marked `approx`.
+  the first 20 buyers did (and how many were out within 60 minutes of buying), how the holder count
+  moved in a day, the tax, and its age. Shares are of the **whole supply**, so the tokens sitting in
+  a launch's pool aren't counted as somebody's holding. Facts with the numbers behind them, each
+  linking to the address or block they were read from. It states facts and never advises: no buy /
+  sell / avoid wording and no risk score. It can't know who is behind a wallet, whether one person
+  holds several, or what happens off-chain; anything it couldn't read says so instead of guessing,
+  and a time worked out from the block rate is marked `approx`. The scheduled job watches every
+  launch of the last week for its creator selling (two filtered queries each, published as
+  `launch-xray.json.gz`) and warms the newest and most-opened launches, so no visitor pays for a
+  cold read.
 
 Test assets only, no real value.
 

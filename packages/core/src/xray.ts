@@ -103,10 +103,19 @@ export interface CreatorFacts {
 export interface ConcentrationFacts {
   /** balances counted: holders only (no curve, pool, token contract or burn address) */
   holders: number;
-  circulating: bigint;
+  /** what those wallets hold between them */
+  walletHeld: bigint;
+  totalSupply: bigint | null;
+  /**
+   * The top wallets' share **of the whole supply**, 0..1. Measuring against what wallets hold
+   * instead made almost every graduated launch look owned by three people: most of the supply sits
+   * in the pool, so $BNB's top 3 were "91.5%" of a 4.2% sliver (3.8% of the token).
+   */
   top3: number | null;
   top10: number | null;
-  /** the biggest holder's address and share */
+  /** how much of the supply sits in its pool, curve or own reward pool rather than anyone's wallet */
+  notInWallets: number | null;
+  /** the biggest holder's address and share of the supply */
   biggest: { address: string; share: number } | null;
 }
 
@@ -150,6 +159,9 @@ export function amount(base: bigint, decimals: number): string {
   return n.toLocaleString('en-US', { maximumSignificantDigits: n >= 1 ? 4 : 2 });
 }
 
+/** A share of a whole, keeping enough precision for small holders (1e-6 truncated them to 0%). */
+const ratio = (part: bigint, whole: bigint): number | null => (whole > 0n ? Number((part * 10n ** 12n) / whole) / 1e12 : null);
+
 /** "1 wallet holds", "143 wallets hold". */
 const wallets = (n: number) => `${n.toLocaleString('en-US')} wallet${n === 1 ? ' holds' : 's hold'}`;
 
@@ -179,6 +191,49 @@ export function duration(seconds: number): string {
 }
 
 /** Everything one pass over the transfers tells us; shared by `xray` and `blocksNeeded`. */
+/** What a creator did with their own launch: filled in one transfer at a time. */
+export interface CreatorMoves {
+  acquired: bigint;
+  movedOut: bigint;
+  firstInBlock: number | null;
+  firstOutBlock: number | null;
+  biggestOut: bigint;
+  biggestOutBlock: number | null;
+}
+
+export const noMoves = (): CreatorMoves => ({ acquired: 0n, movedOut: 0n, firstInBlock: null, firstOutBlock: null, biggestOut: 0n, biggestOutBlock: null });
+
+/** Fold one transfer into a creator's moves (`creator` lower case). */
+export function applyCreatorMove(c: CreatorMoves, t: XrayTransfer, creator: string): void {
+  if (t.value === 0n || !creator) return;
+  if (low(t.to) === creator) {
+    c.acquired += t.value;
+    c.firstInBlock ??= t.block;
+  }
+  if (low(t.from) === creator) {
+    c.movedOut += t.value;
+    c.firstOutBlock ??= t.block;
+    if (t.value > c.biggestOut) {
+      c.biggestOut = t.value;
+      c.biggestOutBlock = t.block;
+    }
+  }
+}
+
+/**
+ * A creator's moves from their own transfers alone. Reading only the transfers into and out of one
+ * address is two filtered queries over the whole life of the launch, instead of its full history:
+ * cheap enough to watch thousands of launches on a schedule (scripts/warm-xray.ts).
+ */
+export function creatorMoves(transfers: readonly XrayTransfer[], creator: string): CreatorMoves {
+  const c = noMoves();
+  for (const t of transfers) applyCreatorMove(c, t, creator.toLowerCase());
+  return c;
+}
+
+/** What a creator holds, from their moves alone (every transfer in and out is counted). */
+export const creatorHolds = (c: CreatorMoves): bigint => (c.acquired > c.movedOut ? c.acquired - c.movedOut : 0n);
+
 function scan(input: XrayInput) {
   const curve = low(input.curve);
   const pool = low(input.poolManager);
@@ -189,14 +244,7 @@ function scan(input: XrayInput) {
   const dayAgoBlock = input.nowBlock - Math.round(86400 / Math.max(input.secondsPerBlock, 1e-9));
   const firstBuy = new Map<string, number>();
   const firstOut = new Map<string, number>();
-  const c = {
-    acquired: 0n,
-    movedOut: 0n,
-    firstInBlock: null as number | null,
-    firstOutBlock: null as number | null,
-    biggestOut: 0n,
-    biggestOutBlock: null as number | null,
-  };
+  const c = noMoves();
   const add = (m: Map<string, bigint>, who: string, v: bigint) => {
     if (!isBurn(who)) m.set(who, (m.get(who) ?? 0n) + v);
   };
@@ -212,18 +260,7 @@ function scan(input: XrayInput) {
     if (t.value === 0n) continue;
     // a buy is the curve (or the pool) sending tokens to a wallet
     if ((from === curve || from === pool) && to !== curve && to !== pool && to !== token && !isBurn(to) && !firstBuy.has(to) && firstBuy.size < EARLY_BUYERS) firstBuy.set(to, t.block);
-    if (creator && to === creator) {
-      c.acquired += t.value;
-      c.firstInBlock ??= t.block;
-    }
-    if (creator && from === creator) {
-      c.movedOut += t.value;
-      c.firstOutBlock ??= t.block;
-      if (t.value > c.biggestOut) {
-        c.biggestOut = t.value;
-        c.biggestOutBlock = t.block;
-      }
-    }
+    applyCreatorMove(c, t, creator);
   }
   // when each early buyer first sent tokens out again
   for (const t of input.transfers) {
@@ -253,6 +290,40 @@ export function blocksNeeded(input: XrayInput): number[] {
     if (o !== undefined) out.add(o);
   }
   return [...out];
+}
+
+/**
+ * What the creator did with their own launch, in one plain sentence. Shared by the X-ray on a
+ * launch's page and the "creators selling" feed, which is built from the published creator watch,
+ * so the two can never say it differently.
+ */
+export function creatorLine(o: {
+  moves: CreatorMoves;
+  holds: bigint;
+  symbol: string;
+  decimals: number;
+  /** what they hold now as a share of the supply, when it is known */
+  shareOfSupply: number | null;
+  /** how long ago the launch was, when it is known */
+  ageSeconds: number | null;
+  /** how long after buying they first moved tokens out, when it is known */
+  soldAfterSeconds: number | null;
+}): string {
+  const { acquired, movedOut, biggestOut } = o.moves;
+  const sym = `$${o.symbol}`;
+  const ofSupply = o.shareOfSupply === null ? '' : ` (${share(o.shareOfSupply)} of the supply)`;
+  if (acquired === 0n) return `The creator has never held any ${sym}.`;
+  if (o.holds === 0n) {
+    const when = o.soldAfterSeconds === null ? '' : `, starting ${duration(o.soldAfterSeconds)} after buying`;
+    return `The creator sold every ${sym} they held (${amount(acquired, o.decimals)})${when}.`;
+  }
+  if (movedOut === 0n) {
+    const since = o.ageSeconds === null ? '' : `, ${duration(o.ageSeconds)} after launching`;
+    return `The creator still holds all ${amount(o.holds, o.decimals)} ${sym} they bought${ofSupply}${since}.`;
+  }
+  const sold = share(Math.min(1, ratio(movedOut, acquired) ?? 0));
+  const how = biggestOut === movedOut ? 'all in one sale' : `biggest sale ${amount(biggestOut, o.decimals)}`;
+  return `The creator has sold ${sold} of the ${sym} they bought (${how}) and still holds ${amount(o.holds, o.decimals)}${ofSupply}.`;
 }
 
 export function xray(input: XrayInput): Xray {
@@ -319,7 +390,7 @@ export function xray(input: XrayInput): Xray {
   } else {
     const { acquired, movedOut, firstInBlock, firstOutBlock, biggestOut, biggestOutBlock } = creatorStats;
     const holds = balances.get(creator) ?? 0n;
-    const shareOfSupply = totalSupply && totalSupply > 0n ? Number((holds * 1_000_000n) / totalSupply) / 1_000_000 : null;
+    const shareOfSupply = totalSupply ? ratio(holds, totalSupply) : null;
     creatorFacts = {
       address: input.creator,
       acquired,
@@ -333,36 +404,21 @@ export function xray(input: XrayInput): Xray {
       shareOfSupply,
     };
     const evidence: XrayEvidence = { kind: 'address', value: input.creator };
-    if (acquired === 0n) {
-      signals.push({ id: 'creator', text: `The creator has never held any $${input.symbol}.`, evidence, estimated: false });
-    } else if (holds === 0n) {
-      const out = timeAt(firstOutBlock ?? input.launchBlock);
-      const after = out.at - timeAt(firstInBlock ?? input.launchBlock).at;
-      signals.push({
-        id: 'creator',
-        text: `The creator sold everything they held (${amount(acquired, decimals)} $${input.symbol}), starting ${duration(after)} after buying.`,
-        evidence,
-        estimated: out.estimated,
-      });
-    } else if (movedOut === 0n) {
-      signals.push({
-        id: 'creator',
-        text: `The creator still holds all ${amount(holds, decimals)} $${input.symbol} they bought${shareOfSupply === null ? '' : ` (${share(shareOfSupply)} of the supply)`}, ${duration(ageSeconds)} in.`,
-        evidence,
-        estimated: launchTime.estimated,
-      });
-    } else {
-      const out = timeAt(firstOutBlock ?? input.launchBlock);
-      const soldShare = acquired > 0n ? Number((movedOut * 1_000_000n) / acquired) / 1_000_000 : 0;
-      signals.push({
-        id: 'creator',
-        text: `The creator has moved out ${share(Math.min(1, soldShare))} of what they bought and still holds ${amount(holds, decimals)} $${input.symbol}${
-          shareOfSupply === null ? '' : ` (${share(shareOfSupply)} of the supply)`
-        }. Biggest single sale: ${amount(biggestOut, decimals)}.`,
-        evidence,
-        estimated: out.estimated,
-      });
-    }
+    const out = timeAt(firstOutBlock ?? input.launchBlock);
+    signals.push({
+      id: 'creator',
+      text: creatorLine({
+        moves: creatorStats,
+        holds,
+        symbol: input.symbol,
+        decimals,
+        shareOfSupply,
+        ageSeconds,
+        soldAfterSeconds: firstOutBlock === null ? null : out.at - timeAt(firstInBlock ?? input.launchBlock).at,
+      }),
+      evidence,
+      estimated: acquired === 0n ? false : movedOut > 0n ? out.estimated : launchTime.estimated,
+    });
   }
 
   // ---------------------------------------------------------------- concentration
@@ -373,20 +429,38 @@ export function xray(input: XrayInput): Xray {
     unread.push({ id: 'concentration', text: `Nobody holds any $${input.symbol} yet.` });
   } else {
     const sorted = [...held].sort((a, b) => (b[1] > a[1] ? 1 : b[1] < a[1] ? -1 : 0));
-    const circulating = sorted.reduce((s, [, v]) => s + v, 0n);
-    const shareOf = (n: number) => (circulating > 0n ? Number((sorted.slice(0, n).reduce((s, [, v]) => s + v, 0n) * 1_000_000n) / circulating) / 1_000_000 : null);
-    const top3 = shareOf(3);
-    const top10 = shareOf(10);
-    const biggest = sorted[0] && circulating > 0n ? { address: sorted[0][0], share: Number((sorted[0][1] * 1_000_000n) / circulating) / 1_000_000 } : null;
-    concentration = { holders: holdersNow, circulating, top3, top10, biggest };
-    if (holdersNow === 1) {
-      signals.push({ id: 'concentration', text: `One wallet holds every $${input.symbol} in circulation.`, evidence: biggest ? { kind: 'address', value: biggest.address } : null, estimated: false });
-    } else {
-      const parts = [top3 === null ? null : `the top 3 wallets hold ${share(top3)}`, holdersNow > 3 && top10 !== null ? `the top 10 hold ${share(top10)}` : null].filter(Boolean);
+    const walletHeld = sorted.reduce((s, [, v]) => s + v, 0n);
+    // what sits in the pool, the curve or the token's own reward pool belongs to nobody
+    const parked = [curve, pool, token].reduce((s, a) => s + (a && (balances.get(a) ?? 0n) > 0n ? balances.get(a)! : 0n), 0n);
+    // shares of the whole supply (what people mean by "the top 3 hold x%")
+    const base = totalSupply && totalSupply > 0n ? totalSupply : null;
+    const shareOf = (part: bigint) => (base ? ratio(part, base) : null);
+    const sum = (n: number) => sorted.slice(0, n).reduce((s, [, v]) => s + v, 0n);
+    const top3 = shareOf(sum(3));
+    const top10 = shareOf(sum(10));
+    const notInWallets = shareOf(parked);
+    const biggest = sorted[0] ? { address: sorted[0][0], share: shareOf(sorted[0][1]) ?? 0 } : null;
+    concentration = { holders: holdersNow, walletHeld, totalSupply: base, top3, top10, notInWallets, biggest };
+    const evidence: XrayEvidence | null = biggest ? { kind: 'address', value: biggest.address } : null;
+    const parkedLine = notInWallets !== null && notInWallets >= 0.005 ? ` Another ${share(notInWallets)} sits in its ${graduated ? 'pool' : 'bonding curve'}, in nobody’s wallet.` : '';
+    if (base === null) {
+      // without the supply, the only honest statement is about what wallets hold between them
+      const n = Math.min(3, holdersNow);
+      const ofHeld = ratio(sum(n), walletHeld) ?? 0;
       signals.push({
         id: 'concentration',
-        text: `Of the ${holdersNow.toLocaleString('en-US')} wallets holding $${input.symbol}, ${parts.join(' and ')}.`,
-        evidence: biggest ? { kind: 'address', value: biggest.address } : null,
+        text: `${wallets(holdersNow)} it. PRISM couldn’t read the supply, so it can only say the ${n === 1 ? 'biggest holder has' : `top ${n} hold`} ${share(ofHeld)} of what those wallets hold between them.`,
+        evidence,
+        estimated: false,
+      });
+    } else if (holdersNow === 1) {
+      signals.push({ id: 'concentration', text: `One wallet holds ${share(top3 ?? 0)} of the supply, and nobody else holds any.${parkedLine}`, evidence, estimated: false });
+    } else {
+      const parts = [top3 === null ? null : `the top 3 hold ${share(top3)} of the supply`, holdersNow > 3 && top10 !== null ? `the top 10 hold ${share(top10)}` : null].filter(Boolean);
+      signals.push({
+        id: 'concentration',
+        text: `Of the ${holdersNow.toLocaleString('en-US')} wallets holding $${input.symbol}, ${parts.join(' and ')}.${parkedLine}`,
+        evidence,
         estimated: false,
       });
     }
@@ -499,8 +573,10 @@ export function flagOf(x: Pick<Xray, 'creator' | 'concentration' | 'early'>): st
     const part = Number((x.creator.movedOut * 100n) / x.creator.acquired);
     if (part >= 50) return `Creator sold ${part >= 99 ? 'nearly all' : `${part}%`} of their bag`;
   }
-  if (x.concentration?.top3 !== null && x.concentration?.top3 !== undefined && x.concentration.holders > 3 && x.concentration.top3 >= 0.8) {
-    return `Top 3 wallets hold ${share(x.concentration.top3)}`;
+  // of the whole supply: "80% of what wallets hold" fired on nearly every graduated launch, where
+  // most of the supply sits in the pool
+  if (x.concentration?.top3 != null && x.concentration.holders > 1 && x.concentration.top3 >= 0.5) {
+    return `Top ${x.concentration.holders < 3 ? x.concentration.holders : 3} wallets hold ${share(x.concentration.top3)} of the supply`;
   }
   if (x.early && x.early.counted >= 5 && x.early.goneWithinHour * 2 >= x.early.counted) {
     return `${x.early.goneWithinHour} of the first ${x.early.counted} buyers left within an hour`;

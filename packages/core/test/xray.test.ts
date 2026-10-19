@@ -1,6 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import { getAddress, type Address } from 'viem';
-import { EARLY_BUYERS, amount, duration, flagOf, share, xray, type LaunchSetup, type XrayInput, type XrayTransfer } from '../src';
+import {
+  EARLY_BUYERS,
+  amount,
+  creatorHolds,
+  creatorLine,
+  decodeXrayCache,
+  duration,
+  emptyXrayCache,
+  encodeXrayCache,
+  flagOf,
+  movedOutShare,
+  share,
+  soldEverything,
+  soldMost,
+  toXrayRow,
+  xray,
+  type LaunchSetup,
+  type XrayInput,
+  type XrayTransfer,
+} from '../src';
 
 const A = (n: number) => getAddress(`0x${n.toString(16).padStart(40, '0')}`);
 const TOKEN = A(0xaa);
@@ -97,7 +116,7 @@ describe('age and status', () => {
 describe('the creator', () => {
   it('says what they bought and still hold (the supply mints to the curve, not to them)', () => {
     const x = xray(input({ transfers: launched([], { creatorBuys: E(100_000_000) }) }));
-    expect(textOf(x, 'creator')).toBe('The creator still holds all 100M $MOON they bought (10% of the supply), 1 day in.');
+    expect(textOf(x, 'creator')).toBe('The creator still holds all 100M $MOON they bought (10% of the supply), 1 day after launching.');
     expect(x.creator).toMatchObject({ acquired: E(100_000_000), holds: E(100_000_000), movedOut: 0n, soldEverything: false });
     expect(x.creator!.shareOfSupply).toBeCloseTo(0.1, 6);
   });
@@ -115,7 +134,7 @@ describe('the creator', () => {
       [NOW_BLOCK, NOW],
     ]);
     const x = xray(input({ transfers, timeOf }));
-    expect(textOf(x, 'creator')).toBe('The creator sold everything they held (50M $MOON), starting 4 minutes after buying.');
+    expect(textOf(x, 'creator')).toBe('The creator sold every $MOON they held (50M), starting 4 minutes after buying.');
     expect(x.creator!.soldEverything).toBe(true);
     expect(x.flag).toBe('Creator sold out');
   });
@@ -126,7 +145,7 @@ describe('the creator', () => {
       { creatorBuys: E(100_000_000) },
     );
     const x = xray(input({ transfers }));
-    expect(textOf(x, 'creator')).toBe('The creator has moved out 50% of what they bought and still holds 50M $MOON (5% of the supply). Biggest single sale: 30M.');
+    expect(textOf(x, 'creator')).toBe('The creator has sold 50% of the $MOON they bought (biggest sale 30M) and still holds 50M (5% of the supply).');
     expect(x.creator).toMatchObject({ movedOut: E(50_000_000), biggestOut: E(30_000_000), biggestOutBlock: LAUNCH_BLOCK + 500 });
     expect(x.flag).toBe('Creator sold 50% of their bag');
   });
@@ -136,7 +155,7 @@ describe('the creator', () => {
     const x = xray(input({ creator: CURVE, transfers: launched([t(CURVE, A(0x55), E(1000), LAUNCH_BLOCK + 5)]) }));
     expect(x.creator!.address).toBe(CURVE);
     expect(x.creator!.acquired).toBe(SUPPLY); // the mint
-    expect(textOf(x, 'creator')).toContain('The creator has moved out');
+    expect(textOf(x, 'creator')).toContain('The creator has sold');
     // and it is still left out of the holder count and concentration
     expect(x.concentration!.holders).toBe(1);
   });
@@ -161,24 +180,49 @@ describe('concentration', () => {
       t(CURVE, POOL, E(1000), LAUNCH_BLOCK + 6), // liquidity at graduation
     ]);
     const x = xray(input({ transfers }));
-    expect(x.concentration).toMatchObject({ holders: 3, circulating: E(990) });
-    expect(x.concentration!.top3).toBeCloseTo(1, 6);
-    expect(textOf(x, 'concentration')).toBe('Of the 3 wallets holding $MOON, the top 3 wallets hold 100%.');
+    expect(x.concentration).toMatchObject({ holders: 3, walletHeld: E(990), totalSupply: SUPPLY });
+    // of the SUPPLY, not of what these three hold between them: 990 of 1,000,000,000
+    expect(x.concentration!.top3).toBeCloseTo(990 / 1_000_000_000, 9);
+    expect(textOf(x, 'concentration')).toBe('Of the 3 wallets holding $MOON, the top 3 hold <0.1% of the supply. Another 100% sits in its bonding curve, in nobody’s wallet.');
   });
 
   it('reports the top 3 and top 10 of a wider field, and the biggest holder as the link', () => {
     const buys = Array.from({ length: 12 }, (_, i) => t(CURVE, A(0x30 + i), E(i === 0 ? 5000 : 100), LAUNCH_BLOCK + 1 + i));
     const x = xray(input({ transfers: launched(buys) }));
     expect(x.concentration!.holders).toBe(12);
-    expect(x.concentration!.top3).toBeCloseTo(5200 / 6100, 4);
+    expect(x.concentration!.top3).toBeCloseTo(5200 / 1_000_000_000, 9); // of the supply
     expect(x.concentration!.biggest!.address).toBe(A(0x30).toLowerCase());
     expect(textOf(x, 'concentration')).toContain('the top 10 hold');
     expect(x.signals.find((s) => s.id === 'concentration')!.evidence).toEqual({ kind: 'address', value: A(0x30).toLowerCase() });
   });
 
+  it('measures against the supply, not against what wallets hold (the pool isn’t a wallet)', () => {
+    // a graduated launch: most of the supply sits in the pool, three wallets share a small sliver.
+    // Against what wallets hold the top 3 would be ~92%; against the supply they hold 4%.
+    const transfers = launched([
+      t(CURVE, POOL, E(960_000_000), LAUNCH_BLOCK + 1),
+      t(CURVE, A(0x21), E(20_000_000), LAUNCH_BLOCK + 2),
+      t(CURVE, A(0x22), E(12_000_000), LAUNCH_BLOCK + 3),
+      t(CURVE, A(0x23), E(8_000_000), LAUNCH_BLOCK + 4),
+      t(CURVE, A(0x24), E(3_500_000), LAUNCH_BLOCK + 5),
+    ]);
+    const x = xray(input({ transfers, graduatedBlock: LAUNCH_BLOCK + 1 }));
+    expect(x.concentration!.top3).toBeCloseTo(0.04, 6);
+    expect(x.concentration!.notInWallets).toBeCloseTo(0.96, 6);
+    expect(textOf(x, 'concentration')).toBe('Of the 4 wallets holding $MOON, the top 3 hold 4% of the supply and the top 10 hold 4.3%. Another 96% sits in its pool, in nobody’s wallet.');
+    expect(x.flag).toBeNull(); // nothing to flag: these three hold 4% of the token
+  });
+
+  it('says so plainly when PRISM couldn’t read the supply', () => {
+    const x = xray(input({ totalSupply: null, transfers: launched([t(CURVE, A(0x21), E(60), LAUNCH_BLOCK + 1), t(CURVE, A(0x22), E(40), LAUNCH_BLOCK + 2)]) }));
+    expect(textOf(x, 'concentration')).toBe('2 wallets hold it. PRISM couldn’t read the supply, so it can only say the top 2 hold 100% of what those wallets hold between them.');
+    expect(x.concentration!.top3).toBeNull();
+    expect(x.flag).toBeNull();
+  });
+
   it('one holder, and nobody holding, are both said plainly', () => {
     const one = xray(input({ transfers: launched([t(CURVE, A(0x21), E(10), LAUNCH_BLOCK + 1)]) }));
-    expect(textOf(one, 'concentration')).toBe('One wallet holds every $MOON in circulation.');
+    expect(textOf(one, 'concentration')).toBe('One wallet holds <0.1% of the supply, and nobody else holds any. Another 100% sits in its bonding curve, in nobody’s wallet.');
     const none = xray(input({ transfers: [t(ZERO, CURVE, SUPPLY, LAUNCH_BLOCK)] }));
     expect(unreadOf(none, 'concentration')).toBe('Nobody holds any $MOON yet.');
     expect(none.concentration).toBeNull();
@@ -295,7 +339,7 @@ describe('awkward launches', () => {
     // a wallet sending more than it ever received (a rebasing or reflecting token)
     const x = xray(input({ transfers: launched([t(A(0x71), CURVE, E(500), LAUNCH_BLOCK + 1), t(CURVE, A(0x72), E(100), LAUNCH_BLOCK + 2)]) }));
     expect(x.concentration!.holders).toBe(1);
-    expect(x.concentration!.circulating).toBe(E(100));
+    expect(x.concentration!.walletHeld).toBe(E(100));
   });
 
   it('everything burned leaves nobody holding', () => {
@@ -319,7 +363,7 @@ describe('the one-line flag for cards and search', () => {
     expect(flagOf({ creator: sold, concentration: null, early: null })).toBe('Creator sold out');
     const half = { ...sold, holds: E(40), movedOut: E(60), soldEverything: false, shareOfSupply: 0.04 };
     expect(flagOf({ creator: half, concentration: null, early: null })).toBe('Creator sold 60% of their bag');
-    expect(flagOf({ creator: null, concentration: { holders: 20, circulating: E(100), top3: 0.85, top10: 0.95, biggest: null }, early: null })).toBe('Top 3 wallets hold 85%');
+    expect(flagOf({ creator: null, concentration: { holders: 20, walletHeld: E(100), totalSupply: SUPPLY, top3: 0.85, top10: 0.95, notInWallets: 0, biggest: null }, early: null })).toBe('Top 3 wallets hold 85% of the supply');
     expect(flagOf({ creator: null, concentration: null, early: { counted: 20, stillHolding: 5, goneWithinHour: 12, exactTimes: true } })).toBe('12 of the first 20 buyers left within an hour');
     const whale = { ...sold, holds: E(90), movedOut: 0n, soldEverything: false, shareOfSupply: 0.9 };
     expect(flagOf({ creator: whale, concentration: null, early: null })).toBe('Creator holds 90% of the supply');
@@ -327,7 +371,51 @@ describe('the one-line flag for cards and search', () => {
 
   it('says nothing when nothing stands out', () => {
     const steady = { address: CREATOR, acquired: E(10), holds: E(10), movedOut: 0n, firstInBlock: 1, firstOutBlock: null, biggestOut: 0n, biggestOutBlock: null, soldEverything: false, shareOfSupply: 0.01 };
-    expect(flagOf({ creator: steady, concentration: { holders: 50, circulating: E(100), top3: 0.2, top10: 0.4, biggest: null }, early: { counted: 20, stillHolding: 18, goneWithinHour: 1, exactTimes: true } })).toBeNull();
+    expect(flagOf({ creator: steady, concentration: { holders: 50, walletHeld: E(100), totalSupply: SUPPLY, top3: 0.2, top10: 0.4, notInWallets: 0.3, biggest: null }, early: { counted: 20, stillHolding: 18, goneWithinHour: 1, exactTimes: true } })).toBeNull();
     expect(flagOf({ creator: null, concentration: null, early: null })).toBeNull();
+  });
+});
+
+describe('the published creator watch', () => {
+  const W = (acquired: bigint, movedOut: bigint, biggestOut = movedOut) => ({
+    token: TOKEN,
+    creator: CREATOR,
+    moves: { acquired, movedOut, firstInBlock: 10, firstOutBlock: movedOut > 0n ? 20 : null, biggestOut, biggestOutBlock: movedOut > 0n ? 20 : null },
+    checkedToBlock: NOW_BLOCK,
+    checkedAt: NOW,
+  });
+
+  it('round-trips through the published file, dropping rows it can’t read', () => {
+    const cache = emptyXrayCache(46630);
+    cache.byToken.set(TOKEN.toLowerCase(), W(E(100), E(60)));
+    const back = decodeXrayCache(JSON.parse(JSON.stringify(encodeXrayCache(cache))))!;
+    expect(back.chainId).toBe(46630);
+    expect(back.byToken.get(TOKEN.toLowerCase())!.moves).toEqual(W(E(100), E(60)).moves);
+    // a row from another version, or a malformed one, is left out rather than trusted
+    expect(decodeXrayCache({ version: 99, chainId: 46630, rows: [] })).toBeNull();
+    const mixed = decodeXrayCache({ version: 1, chainId: 46630, updatedAt: 1, rows: [toXrayRow(W(E(1), 0n)), ['0xnope', CREATOR, '1', '0', 0, 0, '0', 0, 0, 0], 'junk'] })!;
+    expect(mixed.byToken.size).toBe(1);
+  });
+
+  it('knows who sold most of their own launch, and who sold all of it', () => {
+    expect(movedOutShare(W(E(100), E(60)).moves)).toBeCloseTo(0.6, 9);
+    expect(movedOutShare(W(0n, 0n).moves)).toBe(0);
+    expect(soldMost(W(E(100), E(60)).moves)).toBe(true);
+    expect(soldMost(W(E(100), E(10)).moves)).toBe(false);
+    expect(soldMost(W(0n, 0n).moves)).toBe(false); // never held any: nothing to sell
+    expect(soldEverything(W(E(100), E(100)).moves)).toBe(true);
+    expect(soldEverything(W(E(100), E(99)).moves)).toBe(false);
+    expect(creatorHolds(W(E(100), E(30)).moves)).toBe(E(70));
+  });
+
+  it('says what a watched creator did in the same words as the X-ray itself', () => {
+    const moves = W(E(100), E(100)).moves;
+    expect(creatorLine({ moves, holds: creatorHolds(moves), symbol: 'MOON', decimals: 18, shareOfSupply: null, ageSeconds: null, soldAfterSeconds: null })).toBe(
+      'The creator sold every $MOON they held (100).',
+    );
+    const part = W(E(100), E(60), E(50)).moves;
+    expect(creatorLine({ moves: part, holds: creatorHolds(part), symbol: 'MOON', decimals: 18, shareOfSupply: null, ageSeconds: null, soldAfterSeconds: null })).toBe(
+      'The creator has sold 60% of the $MOON they bought (biggest sale 50) and still holds 40.',
+    );
   });
 });

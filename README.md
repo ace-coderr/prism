@@ -116,7 +116,7 @@ All read from the chain and the token's own IPFS metadata, never from vibe/vibe'
 
 ## vibe/vibe referral
 
-"Buy on vibe/vibe" links carry PRISM's vibe/vibe invite (never for PRISM's own wallet); it's set in `VIBE_REFERRAL` in `packages/core/src/site.ts`.
+"Buy on vibe/vibe" links carry PRISM's vibe/vibe invite (never for PRISM's own wallets, listed in `VIBE_REFERRAL.owners`); it's set in `VIBE_REFERRAL` in `packages/core/src/site.ts`.
 
 ## The launch index
 

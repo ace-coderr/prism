@@ -12,7 +12,7 @@ export function BuyOnVibeLink({ token, symbol, className = '' }: { token: Addres
   );
 }
 
-/** "Buy on vibe/vibe": the token's page there, with PRISM's invite (never for PRISM's own wallet). */
+/** "Buy on vibe/vibe": the token's page there, with PRISM's invite (never for PRISM's own wallets). */
 export function BuyOnVibe({ token, className = 'btn btn-primary', label = 'Buy on vibe/vibe' }: { token: Address; className?: string; label?: string }) {
   const { address } = useWallet();
   return (

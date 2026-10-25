@@ -31,14 +31,15 @@ export const VIBE_REFERRAL = {
   app: 'https://testnet.vibevibe.fun',
   ref: '_ace_won',
   refWallet: 'VV1-ETAM4H6SGFH3U6ESHPQCRJEPTJ87WL92',
-  /** PRISM's own wallet: never refer it to itself */
-  owner: '0xd5Ed2e8Cf80401e5594f9E18509d46ed88fA9a9e' as Address,
+  /** PRISM's own wallets, never referred to themselves: the owner's, and the one $PRISM launches from */
+  owners: ['0xd5Ed2e8Cf80401e5594f9E18509d46ed88fA9a9e', '0x7Ed162246748A218E0404542683eeE0FC08fE4bD'] as readonly Address[],
 } as const;
 
-const isOwner = (viewer?: string | null) => !!viewer && viewer.toLowerCase() === VIBE_REFERRAL.owner.toLowerCase();
+const OWNERS: ReadonlySet<string> = new Set(VIBE_REFERRAL.owners.map((a) => a.toLowerCase()));
+const isOwner = (viewer?: string | null) => !!viewer && OWNERS.has(viewer.toLowerCase());
 const refParams = () => `ref=${encodeURIComponent(VIBE_REFERRAL.ref)}&refWallet=${encodeURIComponent(VIBE_REFERRAL.refWallet)}`;
 
-/** A token's page on vibe/vibe, with PRISM's invite unless the viewer is PRISM's own wallet. */
+/** A token's page on vibe/vibe, with PRISM's invite unless the viewer is one of PRISM's own wallets. */
 export function vibeTokenUrl(token: Address, viewer?: string | null): string {
   const base = `${VIBE_REFERRAL.app}/token/${token}`;
   return isOwner(viewer) ? base : `${base}?${refParams()}`;

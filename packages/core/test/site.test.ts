@@ -3,7 +3,10 @@ import { getAddress } from 'viem';
 import { SHARE_TEXT, SITE_URL, VIBE_REFERRAL, badgePath, cashtag, formatScore, vibeTokenUrl, xIntent } from '../src';
 
 const TOKEN = getAddress('0xa56dd43b6b2963990e852d3144f689b8e3f26afb');
-const SOMEONE = '0x7Ed162246748A218E0404542683eeE0FC08fE4bD';
+/** Not a wallet of PRISM's: anyone else. (This used to be the wallet $PRISM now launches from.) */
+const SOMEONE = getAddress('0x1111111111111111111111111111111111111111');
+const OWNER = '0xd5Ed2e8Cf80401e5594f9E18509d46ed88fA9a9e';
+const LAUNCH_WALLET = '0x7Ed162246748A218E0404542683eeE0FC08fE4bD';
 
 describe('site links', () => {
   it('lives at seeprism.xyz only', () => {
@@ -15,9 +18,31 @@ describe('site links', () => {
     expect(vibeTokenUrl(TOKEN, SOMEONE)).toContain('ref=_ace_won');
   });
 
-  it('never refers PRISM’s own wallet to itself', () => {
-    expect(vibeTokenUrl(TOKEN, VIBE_REFERRAL.owner)).toBe(`https://testnet.vibevibe.fun/token/${TOKEN}`);
-    expect(vibeTokenUrl(TOKEN, VIBE_REFERRAL.owner.toLowerCase())).not.toContain('ref=');
+  it('never refers PRISM’s own wallets to themselves: the owner’s and the $PRISM launch wallet', () => {
+    // named here, not read from the list, so dropping either from VIBE_REFERRAL.owners fails
+    for (const mine of [OWNER, LAUNCH_WALLET]) {
+      expect(VIBE_REFERRAL.owners).toContain(mine);
+      // however the wallet reports its address
+      for (const as of [mine, mine.toLowerCase(), mine.toUpperCase().replace('0X', '0x'), getAddress(mine.toLowerCase())]) {
+        const url = vibeTokenUrl(TOKEN, as);
+        expect(url, as).toBe(`https://testnet.vibevibe.fun/token/${TOKEN}`);
+        expect(url, as).not.toMatch(/ref=|refWallet=|\?/);
+      }
+    }
+  });
+
+  it('lists PRISM’s wallets as real, correctly checksummed addresses (a typo would refer the wallet after all)', () => {
+    expect(VIBE_REFERRAL.owners.length).toBeGreaterThanOrEqual(2);
+    for (const a of VIBE_REFERRAL.owners) expect(getAddress(a)).toBe(a);
+    expect(new Set(VIBE_REFERRAL.owners.map((a) => a.toLowerCase())).size).toBe(VIBE_REFERRAL.owners.length);
+  });
+
+  it('still invites everyone else, even a wallet one character away from PRISM’s', () => {
+    expect(vibeTokenUrl(TOKEN, SOMEONE)).toContain('ref=_ace_won&refWallet=');
+    expect(vibeTokenUrl(TOKEN, null)).toContain('ref=_ace_won'); // not connected: nobody to tell apart
+    const nearly = `${LAUNCH_WALLET.slice(0, -1)}${LAUNCH_WALLET.endsWith('D') ? 'C' : 'D'}`;
+    expect(vibeTokenUrl(TOKEN, nearly)).toContain('ref=_ace_won');
+    expect(vibeTokenUrl(TOKEN, LAUNCH_WALLET.slice(0, 20))).toContain('ref=_ace_won'); // no prefix matching
   });
 
   it('writes the share posts word for word', () => {

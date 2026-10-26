@@ -75,6 +75,8 @@ export interface AssetInfo {
   graduatedBlock: number | null;
   /** launches only: who launched it (from its launch event) */
   creator: Address | null;
+  /** other wallets known to belong to the creator: their reviews are the creator's own too */
+  creatorWallets?: readonly Address[];
 }
 
 const STATUS: Record<number, OnchainStatus | null> = { 0: null, 1: 'active', 2: 'replaced', 3: 'sold' };
@@ -182,11 +184,15 @@ export interface WorldInput {
 
 const same = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
+/** Whether `author` is the launch's creator, or one of the creator's other known wallets. */
+export const isCreatorOf = (asset: Pick<AssetInfo, 'creator' | 'creatorWallets'> | null | undefined, author: string): boolean =>
+  !!asset && (same(asset.creator, author) || !!asset.creatorWallets?.some((w) => same(w, author)));
+
 /** Why a run doesn't count, or null when it does. */
 export function runExclusion(run: Run, input: Pick<WorldInput, 'assetOf' | 'floorOf' | 'balances' | 'soldBack' | 'now'>): Excluded {
   const asset = input.assetOf(run.token);
   if (!asset) return 'unlisted';
-  if (same(asset.creator, run.author)) return 'creator';
+  if (isCreatorOf(asset, run.author)) return 'creator';
   const floor = input.floorOf?.(run.token) ?? null;
   if (floor !== null && floor > 0n) {
     const last = run.reviews.at(-1)!;
@@ -264,7 +270,7 @@ export function buildWorld(input: WorldInput): ReviewWorld {
       txHash: post?.txHash ?? null,
       retired: opts.retired,
       listed: !!asset,
-      creator: same(asset?.creator, r.author),
+      creator: isCreatorOf(asset, r.author),
       excluded: opts.excluded,
       floor: floor === null ? null : floor.toString(),
     };

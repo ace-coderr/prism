@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getAddress } from 'viem';
-import { SHARE_TEXT, SITE_URL, VIBE_REFERRAL, badgePath, cashtag, formatScore, vibeTokenUrl, xIntent } from '../src';
+import { PRISM_TOKEN, SHARE_TEXT, SITE_URL, VIBE_REFERRAL, badgePath, cashtag, formatScore, vibeTokenUrl, xIntent } from '../src';
 
 const TOKEN = getAddress('0xa56dd43b6b2963990e852d3144f689b8e3f26afb');
 /** Not a wallet of PRISM's: anyone else. (This used to be the wallet $PRISM now launches from.) */
@@ -43,6 +43,20 @@ describe('site links', () => {
     const nearly = `${LAUNCH_WALLET.slice(0, -1)}${LAUNCH_WALLET.endsWith('D') ? 'C' : 'D'}`;
     expect(vibeTokenUrl(TOKEN, nearly)).toContain('ref=_ace_won');
     expect(vibeTokenUrl(TOKEN, LAUNCH_WALLET.slice(0, 20))).toContain('ref=_ace_won'); // no prefix matching
+  });
+
+  it('$PRISM is the live launch, stored as a checksummed address', () => {
+    expect(PRISM_TOKEN).toBe('0x56C3044E212168C8D6517Cc09b0050F5C26aDaCF');
+    expect(getAddress(PRISM_TOKEN!)).toBe(PRISM_TOKEN);
+  });
+
+  it('its vibe/vibe page carries no referral for either owner wallet, and the invite for anyone else', () => {
+    const page = `https://testnet.vibevibe.fun/token/${PRISM_TOKEN}`;
+    for (const mine of [OWNER, LAUNCH_WALLET]) {
+      for (const as of [mine, mine.toLowerCase(), `0x${mine.slice(2).toUpperCase()}`]) expect(vibeTokenUrl(PRISM_TOKEN!, as), as).toBe(page);
+    }
+    expect(vibeTokenUrl(PRISM_TOKEN!, SOMEONE)).toBe(`${page}?ref=_ace_won&refWallet=VV1-ETAM4H6SGFH3U6ESHPQCRJEPTJ87WL92`);
+    expect(vibeTokenUrl(PRISM_TOKEN!)).toContain('ref=_ace_won');
   });
 
   it('writes the share posts word for word', () => {

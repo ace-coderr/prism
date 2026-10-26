@@ -9,6 +9,7 @@ import {
   filterReviews,
   rankReviewers,
   reviewerSummaries,
+  VIBE_REFERRAL,
   tokenScore,
   type AssetInfo,
   type ReviewChainData,
@@ -226,5 +227,45 @@ describe('feeds', () => {
     expect(f.truthKeepers.map((t) => t.address)).toEqual([A(9).toLowerCase()]);
     expect(f.topReviewers).toEqual([]);
     expect(f.gem.map((g) => g.id)).toEqual([8, 7, 6, 5, 3, 2]); // not the creator's, not the dust
+  });
+});
+
+describe('a launch from PRISM’s own wallets', () => {
+  // $PRISM is launched from one owner wallet; the other is the creator's too
+  const [OWNER_A, OWNER_B] = VIBE_REFERRAL.owners as [Address, Address];
+  const PRISMLIKE = A(0xdd);
+  const HOLDER = A(0x31);
+  const info: AssetInfo = { symbol: 'PRISM', name: 'Prism', kind: 'launch', graduatedBlock: null, creator: OWNER_B, creatorWallets: VIBE_REFERRAL.owners };
+  const build = (asset: AssetInfo, authors: Address[]) => {
+    const entries = authors.map((author, i) => [2 + i, { author, rating: 5, token: PRISMLIKE }] as [number, Partial<StoredReview> & { author: Address }]);
+    const balances = new Map<string, bigint | null>(authors.map((a) => [balanceKey(a, PRISMLIKE), 1000n]));
+    const sup = new Map<string, Supply>([[PRISMLIKE.toLowerCase(), { supply: 1_000_000n, decimals: 18 }]]);
+    const w = buildWorld({ data: chain(entries), balances, supplies: sup, assetOf: (t) => (t.toLowerCase() === PRISMLIKE.toLowerCase() ? asset : null), floorOf: () => 10n, now: NOW });
+    return { w, balances };
+  };
+
+  it('has both owner wallets, written as the checksummed addresses the site uses', () => {
+    expect(VIBE_REFERRAL.owners).toEqual(['0xd5Ed2e8Cf80401e5594f9E18509d46ed88fA9a9e', '0x7Ed162246748A218E0404542683eeE0FC08fE4bD']);
+  });
+
+  it('labels a review from either owner wallet “Creator” and leaves it out of the score, in any letter case', () => {
+    for (const recase of [(a: string) => a, (a: string) => a.toLowerCase(), (a: string) => `0x${a.slice(2).toUpperCase()}`]) {
+      const { w, balances } = build(info, [recase(OWNER_A) as Address, recase(OWNER_B) as Address, HOLDER]);
+      expect(w.byId.get(2)).toMatchObject({ creator: true, excluded: 'creator' });
+      expect(w.byId.get(3)).toMatchObject({ creator: true, excluded: 'creator' });
+      expect(w.byId.get(4)).toMatchObject({ creator: false, excluded: null });
+      // the score is the one real holder's, and neither owner has an honesty rep from reviewing their own launch
+      const s = tokenScore(w, PRISMLIKE, balances);
+      expect(s.reviewers).toBe(1);
+      expect(w.reps.get(OWNER_A.toLowerCase())).toBeUndefined();
+      expect(w.reps.get(OWNER_B.toLowerCase())).toBeUndefined();
+    }
+  });
+
+  it('does not extend to other launches: the owner wallets are ordinary holders there', () => {
+    const other: AssetInfo = { symbol: 'MOON', name: 'Moon Dog', kind: 'launch', graduatedBlock: null, creator: CREATOR };
+    const { w } = build(other, [OWNER_A, OWNER_B]);
+    expect(w.byId.get(2)).toMatchObject({ creator: false, excluded: null });
+    expect(w.byId.get(3)).toMatchObject({ creator: false, excluded: null });
   });
 });

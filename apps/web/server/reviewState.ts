@@ -22,6 +22,8 @@ import {
   robinhoodChainTestnet,
   runsOf,
   toRecords,
+  PRISM_TOKEN,
+  VIBE_REFERRAL,
   type AssetInfo,
   type Balances,
   type Feeds,
@@ -62,7 +64,16 @@ export function assetInfoFrom(idx: LiveIndex) {
     const a = idx.assetByToken.get(token.toLowerCase());
     if (!a) return null;
     const launch = idx.launchByToken.get(token.toLowerCase());
-    return { symbol: a.symbol, name: a.name, kind: a.kind, graduatedBlock: launch?.graduatedBlock ?? null, creator: launch?.creator ?? null };
+    return {
+      symbol: a.symbol,
+      name: a.name,
+      kind: a.kind,
+      graduatedBlock: launch?.graduatedBlock ?? null,
+      creator: launch?.creator ?? null,
+      // $PRISM is launched from one of PRISM's wallets; the other one is the creator's too, so a
+      // review from either is labelled and left out of the score rather than counted as a holder's
+      creatorWallets: PRISM_TOKEN && token.toLowerCase() === PRISM_TOKEN.toLowerCase() ? VIBE_REFERRAL.owners : undefined,
+    };
   };
 }
 

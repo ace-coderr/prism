@@ -10,10 +10,12 @@ export const SITE_HOST = SITE_URL.replace(/^https?:\/\//, '');
 export const X_HANDLE = 'holdprism';
 
 /**
- * $PRISM, PRISM's own token, once it launches on vibe/vibe. Empty until then; when set, the navbar
- * and footer link to its launch page here and Home says it is reviewed like any other token.
+ * $PRISM, PRISM's own token on vibe/vibe (launch #25546, from one of PRISM's own wallets). The navbar
+ * and footer link to its page here and Home says it is reviewed like any other token. Null would
+ * hide all of that; it is read from the chain like every other launch and has no special treatment
+ * beyond the owner wallets' reviews being labelled "Creator" (see reviewState.ts).
  */
-export const PRISM_TOKEN: Address | null = null;
+export const PRISM_TOKEN: Address | null = '0x56C3044E212168C8D6517Cc09b0050F5C26aDaCF';
 
 /**
  * Tokens whose picture and description PRISM won't show (lower- or mixed-case addresses), for

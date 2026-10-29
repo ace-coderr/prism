@@ -4,7 +4,7 @@ import { SectionLabel } from './design';
 
 const evidenceUrl = (e: XrayEvidence) => (e.kind === 'address' ? explorerAddressUrl(e.value) : explorerBlockUrl(Number(e.value)));
 
-function Line({ signal }: { signal: XraySignal }) {
+export function Line({ signal }: { signal: XraySignal }) {
   return (
     <li className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-t border-white/[0.06] py-2.5 first:border-t-0 first:pt-0">
       <span className="text-[14px] leading-relaxed text-white/90">{signal.text}</span>

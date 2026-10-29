@@ -6,6 +6,8 @@ import { SearchBar } from '../components/SearchBar';
 import { Stars, StatusPill } from '../components/reviews';
 import { Reveal, SectionLabel } from '../components/design';
 import { CreatorsSellingFeed, Feed } from '../components/feeds';
+import { ExampleReviewCards } from '../components/examples';
+import { RealLaunchXray } from '../components/RealLaunch';
 import { TestEthNote } from '../components/TestEthNote';
 import { GuideNote } from '../components/Viber';
 import { useFeed } from '../data/api';
@@ -78,11 +80,18 @@ export default function Home() {
           </section>
         </Reveal>
 
+        <RealLaunchXray />
+
         {feed.isError ? (
           <GuideNote index={2}>Live reviews aren’t available right now. Search still works; try again in a minute.</GuideNote>
         ) : (
           <div className="grid gap-12 lg:grid-cols-2">
-            <Feed title="Latest reviews" loading={feed.isLoading} empty="No reviews yet. Hold a launch? Search it above and be the first to review it.">
+            <Feed
+              title="Latest reviews"
+              loading={feed.isLoading}
+              empty="No reviews yet. Hold a launch? Search it above and be the first to review it."
+              examples={feed.data ? <ExampleReviewCards /> : null}
+            >
               {feed.data?.latest.slice(0, 6).map((r) => <FeedReview key={r.id} review={r} />)}
             </Feed>
             <Feed title="Caught selling" loading={feed.isLoading} empty="Nobody has been caught selling after reviewing. When someone does, it shows up here.">

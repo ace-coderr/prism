@@ -5,6 +5,7 @@ import { SHARE_TEXT, SITE_URL, badgePath, explorerAddressUrl, stockDisclaimers, 
 import { DeepNav } from '../components/DeepNav';
 import { PageScroll } from '../components/PageHeader';
 import { ScoreBlock, ReviewList } from '../components/reviews';
+import { TokenExampleReview } from '../components/examples';
 import { XrayPanel } from '../components/Xray';
 import { ShareOnX } from '../components/ShareOnX';
 import { SectionLabel } from '../components/design';
@@ -76,6 +77,7 @@ function Launch({ data }: { data: TokenData }) {
             </GuideNote>
           }
         />
+        <TokenExampleReview reviews={data.reviews} />
       </section>
 
       <Setup data={data} />

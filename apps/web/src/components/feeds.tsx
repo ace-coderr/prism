@@ -4,6 +4,7 @@ import { tokenPath } from '@prism/core';
 import { SectionLabel } from './design';
 import { TokenAvatar } from './token';
 import type { CreatorSold } from '../data/api';
+import { ExampleCreatorCard } from './examples';
 
 /*
  * Home's feed columns: the shell they share, and the chain-only "creators selling" one.
@@ -14,8 +15,26 @@ import type { CreatorSold } from '../data/api';
  * and it tells "nothing to show" and "not read yet" apart (creatorsSelling.test.ts holds that in place).
  */
 
-/** A feed column: its label, an optional quiet note under it, then its rows or why there are none. */
-export function Feed({ title, loading, empty, note, children }: { title: string; loading: boolean; empty: string; note?: string | null; children?: ReactNode[] | ReactNode }) {
+/**
+ * A feed column: its label, an optional quiet note under it, then its rows or why there are none.
+ * `examples` (labeled example cards) render only under the real empty state, and only once loading
+ * is done: with even one real row they are not rendered at all, so they can't sit next to a real entry.
+ */
+export function Feed({
+  title,
+  loading,
+  empty,
+  note,
+  examples,
+  children,
+}: {
+  title: string;
+  loading: boolean;
+  empty: string;
+  note?: string | null;
+  examples?: ReactNode;
+  children?: ReactNode[] | ReactNode;
+}) {
   const list = Array.isArray(children) ? children : children ? [children] : [];
   return (
     <section className="flex min-w-0 flex-col gap-4">
@@ -24,7 +43,10 @@ export function Feed({ title, loading, empty, note, children }: { title: string;
       {loading ? (
         <p className="text-sm text-mist">Reading the chain…</p>
       ) : list.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-white/10 p-5 text-[14px] leading-relaxed text-mist">{empty}</p>
+        <>
+          <p className="rounded-2xl border border-dashed border-white/10 p-5 text-[14px] leading-relaxed text-mist">{empty}</p>
+          {examples ? <div className="flex flex-col gap-3">{examples}</div> : null}
+        </>
       ) : (
         <div className="flex flex-col gap-3">{list}</div>
       )}
@@ -84,6 +106,8 @@ export function CreatorsSellingFeed({
       loading={loading}
       empty={creatorsSellingEmpty(ready === true)}
       note={(creators?.length ?? 0) > 0 ? watchAgeNote(updatedAt, now) : null}
+      // only once the watch has been read and really has nobody in it: "not read yet" isn't empty
+      examples={ready === true ? <ExampleCreatorCard /> : null}
     >
       {(creators ?? []).slice(0, 6).map((c) => (
         <Link key={c.token} to={tokenPath(c.token)} className="card card-hover flex flex-col gap-1.5 p-4">

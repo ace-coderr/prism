@@ -10,6 +10,7 @@ export * from './identicon';
 export * from './launches';
 export * from './launchScan';
 export * from './assets';
+export * from './liveIndex';
 export * from './abi/prismReviews';
 export * from './abi/prismReviewsV1';
 export * from './scoring';

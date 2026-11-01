@@ -43,8 +43,14 @@ import { badgeSvg } from './svg';
 import { tokenMeta } from './tokenMeta';
 import { floorFor } from './floors';
 import { cachedFlags, creatorsSelling, recentlyOpened, xrayOf } from './xray';
+import { Limiter, clientOf } from './limits';
 
-export const CACHE_CONTROL = 'public, max-age=0, s-maxage=20, stale-while-revalidate=120';
+/**
+ * Shared answers (the feed, scores, boards, a token's reviews) are the same for everyone, so the CDN
+ * keeps them a minute and serves them stale for five more while one request makes them again. A
+ * review someone has just posted doesn't wait for this: the page asks with ?fresh=<block>.
+ */
+export const CACHE_CONTROL = 'public, max-age=0, s-maxage=60, stale-while-revalidate=300';
 /**
  * For an answer that is missing a part of itself (the published creator watch hasn't arrived on this
  * instance yet). The normal header would keep it in the CDN for two minutes and serve it stale for
@@ -64,9 +70,37 @@ class HttpError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** seconds to wait before asking again (429) */
+    readonly retryAfter?: number,
   ) {
     super(message);
   }
+}
+
+/*
+ * What one client may ask for per minute from one instance. Generous for a person (a search per
+ * keystroke pause, a few X-ray polls) and a wall for a script: the CDN caches by full URL, so
+ * without these, a changing query string is a fresh run of the function every time.
+ */
+const searches = new Limiter(40, 60_000);
+const xrayReads = new Limiter(90, 60_000);
+const freshReads = new Limiter(20, 60_000);
+/** Longest search text read (a name, a symbol or an address is well inside this). */
+const MAX_QUERY = 80;
+/** The list endpoint is for a handful of pages: nobody reads the 10,000th launch. */
+const MAX_OFFSET = 10_000;
+
+/** Search answers kept for a minute, so the same text typed twice (or by two people) is searched once. */
+const searchCache = new Map<string, { at: number; items: ReviewableAsset[] }>();
+const SEARCH_CACHE_MS = 60_000;
+function searched(assets: readonly ReviewableAsset[], q: string, limit: number): ReviewableAsset[] {
+  const key = `${q.trim().toLowerCase()}|${limit}`;
+  const hit = searchCache.get(key);
+  if (hit && Date.now() - hit.at < SEARCH_CACHE_MS) return hit.items;
+  const items = searchAssets(assets, q, limit);
+  searchCache.set(key, { at: Date.now(), items });
+  if (searchCache.size > 300) searchCache.delete(searchCache.keys().next().value!);
+  return items;
 }
 
 const int = (v: string | null, def: number, max: number) => {
@@ -100,17 +134,18 @@ const pairedWith = (s: ReviewState, stock: Address) => {
 /** One handler per route: returns a JSON-able body. */
 const routes: Record<string, (url: URL, minBlock: bigint) => Promise<unknown>> = {
   async launches(url) {
-    const { index, stale, assets } = await currentIndex();
+    const { index, stale, assets, assetByToken } = await currentIndex();
     const meta = { block: index.toBlock, generatedAt: index.generatedAt, stale, launches: index.launches.length };
     const token = url.searchParams.get('token');
     if (token !== null) {
-      const asset = assets.find((a) => a.token.toLowerCase() === addressParam(url, 'token').toLowerCase());
+      const asset = assetByToken.get(addressParam(url, 'token').toLowerCase());
       if (!asset) throw new HttpError(404, 'Not a test stock or a vibe/vibe launch.');
       return { ...meta, asset };
     }
     const q = url.searchParams.get('q');
     if (q !== null) {
-      const items = searchAssets(assets, q, int(url.searchParams.get('limit'), 20, 50));
+      if (q.length > MAX_QUERY) throw new HttpError(400, 'That search is too long.');
+      const items = searched(assets, q, int(url.searchParams.get('limit'), 20, 20));
       // PRISM's own numbers next to each result: current reviews and the true colors score
       const s = await reviewState().catch(() => null);
       return {
@@ -124,8 +159,10 @@ const routes: Record<string, (url: URL, minBlock: bigint) => Promise<unknown>> =
       };
     }
     const limit = int(url.searchParams.get('limit'), 24, 100);
-    const offset = int(url.searchParams.get('offset'), 0, Number.MAX_SAFE_INTEGER);
-    return { ...meta, stocks: reviewableStocks(), items: assets.filter((a) => a.kind === 'launch').slice(offset, offset + limit) };
+    const offset = int(url.searchParams.get('offset'), 0, MAX_OFFSET);
+    // the stocks come first in `assets`, then the launches newest first: a slice, not a pass over all of them
+    const stocks = reviewableStocks();
+    return { ...meta, stocks, items: assets.slice(stocks.length + offset, stocks.length + offset + limit) };
   },
 
   async token(url, minBlock) {
@@ -214,8 +251,7 @@ const routes: Record<string, (url: URL, minBlock: bigint) => Promise<unknown>> =
   async feed(_url, minBlock) {
     const s = await reviewState(minBlock);
     // the chain-only "creators selling" feed, from the published creator watch (no reads here)
-    const launches = s.index.assets.filter((a) => a.kind === 'launch').map((asset) => ({ asset, launch: s.index.launchByToken.get(asset.token.toLowerCase()) ?? null }));
-    const selling = await creatorsSelling(launches);
+    const selling = await creatorsSelling(s.index);
     // the count includes the first contract's reviews: they show in "latest" as history
     const body = {
       ...s.feeds,
@@ -287,11 +323,16 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const m = /^\/badge\/(0x[0-9a-fA-F]{40})\.svg$/.exec(url.pathname);
     if (m) url.searchParams.set('address', m[1]!);
   }
-  // ?fresh=<block>: a state that includes that block (fresh=1, from older pages, means "recent")
+  const who = clientOf(req);
+  // ?fresh=<block>: a state that includes that block, asked for right after posting. Only a block
+  // number counts (older pages sent fresh=1, which just means "recent"), and only so many a minute:
+  // it skips the CDN, so anyone could otherwise skip it on every request.
   const freshParam = url.searchParams.get('fresh');
-  const fresh = freshParam !== null;
-  const minBlock = freshParam && /^\d{1,12}$/.test(freshParam) ? BigInt(freshParam) : 0n;
+  const fresh = freshParam !== null && /^\d{2,12}$/.test(freshParam) && freshReads.take(who);
+  const minBlock = fresh ? BigInt(freshParam!) : 0n;
   try {
+    if (route === 'launches' && url.searchParams.has('q') && !searches.take(who)) throw new HttpError(429, 'Too many searches. Try again in a moment.', searches.retryAfter(who));
+    if (route === 'xray' && url.searchParams.has('token') && !xrayReads.take(who)) throw new HttpError(429, 'Too many requests. Try again in a moment.', xrayReads.retryAfter(who));
     if (route === 'badge') {
       const address = addressParam(url);
       const s = await reviewState();
@@ -299,7 +340,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       if (!asset) throw new HttpError(404, 'Not a test stock or a vibe/vibe launch.');
       return send(res, req, 200, badgeSvg(asset.symbol, tokenScore(s.world, address, s.balances)), 'image/svg+xml; charset=utf-8', 'public, max-age=300, s-maxage=300, stale-while-revalidate=3600');
     }
-    const fn = routes[route];
+    // an own property only: not `constructor`, `toString` and the rest of what every object inherits
+    const fn = Object.hasOwn(routes, route) ? routes[route] : undefined;
     if (!fn) throw new HttpError(404, 'Not found');
     const out = await fn(url, minBlock);
     const [body, cache] = out instanceof Cached ? [out.body, out.cache] : [out, CACHE_CONTROL];
@@ -308,6 +350,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const status = e instanceof HttpError ? e.status : 503;
     const message = e instanceof HttpError ? e.message : 'Data isn’t available right now. Try again in a minute.';
     const detail = e instanceof HttpError ? undefined : String((e as Error).message ?? e).split('\n')[0];
+    if (e instanceof HttpError && e.retryAfter) res.setHeader('retry-after', String(e.retryAfter));
     // never cache a failure
     return send(res, req, status, json({ error: message, detail }), 'application/json; charset=utf-8', 'no-store');
   }

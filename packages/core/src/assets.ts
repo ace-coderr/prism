@@ -56,21 +56,38 @@ export function allAssets(index: LaunchIndex | null): ReviewableAsset[] {
   return [...reviewableStocks(), ...launches];
 }
 
-/** How well an asset matches; 0 = not at all. */
-function score(a: ReviewableAsset, q: string): number {
-  if (isAddress(q, { strict: false })) return a.token.toLowerCase() === q.toLowerCase() ? 100 : 0;
-  if (/^0x[0-9a-f]{2,39}$/i.test(q)) return a.token.toLowerCase().startsWith(q.toLowerCase()) ? 50 : 0;
+/** What a query is, worked out once per search rather than once per asset. */
+type Query = { kind: 'address'; q: string } | { kind: 'prefix'; q: string } | { kind: 'text'; t: string };
+
+function parseQuery(q: string): Query | null {
+  if (isAddress(q, { strict: false })) return { kind: 'address', q: q.toLowerCase() };
+  if (/^0x[0-9a-f]{2,39}$/i.test(q)) return { kind: 'prefix', q: q.toLowerCase() };
   const t = q.toLowerCase().replace(/^\$/, '');
-  if (!t) return 0;
-  const sym = a.symbol.toLowerCase();
-  const name = a.name.toLowerCase();
+  return t ? { kind: 'text', t } : null;
+}
+
+/** An asset's lower-case fields, kept so a search doesn't lower-case 257,000 names each time. */
+const lowered = new WeakMap<ReviewableAsset, { token: string; sym: string; name: string }>();
+function lowerOf(a: ReviewableAsset) {
+  let l = lowered.get(a);
+  if (!l) lowered.set(a, (l = { token: a.token.toLowerCase(), sym: a.symbol.toLowerCase(), name: a.name.toLowerCase() }));
+  return l;
+}
+
+/** How well an asset matches; 0 = not at all. */
+function score(a: ReviewableAsset, q: Query): number {
+  const { token, sym, name } = lowerOf(a);
+  if (q.kind === 'address') return token === q.q ? 100 : 0;
+  if (q.kind === 'prefix') return token.startsWith(q.q) ? 50 : 0;
+  const t = q.t;
   if (sym === t) return 90;
   if (name === t) return 80;
   if (sym.startsWith(t)) return 70;
   if (name.startsWith(t)) return 60;
-  if (name.split(/[^a-z0-9]+/).some((w) => w.startsWith(t))) return 50;
+  const inName = name.includes(t); // a word of the name starting with t needs the name to contain t at all
+  if (inName && name.split(/[^a-z0-9]+/).some((w) => w.startsWith(t))) return 50;
   if (sym.includes(t)) return 40;
-  if (name.includes(t)) return 30;
+  if (inName) return 30;
   return 0;
 }
 
@@ -82,7 +99,7 @@ const rank = (a: ReviewableAsset) => (a.kind === 'stock' ? 2 : a.status === 'gra
  * among equals, stocks, then graduated launches, then the newest.
  */
 export function searchAssets(assets: readonly ReviewableAsset[], query: string, limit = 20): ReviewableAsset[] {
-  const q = query.trim();
+  const q = parseQuery(query.trim());
   if (!q) return [];
   const hits: Array<{ a: ReviewableAsset; s: number }> = [];
   for (const a of assets) {

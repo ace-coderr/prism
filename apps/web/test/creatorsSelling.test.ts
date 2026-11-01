@@ -48,7 +48,7 @@ function soldMostFile(): string {
 }
 
 const asset: ReviewableAsset = { kind: 'launch', token: TOKEN, name: 'Bored App', fullName: null, symbol: 'BOREDAPP', status: null, quote: null, creator: CREATOR, block: 10, gen: null };
-const launches = [{ asset, launch: null }];
+const launches = { assetByToken: new Map([[TOKEN.toLowerCase(), asset]]), launchByToken: new Map() };
 
 /** A server with its own module state, so each case starts with nothing loaded. */
 async function freshServer(file: string | undefined) {

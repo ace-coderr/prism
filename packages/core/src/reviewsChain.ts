@@ -38,6 +38,9 @@ const MARK_SOLD = toFunctionSelector('markSold(uint256)');
 
 type Raw = { topics: Hex[]; data: Hex; blockNumber: string; logIndex: string; transactionHash: Hex };
 
+/** The reviews contract has a handful of events: the node answers this many blocks in one call. */
+const WIDE_LOG_BLOCKS = 10_000_000n;
+
 export async function readReviewChain(client: PublicClient, src: ReviewsSource, prev: ReviewChainState | null = null, head?: bigint): Promise<ReviewChainState> {
   const abi: Abi = src.version === 2 ? prismReviewsAbi : prismReviewsV1Abi;
   const to = head ?? (await client.getBlockNumber());
@@ -48,7 +51,7 @@ export async function readReviewChain(client: PublicClient, src: ReviewsSource, 
   if (src.postBlocks) {
     // frozen history: just the blocks the reviews were posted in, once
     if (!prev) for (const b of src.postBlocks) logs.push(...((await getLogsSplit(client, { address: src.contract, topics: [] }, b, b)) as unknown as Raw[]));
-  } else if (start <= to) logs = (await getLogsSplit(client, { address: src.contract, topics: [] }, start, to)) as unknown as Raw[];
+  } else if (start <= to) logs = (await getLogsSplit(client, { address: src.contract, topics: [] }, start, to, { size: WIDE_LOG_BLOCKS })) as unknown as Raw[];
   const soldTxs: Array<{ id: number; hash: Hex }> = [];
   for (const l of logs) {
     try {

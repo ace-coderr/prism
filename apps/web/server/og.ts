@@ -86,6 +86,10 @@ export async function cardSvg(origin: string, kind: string, id: string): Promise
   return null;
 }
 
+/** The site's own card never changes: rendered once per instance, not once per request (0.3 s of CPU each). */
+let siteCard: Promise<Uint8Array> | null = null;
+const siteCardPng = () => (siteCard ??= renderPng(siteCardSvg()).catch((e) => ((siteCard = null), Promise.reject(e))));
+
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', 'http://localhost');
   let kind = url.searchParams.get('kind') ?? '';
@@ -98,10 +102,12 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   } catch {
     svg = null;
   }
-  const png = await renderPng(svg ?? siteCardSvg());
+  const png = svg ? await renderPng(svg) : await siteCardPng();
   res.statusCode = 200;
   res.setHeader('content-type', 'image/png');
-  // a real card for 10 minutes; the fallback only briefly, so the real one replaces it soon
-  res.setHeader('cache-control', svg ? 'public, max-age=600, s-maxage=600, stale-while-revalidate=86400' : 'public, max-age=60, s-maxage=60');
+  // a real card for an hour, then served stale for a day while it is made again (a score or a
+  // review text changing is not urgent for a link preview); the fallback only briefly, so the real
+  // one replaces it soon
+  res.setHeader('cache-control', svg ? 'public, max-age=600, s-maxage=3600, stale-while-revalidate=86400' : 'public, max-age=60, s-maxage=60');
   res.end(req.method === 'HEAD' ? undefined : Buffer.from(png));
 }

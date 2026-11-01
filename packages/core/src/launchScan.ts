@@ -35,10 +35,14 @@ const NOT_RANGE = /execution reverted|method not found|invalid argument|unauthor
 
 type GetLogsArgs = { address?: Address | Address[]; topics: (Hex | Hex[] | null)[] };
 
-/** eth_getLogs over [from, to], halving the range whenever the node says the answer is too big. */
-export async function getLogsSplit(client: PublicClient, args: GetLogsArgs, from: bigint, to: bigint): Promise<RawLog[]> {
+/**
+ * eth_getLogs over [from, to], halving the range whenever the node says the answer is too big.
+ * `size` is the widest first try: a contract with few events (PrismReviews) answers 10 million
+ * blocks in one call, where the default 100,000 took one call per 100,000 blocks, more every day.
+ */
+export async function getLogsSplit(client: PublicClient, args: GetLogsArgs, from: bigint, to: bigint, opts: { size?: bigint } = {}): Promise<RawLog[]> {
   const out: RawLog[] = [];
-  const size = args.address ? LOG_BLOCKS : LOG_BLOCKS_NO_ADDRESS;
+  const size = opts.size ?? (args.address ? LOG_BLOCKS : LOG_BLOCKS_NO_ADDRESS);
   for (const [a, b] of blockRanges(from, to, size)) out.push(...(await getRange(client, args, a, b)));
   return out;
 }

@@ -1,15 +1,71 @@
 {
+  "crawlers": "(?:[Bb]ot|[Cc]rawler|[Ss]pider|[Pp]review|facebookexternalhit|Facebot|Twitterbot|LinkedInBot|Slackbot|Slack-ImgProxy|Discordbot|TelegramBot|WhatsApp|Mastodon|Bluesky|SkypeUriPreview|vkShare|Embedly|Iframely|Pinterestbot|Applebot|bingbot|Yandex|Baiduspider|Signal-Desktop|Viber)",
   "functions": [
-    { "name": "data", "source": "server/data.ts", "maxDuration": 60 },
-    { "name": "og", "source": "server/og.ts", "maxDuration": 30, "assets": ["wasm", "fonts"] },
-    { "name": "page", "source": "server/page.ts", "maxDuration": 15, "assets": ["html"] },
-    { "name": "img", "source": "server/img.ts", "maxDuration": 60, "assets": ["wasm", "fonts", "webp"] }
+    {
+      "name": "data",
+      "source": "server/data.ts",
+      "maxDuration": 60
+    },
+    {
+      "name": "og",
+      "source": "server/og.ts",
+      "maxDuration": 30,
+      "assets": [
+        "wasm",
+        "fonts"
+      ]
+    },
+    {
+      "name": "page",
+      "source": "server/page.ts",
+      "maxDuration": 15,
+      "assets": [
+        "html"
+      ]
+    },
+    {
+      "name": "img",
+      "source": "server/img.ts",
+      "maxDuration": 60,
+      "assets": [
+        "wasm",
+        "fonts",
+        "webp"
+      ]
+    }
   ],
   "routes": [
-    { "src": "^/api/(launches|token|review|reviewer|feed|leaderboards|stocks|meta|market|xray)$", "dest": "/api/data?route=$1" },
-    { "src": "^/badge/(0x[0-9a-fA-F]{40})\\.svg$", "dest": "/api/data?route=badge&address=$1" },
-    { "src": "^/api/og/(t|r)/([^/]+)\\.png$", "dest": "/api/og?kind=$1&id=$2" },
-    { "src": "^/img/t/(0x[0-9a-fA-F]{40})\\.png$", "dest": "/api/img?token=$1" },
-    { "src": "^/(t|r)/([^/]+)/?$", "dest": "/api/page?kind=$1&id=$2", "devSkip": true }
+    {
+      "src": "^/api/(launches|token|review|reviewer|feed|leaderboards|stocks|meta|market|xray)$",
+      "dest": "/api/data?route=$1"
+    },
+    {
+      "src": "^/badge/(0x[0-9a-fA-F]{40})\\.svg$",
+      "dest": "/api/data?route=badge&address=$1"
+    },
+    {
+      "src": "^/api/og/t/(0x[0-9a-fA-F]{40})\\.png$",
+      "dest": "/api/og?kind=t&id=$1"
+    },
+    {
+      "src": "^/api/og/r/([0-9]{1,9})\\.png$",
+      "dest": "/api/og?kind=r&id=$1"
+    },
+    {
+      "src": "^/img/t/(0x[0-9a-fA-F]{40})\\.png$",
+      "dest": "/api/img?token=$1"
+    },
+    {
+      "src": "^/t/(0x[0-9a-fA-F]{40})/?$",
+      "dest": "/api/page?kind=t&id=$1",
+      "devSkip": true,
+      "bots": true
+    },
+    {
+      "src": "^/r/([0-9]{1,9})/?$",
+      "dest": "/api/page?kind=r&id=$1",
+      "devSkip": true,
+      "bots": true
+    }
   ]
 }

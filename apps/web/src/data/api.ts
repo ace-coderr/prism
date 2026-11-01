@@ -144,6 +144,14 @@ export const useMarket = (token: string | undefined): UseQueryResult<MarketData,
   useQuery({ queryKey: ['api', 'market', token?.toLowerCase()], enabled: !!token, queryFn: () => api<MarketData>(`/api/market?token=${token}`), staleTime: 120_000, refetchInterval: 180_000, retry: 1 });
 
 /**
+ * How long to wait before asking for an X-ray that wasn't ready: 3 s, then a little longer each
+ * time (3, 4.5, 6.8 … 30 s), and null (stop) after XRAY_POLLS tries, about five minutes. A fixed 3 s
+ * forever meant a tab left open on a slow launch kept the server reading it for as long as it lived.
+ */
+export const XRAY_POLLS = 14;
+export const xrayPollDelay = (tries: number): number | null => (tries >= XRAY_POLLS ? null : Math.min(30_000, Math.round(3_000 * 1.5 ** tries)));
+
+/**
  * The Launch X-ray. A launch from millions of blocks back takes a few requests to read, so this
  * asks again while the answer says it isn't ready; the page shows everything else meanwhile.
  */
@@ -154,7 +162,7 @@ export function useXray(token: string | undefined): UseQueryResult<XrayData, Api
     queryFn: () => api<XrayData>(`/api/xray?token=${token}`),
     staleTime: 60_000,
     retry: 1,
-    refetchInterval: (q) => (q.state.data && !q.state.data.ready ? 3_000 : false),
+    refetchInterval: (q) => (q.state.data && !q.state.data.ready ? (xrayPollDelay(q.state.dataUpdateCount) ?? false) : false),
   });
 }
 

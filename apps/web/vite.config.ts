@@ -7,8 +7,8 @@ import tailwindcss from '@tailwindcss/vite';
 interface RouteTable {
   /** name → /api/<name>, served by `source` (its default export is a Node (req, res) handler) */
   functions: Array<{ name: string; source: string; maxDuration: number; assets?: string[] }>;
-  /** `src` regex on the path → `dest` (with $1, $2 … from the match); devSkip: production only */
-  routes: Array<{ src: string; dest: string; devSkip?: boolean }>;
+  /** `src` regex on the path → `dest` (with $1, $2 … from the match); devSkip: production only; bots: only for link-preview crawlers */
+  routes: Array<{ src: string; dest: string; devSkip?: boolean; bots?: boolean }>;
 }
 const TABLE = JSON.parse(readFileSync(new URL('./server/routes.json', import.meta.url), 'utf8')) as RouteTable;
 

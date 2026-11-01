@@ -64,8 +64,8 @@ const WINDOW = 9_000_000n;
 /** How much of the time goes to the creator watch; the rest warms the site. */
 const WATCH_SHARE = 0.75;
 /** The newest launches to warm on the site, and the most recently opened ones. */
-const WARM_NEWEST = 25;
-const WARM_OPENED = 40;
+const WARM_NEWEST = 10;
+const WARM_OPENED = 15;
 
 const deadline = Date.now() + minutes * 60_000;
 const watchDeadline = Date.now() + minutes * 60_000 * WATCH_SHARE;

@@ -4,10 +4,10 @@
  *
  *   npx tsx packages/core/scripts/warm-pictures.ts launches.json.gz [https://seeprism.xyz] [--minutes 20]
  *
- * Which tokens: the newest 500 launches, the 300 most traded on their curve in the last 24h (counted
- * from the curves' own trade events), the 200 most recently graduated, every token with PRISM
+ * Which tokens: the newest 200 launches, the 100 most traded on their curve in the last 24h (counted
+ * from the curves' own trade events), the 60 most recently graduated, every token with PRISM
  * reviews, and the test stocks. Sizes in the order pages use them (96 lists, 192 launch headers and
- * share images, 48 review cards). Already-cached pictures answer in a fraction of a second, so later
+ * share images). Already-cached pictures answer in a fraction of a second, so later
  * runs mostly warm what's new. Run by .github/workflows/launch-index.yml after each index build.
  *
  * The CDN keeps a copy per region; this warms the region the job runs from, and the image function
@@ -27,6 +27,17 @@ if (!indexPath) {
   process.exit(1);
 }
 const deadline = Date.now() + minutes * 60_000;
+/*
+ * How much to warm. Every picture the CDN already has is a free hit, but each one it doesn't is a
+ * function run (metadata, IPFS, a resize), and a long list kept the site's functions busy for the
+ * whole of every run. These are the ones people actually land on; anything else is fetched, and
+ * kept for a year, the first time someone opens it. 48 px is the review cards', which only show
+ * reviewed tokens: those are warmed below, at 96 and 192.
+ */
+const WARM_NEWEST = 200;
+const WARM_TRADED = 100;
+const WARM_GRADUATED = 60;
+const SIZES = [96, 192];
 
 const index = decodeIndex(JSON.parse(gunzipSync(readFileSync(indexPath)).toString('utf8')));
 if (!index) throw new Error(`${indexPath} is not a launch index`);
@@ -39,7 +50,7 @@ const picks = new Map<string, string>(); // lower-case token → why
 const add = (token: string, why: string) => picks.has(token.toLowerCase()) || picks.set(token.toLowerCase(), why);
 
 // the newest launches
-for (const l of index.launches.slice(-500).reverse()) add(l.token, 'newest');
+for (const l of index.launches.slice(-WARM_NEWEST).reverse()) add(l.token, 'newest');
 
 // the most traded on their curves in the last 24h (any address: matched to known curves)
 try {
@@ -53,7 +64,7 @@ try {
     const token = byCurve.get(log.address.toLowerCase());
     if (token) trades.set(token, (trades.get(token) ?? 0) + 1);
   }
-  [...trades].sort((a, b) => b[1] - a[1]).slice(0, 300).forEach(([t]) => add(t, 'traded'));
+  [...trades].sort((a, b) => b[1] - a[1]).slice(0, WARM_TRADED).forEach(([t]) => add(t, 'traded'));
   console.log(`${logs.length} curve trades in the last 24h across ${trades.size} launches`);
 } catch (e) {
   console.warn(`couldn't rank by trades: ${String((e as Error).message).split('\n')[0]}`);
@@ -63,7 +74,7 @@ try {
 index.launches
   .filter((l) => l.graduatedBlock !== null)
   .sort((a, b) => b.graduatedBlock! - a.graduatedBlock!)
-  .slice(0, 200)
+  .slice(0, WARM_GRADUATED)
   .forEach((l) => add(l.token, 'graduated'));
 
 // tokens with reviews, and the test stocks
@@ -96,7 +107,7 @@ async function warm(token: string, size: number): Promise<Outcome> {
   }
 }
 
-for (const size of [96, 192, 48]) {
+for (const size of SIZES) {
   const stats: Record<Outcome, number> = { cached: 0, warmed: 0, identicon: 0, retry: 0, failed: 0 };
   let queue = tokens;
   // a second round for pictures that were only served as a stand-in the first time

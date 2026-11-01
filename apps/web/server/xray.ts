@@ -277,16 +277,19 @@ export interface CreatorSold {
  * nothing and isn't limited to the handful it could afford to read itself.
  */
 export async function creatorsSelling(
-  assets: ReadonlyArray<{ asset: ReviewableAsset; launch: Launch | null }>,
+  lookup: { assetByToken: ReadonlyMap<string, ReviewableAsset>; launchByToken: ReadonlyMap<string, Launch> },
   limit = 10,
 ): Promise<{ ready: boolean; updatedAt: number; creators: CreatorSold[] }> {
   const watch = await creatorWatch();
   // no watch is not "no creator is selling": the page has to tell the two apart
   if (!watch) return { ready: false, updatedAt: 0, creators: [] };
   const out: CreatorSold[] = [];
-  for (const { asset, launch } of assets) {
-    const w = watch.byToken.get(asset.token.toLowerCase());
-    if (!w || !soldMost(w.moves)) continue;
+  // the watch's own rows (a few thousand), not every launch there is (a quarter of a million)
+  for (const [key, w] of watch.byToken) {
+    if (!soldMost(w.moves)) continue;
+    const asset = lookup.assetByToken.get(key);
+    if (!asset || asset.kind !== 'launch') continue;
+    const launch = lookup.launchByToken.get(key) ?? null;
     out.push({
       token: asset.token,
       symbol: asset.symbol,

@@ -295,11 +295,16 @@ export function applyScan(
 /** Quote assets in the index whose symbol is still unknown (not ETH, a test stock or an indexed launch). */
 export function quotesNeedingSymbols(index: LaunchIndex): Address[] {
   const launches = new Set(index.launches.map((l) => key(l.token)));
+  return quotesNeedingSymbolsFor(index.launches, index, (k) => launches.has(k));
+}
+
+/** The same, for just `launches` (the ones added since): no pass over the whole index. */
+export function quotesNeedingSymbolsFor(launches: readonly Launch[], index: Pick<LaunchIndex, 'quoteSymbols'>, isLaunch: (lowerCaseToken: string) => boolean): Address[] {
   const out = new Set<Address>();
-  for (const l of index.launches) {
+  for (const l of launches) {
     if (!l.quote) continue;
     const k = key(l.quote);
-    if (index.quoteSymbols[k] || launches.has(k) || stockOf(l.quote)) continue;
+    if (index.quoteSymbols[k] || isLaunch(k) || stockOf(l.quote)) continue;
     out.add(l.quote);
   }
   return [...out];
@@ -309,14 +314,17 @@ export function quotesNeedingSymbols(index: LaunchIndex): Address[] {
 
 export type QuoteKind = 'eth' | 'stock' | 'launch' | 'token';
 
-const stockOf = (a: string): TestnetToken | undefined => TESTNET_TOKENS.find((t) => key(t.address) === key(a));
+let stocksByAddress: Map<string, TestnetToken> | null = null;
+/** The test stock or token at this address (a map, not a scan of the list: this runs once per launch). */
+const stockOf = (a: string): TestnetToken | undefined => (stocksByAddress ??= new Map(TESTNET_TOKENS.map((t) => [key(t.address), t]))).get(key(a));
 
 /** What a launch is paired with: ETH, a test stock (or USDG), another launch's token, or some ERC-20. */
 export function quoteOf(launch: Pick<Launch, 'quote'>, index: Pick<LaunchIndex, 'launches' | 'quoteSymbols'>, launchesByToken?: ReadonlyMap<string, Launch>) {
   if (!launch.quote) return { kind: 'eth' as QuoteKind, symbol: 'ETH', address: null };
   const stock = stockOf(launch.quote);
   if (stock) return { kind: (stock.kind === 'stock' || stock.kind === 'preipo' ? 'stock' : 'token') as QuoteKind, symbol: stock.id, address: launch.quote };
-  const other = launchesByToken?.get(key(launch.quote)) ?? index.launches.find((l) => key(l.token) === key(launch.quote!));
+  // a map of every launch is complete, so a miss is a miss (the scan is only for callers with no map)
+  const other = launchesByToken ? launchesByToken.get(key(launch.quote)) : index.launches.find((l) => key(l.token) === key(launch.quote!));
   if (other) return { kind: 'launch' as QuoteKind, symbol: other.symbol, address: launch.quote };
   return { kind: 'token' as QuoteKind, symbol: index.quoteSymbols[key(launch.quote)] ?? `${launch.quote.slice(0, 6)}…`, address: launch.quote };
 }

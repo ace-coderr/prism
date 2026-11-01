@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
 const out = resolve(web, '../../.vercel/output');
 
 rmSync(out, { recursive: true, force: true });
@@ -49,6 +50,8 @@ async function fn(route, source, maxDuration, assets = []) {
 
 // server/routes.json: { functions: [{ name, source, maxDuration, assets }], routes: [{ src, dest }] }, shared with vite.config.ts
 const table = JSON.parse(readFileSync(join(web, 'server/routes.json'), 'utf8'));
+// the user agents that read a page's share tags instead of running it (a regex on the header)
+const CRAWLERS = table.crawlers;
 for (const f of table.functions) await fn(`api/${f.name}`, f.source, f.maxDuration, f.assets);
 await fn('api/not-found', 'server/notFound.ts', 5);
 writeFileSync(
@@ -59,7 +62,9 @@ writeFileSync(
       routes: [
         { handle: 'filesystem' },
         // the site's data, badges, share images and share-ready pages
-        ...table.routes.map((r) => ({ src: r.src, dest: r.dest, check: true })),
+        // `bots` routes (the share-ready /t and /r pages) are for link-preview crawlers, which don't run
+        // JavaScript; people get the static app, so a page view doesn't start a function that calls others
+        ...table.routes.map((r) => ({ src: r.src, dest: r.dest, check: true, ...(r.bots ? { has: [{ type: 'header', key: 'user-agent', value: CRAWLERS }] } : {}) })),
         // a missed /api/* path gets a real 404 from a function, never the SPA's index.html
         { src: '^/api(?:/.*)?$', dest: '/api/not-found' },
         { src: '/(.*)', dest: '/index.html' },

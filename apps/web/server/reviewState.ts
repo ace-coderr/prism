@@ -38,7 +38,7 @@ import { freshGate } from './freshGate';
 import { currentIndex, type LiveIndex } from './launchIndex';
 import { replaySoldBack, type RunToReplay } from './replayCache';
 
-const FRESH_MS = 20_000;
+const FRESH_MS = 45_000;
 const MIN_FRESH_MS = 3_000;
 /** How long a refresh may spend reading transfer history for the replay. */
 const REPLAY_BUDGET_MS = 4_000;

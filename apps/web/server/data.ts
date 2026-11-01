@@ -82,9 +82,15 @@ class HttpError extends Error {
  * keystroke pause, a few X-ray polls) and a wall for a script: the CDN caches by full URL, so
  * without these, a changing query string is a fresh run of the function every time.
  */
-const searches = new Limiter(40, 60_000);
-const xrayReads = new Limiter(90, 60_000);
+const searches = new Limiter(24, 60_000);
+const xrayReads = new Limiter(30, 60_000);
 const freshReads = new Limiter(20, 60_000);
+/**
+ * Reads that cost something for every token asked about (a market read, a metadata read): each
+ * unique token is a unique URL, so the CDN never answers the second one. Someone walking the whole
+ * index would otherwise spend hours of CPU. A person on a token's page makes a handful.
+ */
+const perToken = new Limiter(100, 60_000);
 /** Longest search text read (a name, a symbol or an address is well inside this). */
 const MAX_QUERY = 80;
 /** The list endpoint is for a handful of pages: nobody reads the 10,000th launch. */
@@ -333,6 +339,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   try {
     if (route === 'launches' && url.searchParams.has('q') && !searches.take(who)) throw new HttpError(429, 'Too many searches. Try again in a moment.', searches.retryAfter(who));
     if (route === 'xray' && url.searchParams.has('token') && !xrayReads.take(who)) throw new HttpError(429, 'Too many requests. Try again in a moment.', xrayReads.retryAfter(who));
+    if ((route === 'market' || route === 'meta') && !perToken.take(who)) throw new HttpError(429, 'Too many requests. Try again in a moment.', perToken.retryAfter(who));
     if (route === 'badge') {
       const address = addressParam(url);
       const s = await reviewState();

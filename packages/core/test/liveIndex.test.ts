@@ -107,7 +107,7 @@ describe('LiveLaunchIndex', () => {
         same(live, ref, `seed ${seed} step ${step}`);
       }
     }
-  });
+  }, 60_000); // 200 comparisons of whole indexes: a few seconds alone, more when the suite runs in parallel
 
   it('a scan with nothing in it changes nothing but how far it has read', () => {
     const r = rng(7);

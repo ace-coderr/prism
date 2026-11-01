@@ -94,6 +94,17 @@ describe('Limiter', () => {
     expect(clientOf(req({ 'x-real-ip': '5.6.7.8' }))).toBe('5.6.7.8');
     expect(clientOf(req({}))).toBe('9.9.9.9');
   });
+
+  it('counts a visitor behind the Cloudflare edge as themselves, but only for the edge that has the key', () => {
+    const req = (h: Record<string, string>) => ({ headers: h, socket: { remoteAddress: '9.9.9.9' } }) as never;
+    const viaEdge = { 'x-forwarded-for': '172.70.1.1', 'x-prism-client': '203.0.113.7', 'x-prism-edge': 's3cret' };
+    expect(clientOf(req(viaEdge), 's3cret')).toBe('203.0.113.7');
+    // a guess, no key configured here, or no header: nobody gets to choose the address they are counted under
+    expect(clientOf(req({ ...viaEdge, 'x-prism-edge': 'guess' }), 's3cret')).toBe('172.70.1.1');
+    expect(clientOf(req(viaEdge), undefined)).toBe('172.70.1.1');
+    expect(clientOf(req({ 'x-forwarded-for': '172.70.1.1', 'x-prism-client': '203.0.113.7' }), 's3cret')).toBe('172.70.1.1');
+    expect(clientOf(req({ ...viaEdge, 'x-prism-client': 'x'.repeat(500) }), 's3cret').length).toBe(64);
+  });
 });
 
 describe('the data routes', () => {
@@ -140,9 +151,9 @@ describe('the data routes', () => {
     it('stops a client that searches in a loop, with when to come back, and leaves everyone else alone', async () => {
       const me = fresh();
       const codes: number[] = [];
-      for (let i = 0; i < 45; i++) codes.push((await get(`/api/launches?q=x${i}`, me)).status);
-      expect(codes.slice(0, 40).every((c) => c === 200)).toBe(true);
-      expect(codes.slice(40)).toEqual([429, 429, 429, 429, 429]);
+      for (let i = 0; i < 29; i++) codes.push((await get(`/api/launches?q=x${i}`, me)).status);
+      expect(codes.slice(0, 24).every((c) => c === 200)).toBe(true);
+      expect(codes.slice(24)).toEqual([429, 429, 429, 429, 429]);
       const blocked = await get('/api/launches?q=again', me);
       expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
       expect(blocked.headers['cache-control']).toBe('no-store');
@@ -173,11 +184,22 @@ describe('the data routes', () => {
   it('limit one client’s X-ray reads, so a script can’t keep the server reading launch histories', async () => {
     const me = fresh();
     const codes: number[] = [];
-    for (let i = 0; i < 95; i++) codes.push((await get(`/api/xray?token=0x00000000000000000000000000000000000f${(i + 0x1000).toString(16)}`, me)).status);
+    for (let i = 0; i < 35; i++) codes.push((await get(`/api/xray?token=0x00000000000000000000000000000000000f${(i + 0x1000).toString(16)}`, me)).status);
     expect(codes.filter((c) => c === 429).length).toBe(5);
-    expect(codes.slice(0, 90).every((c) => c === 404)).toBe(true); // not in the index: answered without reading anything
+    expect(codes.slice(0, 30).every((c) => c === 404)).toBe(true); // not in the index: answered without reading anything
     // reading the flags of cards and the list of opened launches isn't a read
     expect((await get('/api/xray?recent=1', me)).status).toBe(200);
+  });
+
+  it('limit how many different tokens one client can have read in a minute (a market read each, never cached for the next one)', async () => {
+    const me = fresh();
+    const codes: number[] = [];
+    for (let i = 0; i < 105; i++) codes.push((await get(`/api/${i % 2 ? 'market' : 'meta'}?token=0x00000000000000000000000000000000000f${(i + 0x2000).toString(16)}`, me)).status);
+    expect(codes.slice(0, 100).every((c) => c === 404)).toBe(true);
+    expect(codes.slice(100)).toEqual([429, 429, 429, 429, 429]);
+    // someone else, and the cheap routes, are unaffected
+    expect((await get(`/api/launches?token=${TOKEN(2)}`, me)).status).toBe(200);
+    expect((await get('/api/market?token=0x00000000000000000000000000000000000fffff', fresh())).status).toBe(404);
   });
 
   it('only answers GET and HEAD', async () => {

@@ -7,10 +7,12 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.json && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.server.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.server.json && tsc -p cloudflare/tsconfig.json",
     "serve:dist": "node scripts/serve-dist.mjs",
     "test": "vitest run --config vitest.config.ts",
     "build:vercel": "node scripts/vercel-output.mjs",
+    "build:cloudflare": "node scripts/cloudflare-output.mjs",
+    "deploy:cloudflare": "node scripts/cloudflare-output.mjs && cd cloudflare && npx --yes wrangler@4.156.0 pages deploy",
     "brand": "tsx scripts/make-brand-assets.ts"
   },
   "dependencies": {

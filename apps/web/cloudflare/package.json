@@ -1,0 +1,5 @@
+{
+  "name": "@prism/cloudflare",
+  "private": true,
+  "description": "What is deployed to Cloudflare Pages (see README.md). Its own package.json makes this folder the project root for wrangler, so ./functions is found here."
+}

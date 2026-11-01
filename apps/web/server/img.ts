@@ -12,6 +12,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { getAddress, isAddress, type Address } from 'viem';
 import { IpfsError, MAX_IMAGE_BYTES, fetchIpfs, identiconSvg, stockTile, tickerTileSvg } from '@prism/core';
 import { originOf } from './og';
+import { Limiter, clientOf } from './limits';
 import { coverSquare, encodePng, type Rgba } from './png';
 import { renderPng, renderRgba } from './render';
 import type { MetaBody } from './tokenMeta';
@@ -94,8 +95,19 @@ export async function tokenPicture(origin: string, token: Address, size: number)
   }
 }
 
+/** Pictures one client may ask for a minute: a page of 20 is well inside it, walking the whole index isn't. */
+const pictures = new Limiter(240, 60_000);
+
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', 'http://localhost');
+  const who = clientOf(req);
+  if (!pictures.take(who)) {
+    res.statusCode = 429;
+    res.setHeader('retry-after', String(pictures.retryAfter(who)));
+    res.setHeader('cache-control', 'no-store');
+    res.end('Too many pictures asked for. Try again in a moment.');
+    return;
+  }
   const raw = url.searchParams.get('token') ?? /^\/img\/t\/(0x[0-9a-fA-F]{40})\.png$/.exec(url.pathname)?.[1] ?? '';
   if (!isAddress(raw, { strict: false })) {
     res.statusCode = 400;

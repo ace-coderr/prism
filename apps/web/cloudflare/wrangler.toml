@@ -1,0 +1,8 @@
+# The site on Cloudflare Pages (direct upload: `npm run deploy:cloudflare -w @prism/web`).
+name = "seeprism"
+pages_build_output_dir = "./site"
+compatibility_date = "2026-10-01"
+
+[vars]
+# where the data routes run (the Vercel deployment); no trailing slash
+ORIGIN_URL = "https://seeprism.vercel.app"

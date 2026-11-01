@@ -1,0 +1,71 @@
+# Writes the site's data as static files and deploys the site to Cloudflare Pages.
+#
+# The site runs where a request gets 10 ms of CPU, so nothing that needs the launch index or every
+# review is worked out on request. This does it: it reads the published index, metadata and creator
+# watch (made by launch-index.yml), reads the reviews from the chain (public RPC, read-only), runs the
+# server's own code once, and saves the answers as files (apps/web/scripts/build-site-data.ts). The
+# browser reads those files, and the rest (a token's market, X-ray and setup) from the chain itself.
+#
+# It deploys only when the Cloudflare credentials exist as repository secrets (Settings → Secrets and
+# variables → Actions): CLOUDFLARE_API_TOKEN (a token made from the "Edit Cloudflare Workers"/Pages
+# template, scoped to this account) and CLOUDFLARE_ACCOUNT_ID. Without them it still builds the files
+# and says so. No keys of any kind are used to read the chain, and nothing is signed.
+#
+# Every two hours: a review shows to everyone else at the next run (the person who posts it sees it at
+# once; the page reads the chain itself right after posting). Pages allows 500 Git builds a month; a
+# direct upload isn't one, but two hours keeps it well inside 500 either way.
+name: Site data
+
+on:
+  schedule:
+    - cron: '23 */2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-data
+  cancel-in-progress: false
+
+jobs:
+  site:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # public: Privy's app ID is baked into the page (it is not a secret; the app secret is never used)
+      VITE_PRIVY_APP_ID: cmux08ae9027h0cl8gg88ne5y
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      DEPLOY: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Download what the other job published
+        run: |
+          gh release download launch-index --pattern launches.json.gz --dir in
+          gh release download launch-index --pattern launch-meta.json.gz --dir in
+          gh release download launch-index --pattern launch-xray.json.gz --dir in || echo "No creator watch yet: its flags will be empty"
+      - name: Write the site's data files
+        env:
+          LAUNCH_INDEX_FILE: in/launches.json.gz
+          LAUNCH_META_FILE: in/launch-meta.json.gz
+          LAUNCH_XRAY_FILE: in/launch-xray.json.gz
+        run: npx tsx apps/web/scripts/build-site-data.ts apps/web/cloudflare/data
+      - name: Build the app
+        run: npm run build -w @prism/web
+      - name: Assemble the site
+        run: node apps/web/scripts/cloudflare-output.mjs
+      - name: Deploy to Cloudflare Pages
+        if: env.DEPLOY == 'true'
+        working-directory: apps/web/cloudflare
+        run: npx --yes wrangler@4.156.0 pages deploy site --project-name seeprism --branch main --commit-dirty=true
+      - name: Say why nothing was deployed
+        if: env.DEPLOY != 'true'
+        run: echo "The data and the app were built, but CLOUDFLARE_API_TOKEN isn't set as a repository secret, so nothing was deployed."

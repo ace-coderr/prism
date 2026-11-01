@@ -216,6 +216,13 @@ console.log(`creator watch done: ${checked.toLocaleString()} checked, ${selling}
 
 // ------------------------------------------------------------------ 2. warming the site
 
+// The site no longer has an X-ray route to warm (visitors' browsers read X-rays themselves), so the
+// scheduled job passes --no-warm; the flag stays for anyone still running a server that has one.
+if (args.includes('--no-warm')) {
+  console.log('not warming a site (--no-warm)');
+  process.exit(0);
+}
+
 const warm = async (token: string): Promise<string> => {
   for (let i = 0; i < 12 && Date.now() < deadline; i++) {
     try {

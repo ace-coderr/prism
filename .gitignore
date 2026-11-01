@@ -4,6 +4,7 @@ node_modules
 # build output
 dist
 apps/web/cloudflare/site
+apps/web/cloudflare/data
 apps/web/cloudflare/.wrangler
 build
 .vite

@@ -1,46 +1,43 @@
 /**
- * Assembles what Cloudflare Pages deploys, after `vite build`:
- *   apps/web/cloudflare/site/            the app (apps/web/dist) plus the Pages routing files below
+ * Assembles what Cloudflare Pages deploys, after `vite build` and `scripts/build-site-data.ts`:
+ *   apps/web/cloudflare/site/            the app (apps/web/dist), the job's data files (data/), and the routing files below
  *   site/_routes.json                    the only paths that run the edge function; every other path is a static file (free, unlimited)
- *   site/_redirects                      token pictures: a static redirect to the origin, so a page of 20 pictures costs no function runs
- *   site/_headers                        hashed assets cached for a year, and two safe default headers
+ *   site/_headers                        how long each kind of file may be kept
  * The edge function itself (apps/web/cloudflare/functions) is bundled by wrangler when it deploys.
  *
- * ORIGIN_URL: where the data routes run (default: the Vercel deployment's own address).
+ * DATA_DIR: the job's output (default apps/web/cloudflare/data).
  */
-import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const out = join(web, 'cloudflare/site');
-const origin = (process.env.ORIGIN_URL ?? 'https://seeprism.vercel.app').replace(/\/$/, '');
+const data = resolve(process.env.DATA_DIR ?? join(web, 'cloudflare/data'));
+
+if (!existsSync(join(data, 'info.json'))) throw new Error(`No site data in ${data}: run scripts/build-site-data.ts first.`);
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 cpSync(join(web, 'dist'), out, { recursive: true });
+cpSync(data, join(out, 'data'), { recursive: true });
 
-writeFileSync(join(out, '_routes.json'), JSON.stringify({ version: 1, include: ['/api/*', '/badge/*', '/t/*', '/r/*'], exclude: [] }, null, 2) + '\n');
+// the paths that need the edge function: a crawler's share page, the badge, the share card, and a 404 for the old API
+const routes = { version: 1, include: ['/t/*', '/r/*', '/badge/*', '/api/*'], exclude: [] };
+writeFileSync(join(out, '_routes.json'), `${JSON.stringify(routes, null, 2)}\n`);
 
-writeFileSync(
-  join(out, '_redirects'),
-  [
-    '# a token picture is content-addressed and cached for a year where it is made: send the browser there',
-    `/img/t/* ${origin}/img/t/:splat 302`,
-    '',
-  ].join('\n'),
-);
+const headers = [
+  '/assets/*',
+  '  Cache-Control: public, max-age=31536000, immutable',
+  '/data/*',
+  '  Cache-Control: public, max-age=120',
+  '/data/og/*',
+  '  Cache-Control: public, max-age=600',
+  '/*',
+  '  X-Content-Type-Options: nosniff',
+  '  Referrer-Policy: strict-origin-when-cross-origin',
+  '',
+];
+writeFileSync(join(out, '_headers'), headers.join('\n'));
 
-writeFileSync(
-  join(out, '_headers'),
-  [
-    '/assets/*',
-    '  Cache-Control: public, max-age=31536000, immutable',
-    '/*',
-    '  X-Content-Type-Options: nosniff',
-    '  Referrer-Policy: strict-origin-when-cross-origin',
-    '',
-  ].join('\n'),
-);
-
-console.log(`Cloudflare Pages output → ${out} (data routes at ${origin})`);
+console.log(`Cloudflare Pages output → ${out} (with the job's data from ${data})`);

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { LAUNCH_INDEX_URL, TESTNET_TOKENS, decodeIndex, type ReviewView } from '@prism/core';
@@ -18,7 +19,7 @@ import { EXAMPLE_CREATOR_SOLD, EXAMPLE_IDENTITIES, EXAMPLE_REVIEWS, EXAMPLE_XRAY
 
 const root = fileURLToPath(new URL('../../..', import.meta.url));
 const at = (p: string) => join(root, p);
-const html = (el: ReturnType<typeof createElement>) => renderToStaticMarkup(createElement(MemoryRouter, null, el));
+const html = (el: ReturnType<typeof createElement>) => renderToStaticMarkup(createElement(QueryClientProvider, { client: new QueryClient() }, createElement(MemoryRouter, null, el)));
 const REAL_CREATOR = { token: '0x1111111111111111111111111111111111111111', symbol: 'REAL', name: 'Real', text: 'The creator had sold 60% of the $REAL they bought.', movedOut: 0.6, launchBlock: 1 } as never;
 const REAL_REVIEW = { id: 7 } as ReviewView;
 

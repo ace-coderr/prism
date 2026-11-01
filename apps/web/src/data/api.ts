@@ -1,5 +1,7 @@
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { Address } from 'viem';
+import { ApiError } from './errors';
+import * as site from './site';
 import type {
   Feeds,
   Xray,
@@ -13,28 +15,13 @@ import type {
 } from '@prism/core';
 
 /*
- * The site's own read-only API (apps/web/server/data.ts): everything it returns was read from the
- * chain. Answers are cached by the CDN for 20 s; right after posting, `refresh` asks for a state that
- * includes the block the transaction landed in.
+ * What the pages read. There is no server computing it on request any more: the feed, boards,
+ * reviews and the launch index are static files the scheduled job writes, and the per-token reads
+ * (market, X-ray, setup, metadata) run in this browser. See ./site.ts. Each hook returns what the
+ * /api route of the same name used to.
  */
 
-export class ApiError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-/** `freshBlock`: the answer must include this block (a review just posted there). */
-export async function api<T>(path: string, freshBlock: bigint | null = null): Promise<T> {
-  const url = freshBlock !== null ? `${path}${path.includes('?') ? '&' : '?'}fresh=${freshBlock}` : path;
-  const res = await fetch(url, { headers: { accept: 'application/json' } });
-  const body = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
-  if (!res.ok || !body) throw new ApiError(res.status, body?.error ?? 'Couldn’t load this right now.');
-  return body;
-}
+export { ApiError } from './errors';
 
 export interface TokenData {
   asset: ReviewableAsset;
@@ -128,20 +115,20 @@ export interface MarketData {
 const opts = { staleTime: 15_000, retry: 1 } as const;
 
 export const useToken = (address: string | undefined): UseQueryResult<TokenData, ApiError> =>
-  useQuery({ queryKey: ['api', 'token', address?.toLowerCase()], enabled: !!address, queryFn: () => api<TokenData>(`/api/token?address=${address}`), ...opts });
+  useQuery({ queryKey: ['api', 'token', address?.toLowerCase()], enabled: !!address, queryFn: () => site.getToken(address!), ...opts });
 
 export const useReview = (id: string | undefined): UseQueryResult<ReviewData, ApiError> =>
-  useQuery({ queryKey: ['api', 'review', id], enabled: !!id, queryFn: () => api<ReviewData>(`/api/review?id=${id}`), ...opts });
+  useQuery({ queryKey: ['api', 'review', id], enabled: !!id, queryFn: () => site.getReview(id!), ...opts });
 
 export const useReviewer = (address: string | undefined): UseQueryResult<ReviewerData, ApiError> =>
-  useQuery({ queryKey: ['api', 'reviewer', address?.toLowerCase()], enabled: !!address, queryFn: () => api<ReviewerData>(`/api/reviewer?address=${address}`), ...opts });
+  useQuery({ queryKey: ['api', 'reviewer', address?.toLowerCase()], enabled: !!address, queryFn: () => site.getReviewer(address!), ...opts });
 
 export const useMeta = (token: string | undefined): UseQueryResult<MetaData, ApiError> =>
-  useQuery({ queryKey: ['api', 'meta', token?.toLowerCase()], enabled: !!token, queryFn: () => api<MetaData>(`/api/meta?token=${token}`), staleTime: 3_600_000, retry: 1 });
+  useQuery({ queryKey: ['api', 'meta', token?.toLowerCase()], enabled: !!token, queryFn: () => site.getMeta(token!), staleTime: 3_600_000, retry: 1 });
 
 /** Market details refresh every few minutes (the server reads the chain; the CDN caches 3 minutes). */
 export const useMarket = (token: string | undefined): UseQueryResult<MarketData, ApiError> =>
-  useQuery({ queryKey: ['api', 'market', token?.toLowerCase()], enabled: !!token, queryFn: () => api<MarketData>(`/api/market?token=${token}`), staleTime: 120_000, refetchInterval: 180_000, retry: 1 });
+  useQuery({ queryKey: ['api', 'market', token?.toLowerCase()], enabled: !!token, queryFn: () => site.getMarket(token!), staleTime: 120_000, refetchInterval: 180_000, retry: 1 });
 
 /**
  * How long to wait before asking for an X-ray that wasn't ready: 3 s, then a little longer each
@@ -159,7 +146,7 @@ export function useXray(token: string | undefined): UseQueryResult<XrayData, Api
   return useQuery({
     queryKey: ['api', 'xray', token?.toLowerCase()],
     enabled: !!token,
-    queryFn: () => api<XrayData>(`/api/xray?token=${token}`),
+    queryFn: () => site.getXray(token!),
     staleTime: 60_000,
     retry: 1,
     refetchInterval: (q) => (q.state.data && !q.state.data.ready ? (xrayPollDelay(q.state.dataUpdateCount) ?? false) : false),
@@ -172,39 +159,42 @@ export function useXrayFlags(tokens: string[]): Record<string, string> {
   const q = useQuery({
     queryKey: ['api', 'xray-flags', key.join(',')],
     enabled: key.length > 0,
-    queryFn: () => api<{ flags: Record<string, string> }>(`/api/xray?tokens=${key.join(',')}`),
+    queryFn: () => site.getXrayFlags(key),
     staleTime: 60_000,
     retry: 1,
   });
   return q.data?.flags ?? {};
 }
 
-export const useFeed = (): UseQueryResult<FeedData, ApiError> => useQuery({ queryKey: ['api', 'feed'], queryFn: () => api<FeedData>('/api/feed'), ...opts });
+export const useFeed = (): UseQueryResult<FeedData, ApiError> => useQuery({ queryKey: ['api', 'feed'], queryFn: () => site.getFeed(), ...opts });
 
 export const useLeaderboards = (): UseQueryResult<LeaderboardData, ApiError> =>
-  useQuery({ queryKey: ['api', 'leaderboards'], queryFn: () => api<LeaderboardData>('/api/leaderboards'), ...opts });
+  useQuery({ queryKey: ['api', 'leaderboards'], queryFn: () => site.getLeaderboards(), ...opts });
 
-export const useStocks = (): UseQueryResult<StocksData, ApiError> => useQuery({ queryKey: ['api', 'stocks'], queryFn: () => api<StocksData>('/api/stocks'), ...opts });
+export const useStocks = (): UseQueryResult<StocksData, ApiError> => useQuery({ queryKey: ['api', 'stocks'], queryFn: () => site.getStocks(), ...opts });
 
 export const useSearch = (q: string, limit = 8): UseQueryResult<SearchData, ApiError> =>
   useQuery({
     queryKey: ['api', 'search', q.trim().toLowerCase(), limit],
     enabled: q.trim().length > 0,
-    queryFn: () => api<SearchData>(`/api/launches?q=${encodeURIComponent(q.trim())}&limit=${limit}`),
+    queryFn: () => site.search(q, limit),
     staleTime: 60_000,
     retry: 1,
   });
 
-/** Re-read everything about reviews (after posting or marking a sale in `block`). */
+/**
+ * Re-read everything about reviews right after posting or marking a sale in `block`. The files are
+ * rewritten by the scheduled job, which is too late for someone who has just posted, so this reads the
+ * review state as of that block in this browser (site.readAfterPost) and puts it where the pages look.
+ */
 export function useRefreshReviews() {
   const qc = useQueryClient();
   return async (paths: { block: bigint; token?: string; author?: string; id?: number | bigint }) => {
-    const b = paths.block;
-    const jobs: Array<Promise<unknown>> = [api<FeedData>('/api/feed', b).then((d) => qc.setQueryData(['api', 'feed'], d))];
-    if (paths.token) jobs.push(api<TokenData>(`/api/token?address=${paths.token}`, b).then((d) => qc.setQueryData(['api', 'token', paths.token!.toLowerCase()], d)));
-    if (paths.author) jobs.push(api<ReviewerData>(`/api/reviewer?address=${paths.author}`, b).then((d) => qc.setQueryData(['api', 'reviewer', paths.author!.toLowerCase()], d)));
-    if (paths.id !== undefined) jobs.push(api<ReviewData>(`/api/review?id=${paths.id}`, b).then((d) => qc.setQueryData(['api', 'review', String(paths.id)], d)));
-    await Promise.allSettled(jobs);
+    const after = await site.readAfterPost(paths.block, paths);
+    qc.setQueryData(['api', 'feed'], after.feed);
+    if (paths.token && after.token) qc.setQueryData(['api', 'token', paths.token.toLowerCase()], after.token);
+    if (paths.author && after.reviewer) qc.setQueryData(['api', 'reviewer', paths.author.toLowerCase()], after.reviewer);
+    if (paths.id !== undefined && after.review) qc.setQueryData(['api', 'review', String(paths.id)], after.review);
     void qc.invalidateQueries({ queryKey: ['api', 'leaderboards'] });
   };
 }

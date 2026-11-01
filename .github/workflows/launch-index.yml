@@ -81,28 +81,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: ./.github/publish.sh launch-meta.json.gz
       # what every launch of the last week's creator has done with their own tokens: two filtered
-      # queries each, so thousands fit in the budget. Then it warms the X-ray of the newest launches
-      # and the ones people opened recently, so no visitor pays for the first cold read.
-      - name: Watch creators and warm the X-ray
+      # queries each, so thousands fit in the budget.
+      - name: Watch creators
         continue-on-error: true
         timeout-minutes: 20
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release download launch-index --pattern launch-xray.json.gz --dir prev || echo "No previous creator watch, so this starts one"
-          npx tsx packages/core/scripts/warm-xray.ts launches.json.gz prev/launch-xray.json.gz launch-xray.json.gz https://seeprism.xyz --minutes 14
+          npx tsx packages/core/scripts/warm-xray.ts launches.json.gz prev/launch-xray.json.gz launch-xray.json.gz --no-warm --minutes 14
       - name: Publish the creator watch
         if: always()
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: ./.github/publish.sh launch-xray.json.gz
-      # visitors rarely wait for IPFS: fetch the pictures of the newest, most traded, recently graduated
-      # and reviewed launches through the site so its cache has them (never fails the job)
-      # (every third run: a picture the CDN holds is kept for a year, so this only has the newest to
-      # add, and a long list kept the site's functions busy for the whole of every run)
-      - name: Warm token pictures
-        if: github.event_name == 'workflow_dispatch' || github.run_number % 3 == 0
-        continue-on-error: true
-        timeout-minutes: 15
-        run: npx tsx packages/core/scripts/warm-pictures.ts launches.json.gz https://seeprism.xyz --minutes 8

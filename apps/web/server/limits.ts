@@ -43,18 +43,8 @@ export class Limiter {
   }
 }
 
-/**
- * Who is asking: the address the platform saw, else the socket's.
- *
- * Behind the Cloudflare edge every visitor reaches the origin from Cloudflare's own addresses, so
- * the edge passes the real one in `x-prism-client`, with the shared secret in `x-prism-edge`. It is
- * believed only if EDGE_KEY is set here and matches: anyone else can send those headers too, and
- * would otherwise be able to pick the address their requests are counted under.
- */
-export function clientOf(req: Pick<IncomingMessage, 'headers' | 'socket'>, edgeKey: string | undefined = process.env.EDGE_KEY): string {
-  const sent = req.headers['x-prism-client'];
-  const claimed = (Array.isArray(sent) ? sent[0] : sent)?.trim();
-  if (edgeKey && claimed && req.headers['x-prism-edge'] === edgeKey) return claimed.slice(0, 64);
+/** Who is asking: the address the platform saw, else the socket's. */
+export function clientOf(req: Pick<IncomingMessage, 'headers' | 'socket'>): string {
   const forwarded = req.headers['x-forwarded-for'];
   const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim();
   const real = req.headers['x-real-ip'];

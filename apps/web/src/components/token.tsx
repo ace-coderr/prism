@@ -1,22 +1,39 @@
+import { useQuery } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { getAddress, type Address } from 'viem';
-import { safeUrl, stockTile, tickerTileSvg, tokenImagePath } from '@prism/core';
+import { safeUrl, stockTile, tickerTileSvg } from '@prism/core';
 import { useMarket, useMeta, type MarketData } from '../data/api';
+import { pictureUrl } from '../data/picture';
+import { tokenPicture } from '../data/site';
 import { formatChange, formatEth, formatUsd, plural } from '../data/format';
 import { Avatar } from '../data/profiles';
 
 /**
- * A token's picture: the one in its own metadata (verified on IPFS, resized by PRISM's image
- * route), else its identicon. Rounded, never stretched; a soft shimmer while it loads.
+ * A token's picture: the one in its own metadata, fetched from whichever IPFS gateway answers
+ * first, checked against its CID and shrunk to this size in the browser (data/picture.ts), else its
+ * identicon. Rounded, never stretched; a soft shimmer while it loads.
+ *
+ * Where the picture is (its CID) comes from the metadata files the job publishes, so a page of
+ * twenty tokens reads a few small static files and no server.
  */
 export function TokenAvatar({ token, size = 32, className = '' }: { token: string; size?: number; className?: string }) {
-  const [broken, setBroken] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  const px = size <= 24 ? 48 : size <= 48 ? 96 : size <= 96 ? 192 : 384;
-  const radius = size >= 64 ? 'rounded-2xl' : 'rounded-[30%]';
   // test stocks: a ticker tile on their own colour, drawn here (no company logos)
   const tile = stockTile(token);
+  const px = size <= 24 ? 48 : size <= 48 ? 96 : size <= 96 ? 192 : 384;
+  // where the picture is comes from the files the job publishes (a token's page also reads its metadata live)
+  const pic = useQuery({
+    queryKey: ['picture', token.toLowerCase(), px],
+    queryFn: async () => {
+      const where = await tokenPicture(token, size >= 64);
+      return where ? pictureUrl(where.cid, where.mimeType, px) : null;
+    },
+    enabled: !tile,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    retry: 0,
+  });
+  const radius = size >= 64 ? 'rounded-2xl' : 'rounded-[30%]';
   if (tile) {
     return (
       <span
@@ -27,18 +44,19 @@ export function TokenAvatar({ token, size = 32, className = '' }: { token: strin
       />
     );
   }
-  if (broken) return <Avatar address={getAddress(token.toLowerCase())} size={size} className={className} />;
+  if (pic.isLoading) {
+    return <span aria-hidden className={`img-shimmer inline-block shrink-0 ring-1 ring-white/10 ${radius} ${className}`} style={{ width: size, height: size }} />;
+  }
+  // no picture, or no gateway served one that matches its hash: the identicon
+  if (!pic.data) return <Avatar address={getAddress(token.toLowerCase())} size={size} className={className} />;
   return (
     <img
-      src={tokenImagePath(token, px)}
+      src={pic.data}
       alt=""
       width={size}
       height={size}
-      loading="lazy"
       decoding="async"
-      onLoad={() => setLoaded(true)}
-      onError={() => setBroken(true)}
-      className={`inline-block shrink-0 object-cover ring-1 ring-white/10 ${loaded ? 'bg-line' : 'img-shimmer'} ${radius} ${className}`}
+      className={`inline-block shrink-0 bg-line object-cover ring-1 ring-white/10 ${radius} ${className}`}
       style={{ width: size, height: size }}
     />
   );

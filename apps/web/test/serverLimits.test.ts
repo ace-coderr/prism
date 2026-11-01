@@ -94,17 +94,6 @@ describe('Limiter', () => {
     expect(clientOf(req({ 'x-real-ip': '5.6.7.8' }))).toBe('5.6.7.8');
     expect(clientOf(req({}))).toBe('9.9.9.9');
   });
-
-  it('counts a visitor behind the Cloudflare edge as themselves, but only for the edge that has the key', () => {
-    const req = (h: Record<string, string>) => ({ headers: h, socket: { remoteAddress: '9.9.9.9' } }) as never;
-    const viaEdge = { 'x-forwarded-for': '172.70.1.1', 'x-prism-client': '203.0.113.7', 'x-prism-edge': 's3cret' };
-    expect(clientOf(req(viaEdge), 's3cret')).toBe('203.0.113.7');
-    // a guess, no key configured here, or no header: nobody gets to choose the address they are counted under
-    expect(clientOf(req({ ...viaEdge, 'x-prism-edge': 'guess' }), 's3cret')).toBe('172.70.1.1');
-    expect(clientOf(req(viaEdge), undefined)).toBe('172.70.1.1');
-    expect(clientOf(req({ 'x-forwarded-for': '172.70.1.1', 'x-prism-client': '203.0.113.7' }), 's3cret')).toBe('172.70.1.1');
-    expect(clientOf(req({ ...viaEdge, 'x-prism-client': 'x'.repeat(500) }), 's3cret').length).toBe(64);
-  });
 });
 
 describe('the data routes', () => {

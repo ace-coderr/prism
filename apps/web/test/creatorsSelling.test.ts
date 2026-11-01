@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { gzipSync } from 'node:zlib';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -108,7 +109,7 @@ describe('the server answering before it has the creator watch', () => {
 });
 
 const render = (props: Parameters<typeof CreatorsSellingFeed>[0]) =>
-  renderToStaticMarkup(createElement(MemoryRouter, null, createElement(CreatorsSellingFeed, props)));
+  renderToStaticMarkup(createElement(QueryClientProvider, { client: new QueryClient() }, createElement(MemoryRouter, null, createElement(CreatorsSellingFeed, props))));
 
 describe('the Home section', () => {
   it('is on the page when the watch has not been read, with a line saying so', () => {
@@ -180,11 +181,11 @@ describe('saying how old these lines are', () => {
 
   it('puts the note on the section, next to the rows it describes', () => {
     const creators = [{ token: TOKEN, symbol: 'BOREDAPP', name: 'Bored App', text: 'The creator had sold 63% of the $BOREDAPP they bought (all in one sale) and held 267.3M.', movedOut: 0.63, launchBlock: 10 }];
-    const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(CreatorsSellingFeed, { creators, ready: true, updatedAt: agoHours(2), now: NOW })));
+    const html = renderToStaticMarkup(createElement(QueryClientProvider, { client: new QueryClient() }, createElement(MemoryRouter, null, createElement(CreatorsSellingFeed, { creators, ready: true, updatedAt: agoHours(2), now: NOW }))));
     expect(html).toContain('As read 2 hours ago');
     expect(html).toContain('open a launch for a live read');
     // no rows, nothing to date: the empty state carries the meaning instead
-    const none = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(CreatorsSellingFeed, { creators: [], ready: true, updatedAt: agoHours(2), now: NOW })));
+    const none = renderToStaticMarkup(createElement(QueryClientProvider, { client: new QueryClient() }, createElement(MemoryRouter, null, createElement(CreatorsSellingFeed, { creators: [], ready: true, updatedAt: agoHours(2), now: NOW }))));
     expect(none).not.toContain('As read 2 hours ago');
   });
 });
